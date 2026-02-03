@@ -1,0 +1,60 @@
+2026-02-03 21:52:54 [restartedMain] INFO  com.texcellsms.sms.TexcellSmsApplication - Starting TexcellSmsApplication using Java 25.0.2 with PID 16972 (C:\Users\MR.王\texcell-sms\texcell-sms\target\classes started by MR.王 in C:\Users\MR.王\texcell-sms\texcell-sms)
+2026-02-03 21:52:54 [restartedMain] INFO  com.texcellsms.sms.TexcellSmsApplication - No active profile set, falling back to 1 default profile: "default"
+2026-02-03 21:52:54 [restartedMain] INFO  o.s.b.d.env.DevToolsPropertyDefaultsPostProcessor - Devtools property defaults active! Set 'spring.devtools.add-properties' to 'false' to disable
+2026-02-03 21:52:54 [restartedMain] INFO  o.s.b.d.env.DevToolsPropertyDefaultsPostProcessor - For additional web related logging consider setting the 'logging.level.web' property to 'DEBUG'
+2026-02-03 21:52:55 [restartedMain] WARN  org.mybatis.spring.mapper.ClassPathMapperScanner - No MyBatis mapper was found in '[com.texcellsms.sms.mapper]' package. Please check your configuration.
+2026-02-03 21:52:55 [restartedMain] INFO  org.springframework.boot.tomcat.TomcatWebServer - Tomcat initialized with port 8080 (http)
+2026-02-03 21:52:55 [restartedMain] INFO  org.apache.catalina.core.StandardService - Starting service [Tomcat]
+2026-02-03 21:52:55 [restartedMain] INFO  org.apache.catalina.core.StandardEngine - Starting Servlet engine: [Apache Tomcat/11.0.15]
+2026-02-03 21:52:55 [restartedMain] INFO  o.s.b.w.c.servlet.WebApplicationContextInitializer - Root WebApplicationContext: initialization completed in 613 ms
+2026-02-03 21:52:55 [restartedMain] WARN  o.s.b.s.a.UserDetailsServiceAutoConfiguration - 
+
+Using generated security password: 147e2875-14c0-4df6-93a2-0b71e1454191
+
+This generated password is for development use only. Your security configuration must be updated before running your application in production.
+
+2026-02-03 21:52:55 [restartedMain] INFO  o.s.s.c.a.a.c.InitializeUserDetailsBeanManagerConfigurer$InitializeUserDetailsManagerConfigurer - Global AuthenticationManager configured with UserDetailsService bean with name inMemoryUserDetailsManager
+2026-02-03 21:52:55 [restartedMain] INFO  org.springframework.boot.tomcat.TomcatWebServer - Tomcat started on port 8080 (http) with context path '/'
+2026-02-03 21:52:55 [restartedMain] INFO  com.texcellsms.sms.TexcellSmsApplication - Started TexcellSmsApplication in 1.166 seconds (process running for 1.71)
+2026-02-03 21:52:58 [SpringApplicationShutdownHook] INFO  org.springframework.boot.tomcat.GracefulShutdown - Commencing graceful shutdown. Waiting for active requests to complete
+2026-02-03 21:52:58 [tomcat-shutdown] INFO  org.springframework.boot.tomcat.GracefulShutdown - Graceful shutdown complete
+2026-02-03 21:53:14 [restartedMain] INFO  com.texcellsms.sms.TexcellSmsApplication - Starting TexcellSmsApplication using Java 25.0.2 with PID 5056 (C:\Users\MR.王\texcell-sms\texcell-sms\target\classes started by MR.王 in C:\Users\MR.王\texcell-sms\texcell-sms)
+2026-02-03 21:53:14 [restartedMain] INFO  com.texcellsms.sms.TexcellSmsApplication - No active profile set, falling back to 1 default profile: "default"
+2026-02-03 21:53:14 [restartedMain] INFO  o.s.b.d.env.DevToolsPropertyDefaultsPostProcessor - Devtools property defaults active! Set 'spring.devtools.add-properties' to 'false' to disable
+2026-02-03 21:53:14 [restartedMain] INFO  o.s.b.d.env.DevToolsPropertyDefaultsPostProcessor - For additional web related logging consider setting the 'logging.level.web' property to 'DEBUG'
+2026-02-03 21:53:14 [restartedMain] WARN  org.mybatis.spring.mapper.ClassPathMapperScanner - No MyBatis mapper was found in '[com.texcellsms.sms.mapper]' package. Please check your configuration.
+2026-02-03 21:53:14 [restartedMain] INFO  org.springframework.boot.tomcat.TomcatWebServer - Tomcat initialized with port 8080 (http)
+2026-02-03 21:53:14 [restartedMain] INFO  org.apache.catalina.core.StandardService - Starting service [Tomcat]
+2026-02-03 21:53:14 [restartedMain] INFO  org.apache.catalina.core.StandardEngine - Starting Servlet engine: [Apache Tomcat/11.0.15]
+2026-02-03 21:53:14 [restartedMain] INFO  o.s.b.w.c.servlet.WebApplicationContextInitializer - Root WebApplicationContext: initialization completed in 554 ms
+2026-02-03 21:53:14 [restartedMain] WARN  o.s.b.s.a.UserDetailsServiceAutoConfiguration - 
+
+Using generated security password: 6ae64104-5ee6-4179-8c45-dc2d336d370c
+
+This generated password is for development use only. Your security configuration must be updated before running your application in production.
+
+2026-02-03 21:53:14 [restartedMain] INFO  o.s.s.c.a.a.c.InitializeUserDetailsBeanManagerConfigurer$InitializeUserDetailsManagerConfigurer - Global AuthenticationManager configured with UserDetailsService bean with name inMemoryUserDetailsManager
+2026-02-03 21:53:14 [restartedMain] INFO  org.springframework.boot.tomcat.TomcatWebServer - Tomcat started on port 8080 (http) with context path '/'
+2026-02-03 21:53:14 [restartedMain] INFO  com.texcellsms.sms.TexcellSmsApplication - Started TexcellSmsApplication in 0.995 seconds (process running for 1.291)
+2026-02-03 21:56:18 [SpringApplicationShutdownHook] INFO  org.springframework.boot.tomcat.GracefulShutdown - Commencing graceful shutdown. Waiting for active requests to complete
+2026-02-03 21:56:18 [tomcat-shutdown] INFO  org.springframework.boot.tomcat.GracefulShutdown - Graceful shutdown complete
+2026-02-03 22:04:18 [restartedMain] INFO  com.texcellsms.sms.TexcellSmsApplication - Starting TexcellSmsApplication using Java 25.0.2 with PID 29876 (C:\Users\MR.王\texcell-sms\texcell-sms\target\classes started by MR.王 in C:\Users\MR.王\texcell-sms\texcell-sms)
+2026-02-03 22:04:18 [restartedMain] INFO  com.texcellsms.sms.TexcellSmsApplication - No active profile set, falling back to 1 default profile: "default"
+2026-02-03 22:04:18 [restartedMain] INFO  o.s.b.d.env.DevToolsPropertyDefaultsPostProcessor - Devtools property defaults active! Set 'spring.devtools.add-properties' to 'false' to disable
+2026-02-03 22:04:18 [restartedMain] INFO  o.s.b.d.env.DevToolsPropertyDefaultsPostProcessor - For additional web related logging consider setting the 'logging.level.web' property to 'DEBUG'
+2026-02-03 22:04:18 [restartedMain] WARN  org.mybatis.spring.mapper.ClassPathMapperScanner - No MyBatis mapper was found in '[com.texcellsms.sms.mapper]' package. Please check your configuration.
+2026-02-03 22:04:18 [restartedMain] INFO  org.springframework.boot.tomcat.TomcatWebServer - Tomcat initialized with port 8080 (http)
+2026-02-03 22:04:18 [restartedMain] INFO  org.apache.catalina.core.StandardService - Starting service [Tomcat]
+2026-02-03 22:04:18 [restartedMain] INFO  org.apache.catalina.core.StandardEngine - Starting Servlet engine: [Apache Tomcat/11.0.15]
+2026-02-03 22:04:18 [restartedMain] INFO  o.s.b.w.c.servlet.WebApplicationContextInitializer - Root WebApplicationContext: initialization completed in 446 ms
+2026-02-03 22:04:19 [restartedMain] WARN  o.s.b.s.a.UserDetailsServiceAutoConfiguration - 
+
+Using generated security password: 64f05aa4-ab41-4a99-afd9-45c22afd47d7
+
+This generated password is for development use only. Your security configuration must be updated before running your application in production.
+
+2026-02-03 22:04:19 [restartedMain] INFO  o.s.s.c.a.a.c.InitializeUserDetailsBeanManagerConfigurer$InitializeUserDetailsManagerConfigurer - Global AuthenticationManager configured with UserDetailsService bean with name inMemoryUserDetailsManager
+2026-02-03 22:04:19 [restartedMain] INFO  org.springframework.boot.tomcat.TomcatWebServer - Tomcat started on port 8080 (http) with context path '/'
+2026-02-03 22:04:19 [restartedMain] INFO  com.texcellsms.sms.TexcellSmsApplication - Started TexcellSmsApplication in 0.898 seconds (process running for 1.193)
+2026-02-03 22:04:27 [SpringApplicationShutdownHook] INFO  org.springframework.boot.tomcat.GracefulShutdown - Commencing graceful shutdown. Waiting for active requests to complete
+2026-02-03 22:04:27 [tomcat-shutdown] INFO  org.springframework.boot.tomcat.GracefulShutdown - Graceful shutdown complete
