@@ -8,6 +8,7 @@ class TexcellSmsApplicationTests {
 
     @Test
     void contextLoads() {
+        System.out.println("test submit");
     }
 
 }
