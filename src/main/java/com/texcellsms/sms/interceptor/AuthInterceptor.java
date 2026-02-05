@@ -1,53 +1,42 @@
 package com.texcellsms.sms.interceptor;
 
-import com.texcellsms.sms.constant.RequestHeaderConstants;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.web.servlet.HandlerInterceptor;
 
-
-/**
- * 鉴权拦截器：验证X-Request和Authorization请求头
- */
 public class AuthInterceptor implements HandlerInterceptor {
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
-        // 1. 获取X-Request请求头（判断接口类型）
-        String xRequest = request.getHeader(RequestHeaderConstants.X_REQUEST);
-        if (xRequest == null || xRequest.isEmpty()) {
+        // ========== 注释掉所有鉴权逻辑 ==========
+        // 1. 注释Authorization校验
+        // String token = request.getHeader("Authorization");
+        // if (token == null || !token.startsWith("Bearer ")) {
+        //     response.setStatus(401);
+        //     response.getWriter().write("Authorization token is required");
+        //     return false;
+        // }
+
+        // 2. 注释token解析/验证逻辑（如果有）
+        // try {
+        //     String realToken = token.substring(7);
+        //     // 验证token的代码...
+        // } catch (Exception e) {
+        //     response.setStatus(401);
+        //     response.getWriter().write("Invalid token");
+        //     return false;
+        // }
+
+        // ========== 保留X-Request校验（可选，也可以注释） ==========
+        // 如果连X-Request也不想传，把下面这段也注释掉
+        String xRequest = request.getHeader("X-Request");
+        if (xRequest == null || xRequest.trim().isEmpty()) {
             response.setStatus(400);
-            response.getWriter().write("请求头X-Request不能为空");
+            response.getWriter().write("X-Request header is required");
             return false;
         }
 
-        // 2. 登录接口无需验证Authorization，其他接口必须验证
-        if (!"login".equalsIgnoreCase(xRequest)) {
-            String authorization = request.getHeader(RequestHeaderConstants.AUTHORIZATION);
-            String requestIp = request.getRemoteAddr();
-
-            if (authorization == null || authorization.isEmpty()) {
-                response.setStatus(401);
-                response.getWriter().write("Authorization请求头不能为空");
-                return false;
-            }
-
-            // 3. 验证Authorization和IP（实际需对接CacheDB鉴权逻辑）
-            boolean isValid = checkAuth(authorization, requestIp);
-            if (!isValid) {
-                response.setStatus(403);
-                response.getWriter().write("鉴权失败：无效的Authorization或IP");
-                return false;
-            }
-        }
+        // 直接返回true，允许所有请求通过
         return true;
-    }
-
-    /**
-     * 鉴权逻辑（后续对接CacheDB实现）
-     */
-    private boolean checkAuth(String authorization, String requestIp) {
-        // TODO: 替换为实际鉴权逻辑（从CacheDB查询token有效性）
-        return true; // 临时返回true，开发阶段跳过真实鉴权
     }
 }

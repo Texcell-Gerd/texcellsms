@@ -1,115 +1,101 @@
 # 服务器配置
 server:
-  port: 8080 # 项目启动端口，可根据需要修改
+  port: 8080
   servlet:
-    context-path: / # 项目根路径
+    context-path: /
   tomcat:
-    uri-encoding: UTF-8 # 编码配置
+    uri-encoding: UTF-8
 
 # Spring核心配置
 spring:
+  # 数据源基础配置（原生HikariCP）
   datasource:
-    dynamic:
-      primary: eccom
-      strict: true
-      datasource:
-        eccom:
-          driver-class-name: com.mysql.cj.jdbc.Driver # 确认驱动名（9.x仍可用）
-          url: jdbc:mysql://192.168.128.247:14333/eccom?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC&allowPublicKeyRetrieval=true&useSSL=false
-          username: root
-          password: 9c98eCFD84F299F76F6D4252DE111484(*&^%$
-          type: com.zaxxer.hikari.HikariDataSource # 新增：指定连接池类型
-          hikari:
-            maximum-pool-size: 10
-            minimum-idle: 2
-            connection-timeout: 30000
-            idle-timeout: 600000
-        prepay:
-          driver-class-name: com.mysql.cj.jdbc.Driver
-          url: jdbc:mysql://192.168.128.247:14333/prepay?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC&allowPublicKeyRetrieval=true&useSSL=false
-          username: root
-          password: 9c98eCFD84F299F76F6D4252DE111484(*&^%$
-          type: com.zaxxer.hikari.HikariDataSource # 新增
-          hikari:
-            maximum-pool-size: 10
-            minimum-idle: 2
-            connection-timeout: 30000
-            idle-timeout: 600000
-        cacheAuth:
-          driver-class-name: com.mysql.cj.jdbc.Driver
-          url: jdbc:mysql://192.168.112.250:11781/example?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC&allowPublicKeyRetrieval=true&useSSL=false
-          username: example
-          password: example
-          type: com.zaxxer.hikari.HikariDataSource # 新增
-          hikari:
-            maximum-pool-size: 5
-            minimum-idle: 1
-            connection-timeout: 30000
-            idle-timeout: 600000
-        cacheRate:
-          driver-class-name: com.mysql.cj.jdbc.Driver
-          url: jdbc:mysql://192.168.112.250:18801/auth?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC&allowPublicKeyRetrieval=true&useSSL=false
-          username: auth
-          password: auth
-          type: com.zaxxer.hikari.HikariDataSource # 新增
-          hikari:
-            maximum-pool-size: 5
-            minimum-idle: 1
-            connection-timeout: 30000
-            idle-timeout: 600000
-  # 跨域配置（适配前端请求头X-Request/Authorization）
-  cors:
-    allowed-origins: "*" # 开发环境允许所有来源，生产环境需指定前端域名
-    allowed-methods: GET,POST,PUT,DELETE,OPTIONS
-    allowed-headers: X-Request,Authorization,Content-Type
-    allow-credentials: true
-    max-age: 3600
+    type: com.zaxxer.hikari.HikariDataSource
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 30000
+      idle-timeout: 600000
+  # 跨域配置（注释，如需开启可解除）
+  #  cors:
+  #    allowed-origin-patterns: "*"
+  #    allowed-methods: GET,POST,PUT,DELETE,OPTIONS
+  #    allowed-headers: X-Request,Authorization,Content-Type
+  #    allow-credentials: true
+  #    max-age: 3600
+  # Security配置（自定义账号密码，如需开启可解除）
+#  security:
+#    user:
+#      name: admin
+#      password: 123456
 
-# MyBatis配置
+# MyBatis核心配置（注解式，无需XML扫描）
 mybatis:
-  # Mapper文件路径（需手动创建对应目录）
-  mapper-locations: classpath:mapper/**/*.xml
-  # 实体类别名包路径
-  type-aliases-package: com.texcellsms.model.entity
+  type-aliases-package: com.texcellsms.sms.model.entity,com.texcellsms.sms.model.DTO
+  type-handlers-package: com.texcellsms.sms.config # 自定义处理器包路径
   configuration:
-    # 下划线转驼峰
     map-underscore-to-camel-case: true
-    # 日志实现（开发环境开启，生产环境关闭）
     log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
-    # 开启延迟加载
     lazy-loading-enabled: true
     aggressive-lazy-loading: false
 
 # 日志配置
 logging:
   level:
-    # Mapper接口日志级别（开发环境debug，生产环境info）
-    com.texcellsms.mapper: debug
-    # 控制器日志级别
-    com.texcellsms.controller: info
-    # 动态数据源日志（方便调试数据源切换）
-    com.baomidou.dynamic.datasource: info
+    com.texcellsms.sms.mapper: debug  # 打印Mapper调试日志
+    com.texcellsms.sms.controller: info
+    org.springframework.jdbc.datasource: info
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{50} - %msg%n"
     file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{50} - %msg%n"
-  # 日志文件存储（可选）
   file:
     name: logs/texcell-sms.log
     max-size: 100MB
     max-history: 7
 
-# 自定义配置（业务常量）
+# 自定义业务配置
 texcellsms:
-  # Google两步认证配置
   google-auth:
-    issuer: TexcellSMS # 二维码显示的发行方名称
-    period: 30 # 验证码有效期（秒）
-    digits: 6 # 验证码位数
-  # 加解密密钥（需替换为实际项目密钥）
+    issuer: TexcellSMS
+    period: 30
+    digits: 6
   crypto:
-    des3-key: "texcellsms_des3_key_1234567890" # DES3密钥（需16/24位）
-    hmac-key: "texcellsms_hmac_key_1234567890" # HMACSHA256密钥
-  # 编码转换配置
+    des3-key: "texcellsms_des3_key_1234567890"
+    hmac-key: "texcellsms_hmac_key_1234567890"
   encoding:
     default-charset: UTF-8
     gsm7-charset: GSM0338
+
+# SpringDoc/OpenAPI配置
+springdoc:
+  packages-to-scan: com.texcellsms.sms.controller
+  models-package: com.texcellsms.sms.model.entity,com.texcellsms.sms.model.dto  # 包含DTO
+  swagger-ui:
+    path: /swagger-ui.html
+    operationsSorter: method
+    tagsSorter: alpha
+  api-docs:
+    enabled: true
+    path: /v3/api-docs
+  default-flat-param-object: true
+  global-headers:
+    - name: X-Request
+      description: 接口类型标识
+      required: true
+      schema:
+        type: string
+    - name: Authorization
+      description: 鉴权令牌（登录接口除外）
+      required: false
+      schema:
+        type: string
+
+# 自定义OpenAPI文档信息
+openapi:
+  info:
+    title: TexcellSMS 短信服务接口文档
+    description: 包含充值记录查询、多数据源操作等核心接口
+    version: 1.0.0
+    contact:
+      name: 开发团队
+      email: dev@texcellsms.com
