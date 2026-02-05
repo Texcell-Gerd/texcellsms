@@ -10,6 +10,7 @@ import org.apache.ibatis.type.JdbcType;
 import java.util.Date;
 import java.util.List;
 
+//发送记录接口
 public interface SendRecordMapper {
 
     /**

@@ -11,7 +11,9 @@ import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.List;
-
+/**
+ * 发送记录接口
+ */
 @Service
 public class SendRecordService {
 
