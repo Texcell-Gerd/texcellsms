@@ -38,6 +38,8 @@ mybatis:
     log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
     lazy-loading-enabled: true
     aggressive-lazy-loading: false
+    # 新增：关闭MyBatis自动映射，强制使用@Results手动映射（避免字段匹配异常）
+    auto-mapping-behavior: NONE
 
 # 日志配置
 logging:
@@ -94,7 +96,7 @@ springdoc:
 openapi:
   info:
     title: TexcellSMS 短信服务接口文档
-    description: 包含充值记录查询、多数据源操作等核心接口
+    description: 包含充值，发送记录查询、多数据源操作等核心接口
     version: 1.0.0
     contact:
       name: 开发团队
