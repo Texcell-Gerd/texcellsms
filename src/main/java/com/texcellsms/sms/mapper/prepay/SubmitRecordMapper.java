@@ -1,86 +1,165 @@
 package com.texcellsms.sms.mapper.prepay;
 
 import com.texcellsms.sms.model.DTO.SubmitRecordDTO;
-import org.apache.ibatis.annotations.Mapper; // 核心：添加@Mapper注解
-import org.apache.ibatis.annotations.Param;
-import org.apache.ibatis.annotations.Result;
-import org.apache.ibatis.annotations.Results;
-import org.apache.ibatis.annotations.Select;
-import org.apache.ibatis.type.JdbcType;
-import java.util.Date;
-import java.util.List;
+import org.apache.ibatis.annotations.*;
+import org.springframework.stereotype.Repository;
 
+import java.util.List;
+import java.util.Map;
+
+@Repository
 @Mapper
 public interface SubmitRecordMapper {
 
-    @Results({
-            @Result(column = "SubmitMsgTime", property = "SubmitMsgTime", jdbcType = JdbcType.VARCHAR),
-            @Result(column = "Caller", property = "Caller", jdbcType = JdbcType.VARCHAR),
-            @Result(column = "Callee", property = "Callee", jdbcType = JdbcType.VARCHAR),
-            @Result(column = "SM_Length", property = "SM_Length", jdbcType = JdbcType.VARCHAR),
-            @Result(column = "ChargeFee", property = "ChargeFee", jdbcType = JdbcType.VARCHAR),
-            @Result(column = "Short_Message", property = "Short_Message", jdbcType = JdbcType.VARCHAR),
-            @Result(column = "MCC", property = "MCC", jdbcType = JdbcType.VARCHAR),
-            @Result(column = "MNC", property = "MNC", jdbcType = JdbcType.VARCHAR),
-            @Result(column = "SubmitMsgId", property = "SubmitMsgId", jdbcType = JdbcType.VARCHAR),
-            @Result(column = "InnerReportState", property = "InnerReportState", jdbcType = JdbcType.VARCHAR),
-            @Result(column = "InnerReportError", property = "InnerReportError", jdbcType = JdbcType.VARCHAR),
-            @Result(column = "RecvDRTime", property = "RecvDRTime", jdbcType = JdbcType.VARCHAR),
-            @Result(column = "SourAccount", property = "SourAccount", jdbcType = JdbcType.VARCHAR)
-    })
+    // 1. 分页查询方法 - 修复参数绑定问题
     @Select({
-            "<script>",
-            "<foreach collection='tableSuffixList' item='suffix' separator='UNION ALL'>",
-            "SELECT",
-            "sb.SubmitMsgTime,",
-            "sb.Caller,",
-            "sb.Callee,",
-            "sb.SM_Length,",
-            "sb.ChargeFee,",
-            "CASE WHEN sb.DCS='0' THEN CAST(UNHEX(sb.Short_Message) AS CHAR)",
-            "WHEN sb.DCS='1' THEN CAST(CONVERT(UNHEX(sb.Short_Message) USING 'ASCII') AS CHAR)",
-            "WHEN sb.DCS='8' THEN CAST(CONVERT(UNHEX(sb.Short_Message) USING 'UCS2') AS CHAR)",
-            "END AS Short_Message,",
-            "sb.MCC,",
-            "sb.MNC,",
-            "sb.SubmitMsgId,",
-            "COALESCE(fb.InnerReportState, '已提交') AS InnerReportState,",
-            "fb.InnerReportError,",
-            "fb.RecvDRTime,",
-            "sb.SourAccount",
-            "FROM CDR_DB.Submit_Bill_${suffix} sb",
-            "LEFT JOIN CDR_DB.Fee_Bill_${suffix} fb ON sb.SubmitMsgId = fb.RecvMsgId",
-            "WHERE UPPER(sb.SourAccount) = UPPER(#{sourAccount})",
-            "AND STR_TO_DATE(sb.SubmitMsgTime, '%Y/%m/%d %H:%i:%s') &gt;= #{startTime}",
-            "AND STR_TO_DATE(sb.SubmitMsgTime, '%Y/%m/%d %H:%i:%s') &lt; #{endTime}",
-            "<if test='callee != null and callee != &quot;&quot;'>",
-            "AND sb.Callee = #{callee}",
-            "</if>",
-            "<if test='mcc != null and mcc != &quot;&quot;'>",
-            "AND sb.MCC = #{mcc}",
-            "</if>",
-            "<if test='mnc != null and mnc != &quot;&quot;'>",
-            "AND sb.MNC = #{mnc}",
-            "</if>",
-            "<if test='innerReportState != null and innerReportState != &quot;&quot;'>",
-            "AND COALESCE(fb.InnerReportState, '已提交') = #{innerReportState}",
-            "</if>",
-            "<if test='innerReportError != null and innerReportError != &quot;&quot;'>",
-            "AND fb.InnerReportError = #{innerReportError}",
-            "</if>",
-            "</foreach>",
-            "ORDER BY STR_TO_DATE(SubmitMsgTime, '%Y/%m/%d %H:%i:%s') DESC",
-            "</script>"
+            "SELECT ",
+            "    sb.SourAccount,",
+            "    sb.SubmitMsgId,",
+            "    sb.SubmitMsgTime,",
+            "    sb.Caller,",
+            "    sb.Callee,",
+            "    sb.SM_Length,",
+            "    sb.ChargeFee,",
+            "    ROUND(IFNULL(CAST(sb.ChargeFee AS DECIMAL)/10000, 0), 4) as actualChargeFee,",
+            "    CASE ",
+            "        WHEN sb.DCS='0' THEN CAST(UNHEX(sb.Short_Message) AS CHAR) ",
+            "        WHEN sb.DCS='1' THEN CAST(CONVERT(UNHEX(sb.Short_Message) USING ASCII) AS CHAR)  ",
+            "        WHEN sb.DCS='8' THEN CAST(CONVERT(UNHEX(sb.Short_Message) USING UCS2) AS CHAR) ",
+            "        ELSE sb.Short_Message ",
+            "    END as shortMessage,",
+            "    sb.MCC as mcc,",
+            "    sb.MNC as mnc,",
+            "    fb.InnerReportState as fbInnerReportState,",
+            "    fb.RecvDRTime as recvDRTime,",
+            "    fb.InnerReportError as innerReportError",
+            "FROM Submit_Bill_${tableSuffix} sb",
+            "LEFT JOIN Fee_Bill_${tableSuffix} fb ON sb.SubmitMsgId = fb.RecvMsgId",
+            "WHERE 1=1",
+            "  AND (sb.SourAccount = #{sourAccount} OR #{sourAccount} IS NULL)",
+            "  AND (sb.SubmitMsgTime >= #{startTimeStr} OR #{startTimeStr} IS NULL)",
+            "  AND (sb.SubmitMsgTime <= #{endTimeStr} OR #{endTimeStr} IS NULL)",
+            "  AND (sb.Callee = #{callee} OR #{callee} IS NULL)",
+            "  AND (sb.MCC = #{mcc} OR #{mcc} IS NULL)",
+            "  AND (sb.MNC = #{mnc} OR #{mnc} IS NULL)",
+            "  AND (fb.InnerReportState = #{innerReportState} OR #{innerReportState} IS NULL)",
+            "  AND (fb.InnerReportError = #{innerReportError} OR #{innerReportError} IS NULL)",
+            "LIMIT #{pageSize} OFFSET #{offset}"
     })
-    List<SubmitRecordDTO> querySubmitRecords(
-            @Param("tableSuffixList") List<String> tableSuffixList,
-            @Param("startTime") Date startTime,
-            @Param("endTime") Date endTime,
+    @Results({
+            @Result(column = "SourAccount", property = "sourAccount"),
+            @Result(column = "SubmitMsgId", property = "submitMsgId"),
+            @Result(column = "SubmitMsgTime", property = "submitMsgTime"),
+            @Result(column = "Caller", property = "caller"),
+            @Result(column = "Callee", property = "callee"),
+            @Result(column = "SM_Length", property = "smLength"),
+            @Result(column = "ChargeFee", property = "chargeFee"),
+            @Result(column = "actualChargeFee", property = "actualChargeFee"),
+            @Result(column = "shortMessage", property = "shortMessage"),
+            @Result(column = "mcc", property = "mcc"),
+            @Result(column = "mnc", property = "mnc"),
+            @Result(column = "fbInnerReportState", property = "fbInnerReportState"),
+            @Result(column = "recvDRTime", property = "recvDRTime"),
+            @Result(column = "innerReportError", property = "innerReportError")
+    })
+    List<SubmitRecordDTO> querySubmitRecordsWithJoin(
+            @Param("tableSuffix") String tableSuffix,
             @Param("sourAccount") String sourAccount,
+            @Param("startTimeStr") String startTimeStr,
+            @Param("endTimeStr") String endTimeStr,
+            @Param("callee") String callee,
+            @Param("mcc") String mcc,
+            @Param("mnc") String mnc,
+            @Param("innerReportState") String innerReportState,
+            @Param("innerReportError") String innerReportError,
+            @Param("pageSize") Integer pageSize,
+            @Param("offset") Integer offset
+    );
+
+    // 2. 导出查询方法 - 同步修复
+    @Select({
+            "SELECT ",
+            "    sb.SourAccount,",
+            "    sb.SubmitMsgId,",
+            "    sb.SubmitMsgTime,",
+            "    sb.Caller,",
+            "    sb.Callee,",
+            "    sb.SM_Length,",
+            "    sb.ChargeFee,",
+            "    ROUND(IFNULL(CAST(sb.ChargeFee AS DECIMAL)/10000, 0), 4) as actualChargeFee,",
+            "    CASE ",
+            "        WHEN sb.DCS='0' THEN CAST(UNHEX(sb.Short_Message) AS CHAR) ",
+            "        WHEN sb.DCS='1' THEN CAST(CONVERT(UNHEX(sb.Short_Message) USING ASCII) AS CHAR)  ",
+            "        WHEN sb.DCS='8' THEN CAST(CONVERT(UNHEX(sb.Short_Message) USING UCS2) AS CHAR) ",
+            "        ELSE sb.Short_Message ",
+            "    END as shortMessage,",
+            "    sb.MCC as mcc,",
+            "    sb.MNC as mnc,",
+            "    fb.InnerReportState as fbInnerReportState,",
+            "    fb.RecvDRTime as recvDRTime,",
+            "    fb.InnerReportError as innerReportError",
+            "FROM Submit_Bill_${tableSuffix} sb",
+            "LEFT JOIN Fee_Bill_${tableSuffix} fb ON sb.SubmitMsgId = fb.RecvMsgId",
+            "WHERE 1=1",
+            "  AND (sb.SourAccount = #{sourAccount} OR #{sourAccount} IS NULL)",
+            "  AND (sb.SubmitMsgTime >= #{startTimeStr} OR #{startTimeStr} IS NULL)",
+            "  AND (sb.SubmitMsgTime <= #{endTimeStr} OR #{endTimeStr} IS NULL)",
+            "  AND (sb.Callee = #{callee} OR #{callee} IS NULL)",
+            "  AND (sb.MCC = #{mcc} OR #{mcc} IS NULL)",
+            "  AND (sb.MNC = #{mnc} OR #{mnc} IS NULL)",
+            "  AND (fb.InnerReportState = #{innerReportState} OR #{innerReportState} IS NULL)",
+            "  AND (fb.InnerReportError = #{innerReportError} OR #{innerReportError} IS NULL)"
+    })
+    @Results({
+            @Result(column = "SourAccount", property = "sourAccount"),
+            @Result(column = "SubmitMsgId", property = "submitMsgId"),
+            @Result(column = "SubmitMsgTime", property = "submitMsgTime"),
+            @Result(column = "Caller", property = "caller"),
+            @Result(column = "Callee", property = "callee"),
+            @Result(column = "SM_Length", property = "smLength"),
+            @Result(column = "ChargeFee", property = "chargeFee"),
+            @Result(column = "actualChargeFee", property = "actualChargeFee"),
+            @Result(column = "shortMessage", property = "shortMessage"),
+            @Result(column = "mcc", property = "mcc"),
+            @Result(column = "mnc", property = "mnc"),
+            @Result(column = "fbInnerReportState", property = "fbInnerReportState"),
+            @Result(column = "recvDRTime", property = "recvDRTime"),
+            @Result(column = "innerReportError", property = "innerReportError")
+    })
+    List<SubmitRecordDTO> querySubmitRecordsForExportWithJoin(
+            @Param("tableSuffix") String tableSuffix,
+            @Param("sourAccount") String sourAccount,
+            @Param("startTimeStr") String startTimeStr,
+            @Param("endTimeStr") String endTimeStr,
             @Param("callee") String callee,
             @Param("mcc") String mcc,
             @Param("mnc") String mnc,
             @Param("innerReportState") String innerReportState,
             @Param("innerReportError") String innerReportError
+    );
+
+    // 3. 统计方法保持不变
+    @Select("SELECT COUNT(*) FROM Submit_Bill_${tableSuffix} " +
+            "WHERE (SourAccount = #{sourAccount} OR #{sourAccount} IS NULL) " +
+            "AND (SubmitMsgTime >= #{startTimeStr} OR #{startTimeStr} IS NULL) " +
+            "AND (SubmitMsgTime <= #{endTimeStr} OR #{endTimeStr} IS NULL)")
+    Long countSubmitTotal(
+            @Param("tableSuffix") String tableSuffix,
+            @Param("sourAccount") String sourAccount,
+            @Param("startTimeStr") String startTimeStr,
+            @Param("endTimeStr") String endTimeStr
+    );
+
+    @Select("SELECT InnerReportState, COUNT(*) AS count " +
+            "FROM Fee_Bill_${tableSuffix} " +
+            "WHERE (SourAccount = #{sourAccount} OR #{sourAccount} IS NULL) " +
+            "AND (TransMsgTime >= #{startTimeStr} OR #{startTimeStr} IS NULL) " +
+            "AND (TransMsgTime <= #{endTimeStr} OR #{endTimeStr} IS NULL) " +
+            "GROUP BY InnerReportState")
+    List<Map<String, Object>> countDeliverStats(
+            @Param("tableSuffix") String tableSuffix,
+            @Param("sourAccount") String sourAccount,
+            @Param("startTimeStr") String startTimeStr,
+            @Param("endTimeStr") String endTimeStr
     );
 }

@@ -2,7 +2,7 @@ package com.texcellsms.sms.controller;
 
 import com.texcellsms.sms.constant.RequestHeaderConstants;
 import com.texcellsms.sms.util.*;
-import jakarta.servlet.http.HttpServletRequest;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 
+import javax.servlet.http.HttpServletRequest;
 
 
 /**

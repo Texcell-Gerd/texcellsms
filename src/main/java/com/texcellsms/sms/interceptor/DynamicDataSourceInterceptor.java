@@ -1,11 +1,14 @@
 package com.texcellsms.sms.interceptor;
 
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
+
 import org.springframework.web.servlet.HandlerInterceptor;
+
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
 
 /**
  * 简化版：只切换物理数据源（eccom/prepay），库名由SQL指定
+ * 新增兼容方法：setCurrentDataSource/clearCurrentDataSource
  */
 public class DynamicDataSourceInterceptor implements HandlerInterceptor {
 
@@ -16,6 +19,7 @@ public class DynamicDataSourceInterceptor implements HandlerInterceptor {
     // 线程本地变量存储当前物理数据源key
     private static final ThreadLocal<String> DATASOURCE_KEY = new ThreadLocal<>();
 
+    // ========== 原有方法 ==========
     // 获取当前物理数据源
     public static String getCurrentDataSource() {
         return DATASOURCE_KEY.get();
@@ -23,6 +27,21 @@ public class DynamicDataSourceInterceptor implements HandlerInterceptor {
 
     // 清空线程变量
     public static void clearDataSource() {
+        DATASOURCE_KEY.remove();
+    }
+
+    // ========== 新增兼容方法（解决Service调用报错） ==========
+    /**
+     * 设置当前数据源（Service层调用）
+     */
+    public static void setCurrentDataSource(String dataSourceKey) {
+        DATASOURCE_KEY.set(dataSourceKey);
+    }
+
+    /**
+     * 清空当前数据源（Service层调用）
+     */
+    public static void clearCurrentDataSource() {
         DATASOURCE_KEY.remove();
     }
 

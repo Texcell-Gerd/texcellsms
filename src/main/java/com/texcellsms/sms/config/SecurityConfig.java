@@ -28,20 +28,22 @@ public class SecurityConfig {
         return new CorsFilter(source);
     }
 
-    // 2. 配置Security过滤链（放行接口文档和静态资源）
+    // 2. 配置Security过滤链（适配2.7.x API，修复requestMatchers参数错误）
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-                // 启用跨域过滤器（关键：让Security优先执行跨域配置）
-                .cors(cors -> cors.configurationSource(request -> new CorsConfiguration()))
+                // 启用跨域过滤器
+                .cors().and()
                 // 关闭CSRF（开发环境方便调试）
-                .csrf(csrf -> csrf.disable())
+                .csrf().disable()
+                // 权限配置
+                .authorizeRequests()
                 // 放行接口文档相关路径
-                .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/swagger-ui.html", "/v3/api-docs/**", "/swagger-ui/**").permitAll()
-                        // 放行所有接口（开发环境，生产环境需按实际权限配置）
-                        .anyRequest().permitAll()
-                );
+                .antMatchers("/swagger-ui.html", "/v3/api-docs/**", "/swagger-ui/**").permitAll()
+                // 放行所有接口（开发环境，生产环境需按实际权限配置）
+                .anyRequest().permitAll()
+                .and();
+
         return http.build();
     }
 }

@@ -1,107 +1,241 @@
 package com.texcellsms.sms.controller;
 
 import com.texcellsms.sms.model.DTO.SubmitRecordDTO;
+import com.texcellsms.sms.model.DTO.SubmitRecordWithStatsDTO;
 import com.texcellsms.sms.service.SubmitRecordService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
-import io.swagger.v3.oas.annotations.Parameters;
-import io.swagger.v3.oas.annotations.enums.ParameterIn;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.annotation.Resource;
-import org.springframework.format.annotation.DateTimeFormat;
+
+
+import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.xssf.streaming.SXSSFSheet;
+import org.apache.poi.xssf.streaming.SXSSFWorkbook;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.security.Principal;
+import javax.annotation.Resource;
+import javax.servlet.http.HttpServletResponse;
+import java.io.OutputStream;
+import java.net.URLEncoder;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 
-@Tag(name = "发送记录接口（Submit_Bill主表）", description = "短信发送记录查询（Submit_Bill主表+Fee_Bill副表关联，默认1小时，最多3天）")
 @RestController
-@RequestMapping("/api/submit-record")
+@RequestMapping("/api/submit-record") // 匹配你的/api前缀路径
+@Tag(name = "短信发送记录查询", description = "Submit_Bill主表+Fee_Bill副表关联查询")
 public class SubmitRecordController {
 
     @Resource
     private SubmitRecordService submitRecordService;
 
-    // 线上版接口
-    @Operation(
-            summary = "【线上】查询当前登录用户发送记录",
-            description = "1. 未传时间默认查最近1小时数据；2. 传时间最多返回近3天数据；3. 自动换算计费金额（ChargeFee÷10000）；4. 短信内容自动解码；5. 数据来源：CDR_DB库"
-    )
-    @Parameters({
-            @Parameter(name = "startTime", description = "开始时间（格式：yyyy-MM-dd HH:mm:ss）",
-                    in = ParameterIn.QUERY, required = false, example = "2026-02-05 14:00:00"),
-            @Parameter(name = "endTime", description = "结束时间（格式：yyyy-MM-dd HH:mm:ss）",
-                    in = ParameterIn.QUERY, required = false, example = "2026-02-05 15:00:00"),
-            @Parameter(name = "callee", description = "被叫号码",
-                    in = ParameterIn.QUERY, required = false, example = "85212345678"),
-            @Parameter(name = "mcc", description = "移动国家码（MCC）",
-                    in = ParameterIn.QUERY, required = false, example = "454"),
-            @Parameter(name = "mnc", description = "移动网络码（MNC）",
-                    in = ParameterIn.QUERY, required = false, example = "01"),
-            @Parameter(name = "innerReportState", description = "回执状态（DELIVRD/REJECTD/UNDELIV/已提交）",
-                    in = ParameterIn.QUERY, required = false, example = "DELIVRD"),
-            @Parameter(name = "innerReportError", description = "回执状态码",
-                    in = ParameterIn.QUERY, required = false, example = "088")
-    })
-    @GetMapping("/online/query")
-    public List<SubmitRecordDTO> queryOnlineSubmitRecords(
-            Principal principal,
-            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") Date startTime,
-            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") Date endTime,
-            @RequestParam(required = false) String callee,
-            @RequestParam(required = false) String mcc,
-            @RequestParam(required = false) String mnc,
-            @RequestParam(required = false) String innerReportState,
-            @RequestParam(required = false) String innerReportError
-    ) {
-        String loginUserAccount = principal.getName();
-        return submitRecordService.getSubmitRecordsByLoginUser(
-                loginUserAccount, startTime, endTime,
-                callee, mcc, mnc, innerReportState, innerReportError
+    // 核心修复：支持横杠分隔的日期格式（yyyy-MM-dd HH:mm:ss）
+    private static final SimpleDateFormat DATETIME_FORMAT = new SimpleDateFormat("yyyy/MM/dd HH:mm:ss");
+
+
+    @GetMapping("/debug/query") // 匹配你的/debug/query路径
+    @Operation(summary = "调试查询（指定用户）", description = "根据用户账号查询发送记录")
+    public List<SubmitRecordDTO> queryDebug(
+            @Parameter(description = "用户账号", example = "CTU506AT") @RequestParam String sourAccount,
+            @Parameter(description = "开始时间（yyyy-MM-dd HH:mm:ss）", example = "2026-02-08 09:00:00") @RequestParam(required = false) String startTime,
+            @Parameter(description = "结束时间（yyyy-MM-dd HH:mm:ss）", example = "2026-02-08 12:00:00") @RequestParam(required = false) String endTime,
+            @Parameter(description = "被叫号码", example = "85212345678") @RequestParam(required = false) String callee,
+            @Parameter(description = "MCC", example = "454") @RequestParam(required = false) String mcc,
+            @Parameter(description = "MNC", example = "01") @RequestParam(required = false) String mnc,
+            @Parameter(description = "回执状态", example = "DELIVRD") @RequestParam(required = false) String innerReportState,
+            @Parameter(description = "回执状态码", example = "088") @RequestParam(required = false) String innerReportError,
+            @Parameter(description = "页码", example = "1") @RequestParam(defaultValue = "1") Integer pageNum,
+            @Parameter(description = "页大小", example = "20") @RequestParam(defaultValue = "20") Integer pageSize
+    ) throws ParseException {
+        // 解析逻辑不变，仅格式匹配传入的yyyy-MM-dd HH:mm:ss
+        Date start = startTime != null ? DATETIME_FORMAT.parse(startTime) : null;
+        Date end = endTime != null ? DATETIME_FORMAT.parse(endTime) : null;
+        return submitRecordService.getSubmitRecordsForDebug(
+                sourAccount, start, end,
+                callee, mcc, mnc,
+                innerReportState, innerReportError,
+                pageNum, pageSize
         );
     }
 
-    // 调试版接口
-    @Operation(
-            summary = "【调试】查询指定用户发送记录",
-            description = "1. 未传时间默认查最近1小时数据；2. 传时间最多返回近3天数据；3. 自动换算计费金额（ChargeFee÷10000）；4. 短信内容自动解码；5. 仅用于开发/测试环境"
-    )
-    @Parameters({
-            @Parameter(name = "sourAccount", description = "用户账号（SourAccount）",
-                    in = ParameterIn.QUERY, required = false, example = "CTU506AT"),
-            @Parameter(name = "startTime", description = "开始时间（格式：yyyy-MM-dd HH:mm:ss）",
-                    in = ParameterIn.QUERY, required = false, example = "2026-02-05 14:00:00"),
-            @Parameter(name = "endTime", description = "结束时间（格式：yyyy-MM-dd HH:mm:ss）",
-                    in = ParameterIn.QUERY, required = false, example = "2026-02-05 15:00:00"),
-            @Parameter(name = "callee", description = "被叫号码",
-                    in = ParameterIn.QUERY, required = false, example = "85212345678"),
-            @Parameter(name = "mcc", description = "移动国家码（MCC）",
-                    in = ParameterIn.QUERY, required = false, example = "454"),
-            @Parameter(name = "mnc", description = "移动网络码（MNC）",
-                    in = ParameterIn.QUERY, required = false, example = "01"),
-            @Parameter(name = "innerReportState", description = "回执状态（DELIVRD/REJECTD/UNDELIV/已提交）",
-                    in = ParameterIn.QUERY, required = false, example = "DELIVRD"),
-            @Parameter(name = "innerReportError", description = "回执状态码",
-                    in = ParameterIn.QUERY, required = false, example = "088")
-    })
-    @GetMapping("/debug/query")
-    public List<SubmitRecordDTO> queryDebugSubmitRecords(
-            @RequestParam(required = false, defaultValue = "TEST_USER_DEFAULT") String sourAccount,
-            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") Date startTime,
-            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") Date endTime,
-            @RequestParam(required = false) String callee,
-            @RequestParam(required = false) String mcc,
-            @RequestParam(required = false) String mnc,
-            @RequestParam(required = false) String innerReportState,
-            @RequestParam(required = false) String innerReportError
-    ) {
-        return submitRecordService.getSubmitRecordsForDebug(
-                sourAccount, startTime, endTime,
-                callee, mcc, mnc, innerReportState, innerReportError
+    @GetMapping("/login-user/query")
+    @Operation(summary = "线上查询（当前登录用户）", description = "根据当前登录账号查询发送记录")
+    public List<SubmitRecordDTO> queryLoginUser(
+            @Parameter(description = "当前登录用户账号", example = "CTU506AT") @RequestParam String loginUserAccount,
+            @Parameter(description = "开始时间（yyyy-MM-dd HH:mm:ss）", example = "2026-02-08 09:00:00") @RequestParam(required = false) String startTime,
+            @Parameter(description = "结束时间（yyyy-MM-dd HH:mm:ss）", example = "2026-02-08 12:00:00") @RequestParam(required = false) String endTime,
+            @Parameter(description = "被叫号码", example = "85212345678") @RequestParam(required = false) String callee,
+            @Parameter(description = "MCC", example = "454") @RequestParam(required = false) String mcc,
+            @Parameter(description = "MNC", example = "01") @RequestParam(required = false) String mnc,
+            @Parameter(description = "回执状态", example = "DELIVRD") @RequestParam(required = false) String innerReportState,
+            @Parameter(description = "回执状态码", example = "000") @RequestParam(required = false) String innerReportError,
+            @Parameter(description = "页码", example = "1") @RequestParam(defaultValue = "1") Integer pageNum,
+            @Parameter(description = "页大小", example = "20") @RequestParam(defaultValue = "20") Integer pageSize
+    ) throws ParseException {
+        Date start = startTime != null ? DATETIME_FORMAT.parse(startTime) : null;
+        Date end = endTime != null ? DATETIME_FORMAT.parse(endTime) : null;
+        return submitRecordService.getSubmitRecordsByLoginUser(
+                loginUserAccount, start, end,
+                callee, mcc, mnc,
+                innerReportState, innerReportError,
+                pageNum, pageSize
+        );
+    }
+
+    // ========== 导出接口Excel下载 ==========
+    @GetMapping("/export/batch-excel")
+    @Operation(summary = "批量导出Excel（支持30万条）", description = "分批查询+流式写入，避免内存溢出")
+    public void batchExportExcel(
+            @Parameter(description = "用户账号", example = "CTU506AT") @RequestParam String sourAccount,
+            @Parameter(description = "开始时间（yyyy-MM-dd HH:mm:ss）", example = "2026-02-08 00:00:00") @RequestParam String startTime,
+            @Parameter(description = "结束时间（yyyy-MM-dd HH:mm:ss）", example = "2026-02-08 23:59:59") @RequestParam String endTime,
+            @Parameter(description = "被叫号码", example = "85212345678") @RequestParam(required = false) String callee,
+            @Parameter(description = "MCC", example = "454") @RequestParam(required = false) String mcc,
+            @Parameter(description = "MNC", example = "01") @RequestParam(required = false) String mnc,
+            @Parameter(description = "回执状态", example = "DELIVRD") @RequestParam(required = false) String innerReportState,
+            @Parameter(description = "回执状态码", example = "000") @RequestParam(required = false) String innerReportError,
+            HttpServletResponse response
+    ) throws Exception {
+        // 1. 解析时间参数（必填，避免数据范围过大）
+        Date start = DATETIME_FORMAT.parse(startTime);
+        Date end = DATETIME_FORMAT.parse(endTime);
+
+        // 2. 设置响应头（支持大文件下载，禁用缓存）
+        response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        String fileName = URLEncoder.encode("短信发送记录_批量导出" + System.currentTimeMillis() + ".xlsx", "UTF-8");
+        response.setHeader("Content-Disposition", "attachment; filename=" + fileName);
+        response.setHeader("Pragma", "no-cache");
+        response.setHeader("Cache-Control", "no-cache");
+        response.setBufferSize(1024 * 1024); // 1MB缓冲区
+
+        // 3. 创建流式Excel工作簿（SXSSFWorkbook），仅在内存保留100条数据
+        SXSSFWorkbook workbook = new SXSSFWorkbook(100);
+        Sheet sheet = workbook.createSheet("短信发送记录");
+        OutputStream outputStream = response.getOutputStream();
+
+        try {
+            // 4. 设置表头（固定列宽，解决autoSizeColumn报错）
+            Row headerRow = sheet.createRow(0);
+            String[] headers = {
+                    "用户账号", "提交消息ID", "提交时间", "主叫", "被叫",
+                    "短信长度", "实际费用", "短信内容", "MCC", "MNC",
+                    "回执状态", "回执时间"
+            };
+            // 固定列宽（单位：字符 → Excel列宽单位=字符*256）
+            int[] columnWidths = {12, 15, 20, 10, 15, 8, 10, 50, 6, 6, 10, 20};
+            for (int i = 0; i < headers.length; i++) {
+                Cell cell = headerRow.createCell(i);
+                cell.setCellValue(headers[i]);
+                sheet.setColumnWidth(i, columnWidths[i] * 256); // 替换autoSizeColumn
+            }
+
+            // 5. 分批查询+写入（核心逻辑：修复long转int报错）
+            int pageNum = 1;
+            int totalCount = 0; // 改为int类型（30万条远小于Integer.MAX_VALUE）
+            final int BATCH_SIZE = 1000; // 每批查询1000条
+            while (true) {
+                // 每批查1000条（调用原有分页查询方法）
+                List<SubmitRecordDTO> batchRecords = submitRecordService.getSubmitRecordsForDebug(
+                        sourAccount, start, end,
+                        callee, mcc, mnc,
+                        innerReportState, innerReportError,
+                        pageNum, BATCH_SIZE
+                );
+
+                if (batchRecords.isEmpty()) {
+                    break; // 没有数据了，退出循环
+                }
+
+                // 写入当前批次数据
+                for (int i = 0; i < batchRecords.size(); i++) {
+                    SubmitRecordDTO record = batchRecords.get(i);
+                    // 修复：totalCount为int类型，直接传入createRow
+                    Row dataRow = sheet.createRow(totalCount + 1);
+                    // 填充数据（避免null值导致Excel报错）
+                    dataRow.createCell(0).setCellValue(record.getSourAccount() == null ? "" : record.getSourAccount());
+                    dataRow.createCell(1).setCellValue(record.getSubmitMsgId() == null ? "" : record.getSubmitMsgId());
+                    dataRow.createCell(2).setCellValue(record.getSubmitMsgTime() == null ? "" : record.getSubmitMsgTime());
+                    dataRow.createCell(3).setCellValue(record.getCaller() == null ? "" : record.getCaller());
+                    dataRow.createCell(4).setCellValue(record.getCallee() == null ? "" : record.getCallee());
+                    dataRow.createCell(5).setCellValue(record.getSmLength() == null ? "" : record.getSmLength());
+                    dataRow.createCell(6).setCellValue(record.getActualChargeFee() == null ? "" : record.getActualChargeFee());
+                    dataRow.createCell(7).setCellValue(record.getShortMessage() == null ? "" : record.getShortMessage());
+                    dataRow.createCell(8).setCellValue(record.getMcc() == null ? "" : record.getMcc());
+                    dataRow.createCell(9).setCellValue(record.getMnc() == null ? "" : record.getMnc());
+                    dataRow.createCell(10).setCellValue(record.getInnerReportState() == null ? "" : record.getInnerReportState());
+                    dataRow.createCell(11).setCellValue(record.getRecvDRTime() == null ? "" : record.getRecvDRTime());
+
+                    totalCount++;
+                }
+
+                // 强制刷盘（释放内存，避免OOM）
+                ((SXSSFSheet) sheet).flushRows();
+                outputStream.flush();
+
+                pageNum++;
+            }
+
+            // 6. 完成导出，写入响应流
+            workbook.write(outputStream);
+            outputStream.flush();
+        } finally {
+            // 7. 关闭资源（关键：释放SXSSFWorkbook临时文件，避免内存泄漏）
+            workbook.dispose();
+            outputStream.close();
+        }
+    }
+
+    // ========== 新增：记录+统计查询接口 ==========
+    @GetMapping("/with-stats/debug")
+    @Operation(summary = "调试查询（带统计）", description = "指定用户+返回发送记录+提交/送达统计信息")
+    public SubmitRecordWithStatsDTO queryDebugWithStats(
+            @Parameter(description = "用户账号", example = "CTU506AT") @RequestParam String sourAccount,
+            @Parameter(description = "开始时间（yyyy-MM-dd HH:mm:ss）", example = "2026-02-08 09:00:00") @RequestParam(required = false) String startTime,
+            @Parameter(description = "结束时间（yyyy-MM-dd HH:mm:ss）", example = "2026-02-08 12:00:00") @RequestParam(required = false) String endTime,
+            @Parameter(description = "被叫号码", example = "85212345678") @RequestParam(required = false) String callee,
+            @Parameter(description = "MCC", example = "454") @RequestParam(required = false) String mcc,
+            @Parameter(description = "MNC", example = "01") @RequestParam(required = false) String mnc,
+            @Parameter(description = "回执状态", example = "DELIVRD") @RequestParam(required = false) String innerReportState,
+            @Parameter(description = "回执状态码", example = "088") @RequestParam(required = false) String innerReportError,
+            @Parameter(description = "页码", example = "1") @RequestParam(defaultValue = "1") Integer pageNum,
+            @Parameter(description = "页码", example = "20") @RequestParam(defaultValue = "20") Integer pageSize
+    ) throws ParseException {
+        Date start = startTime != null ? DATETIME_FORMAT.parse(startTime) : null;
+        Date end = endTime != null ? DATETIME_FORMAT.parse(endTime) : null;
+        return submitRecordService.getSubmitRecordWithStats(
+                sourAccount, start, end,
+                callee, mcc, mnc,
+                innerReportState, innerReportError,
+                pageNum, pageSize
+        );
+    }
+
+    @GetMapping("/with-stats/login-user")
+    @Operation(summary = "线上查询（带统计）", description = "当前登录用户+返回发送记录+提交/送达统计信息")
+    public SubmitRecordWithStatsDTO queryLoginUserWithStats(
+            @Parameter(description = "当前登录用户账号", example = "CTU506AT") @RequestParam String loginUserAccount,
+            @Parameter(description = "开始时间（yyyy-MM-dd HH:mm:ss）", example = "2026-02-08 09:00:00") @RequestParam(required = false) String startTime,
+            @Parameter(description = "结束时间（yyyy-MM-dd HH:mm:ss）", example = "2026-02-08 12:00:00") @RequestParam(required = false) String endTime,
+            @Parameter(description = "被叫号码", example = "85212345678") @RequestParam(required = false) String callee,
+            @Parameter(description = "MCC", example = "454") @RequestParam(required = false) String mcc,
+            @Parameter(description = "MNC", example = "01") @RequestParam(required = false) String mnc,
+            @Parameter(description = "回执状态", example = "DELIVRD") @RequestParam(required = false) String innerReportState,
+            @Parameter(description = "回执状态码", example = "000") @RequestParam(required = false) String innerReportError,
+            @Parameter(description = "页码", example = "1") @RequestParam(defaultValue = "1") Integer pageNum,
+            @Parameter(description = "页大小", example = "20") @RequestParam(defaultValue = "20") Integer pageSize
+    ) throws ParseException {
+        Date start = startTime != null ? DATETIME_FORMAT.parse(startTime) : null;
+        Date end = endTime != null ? DATETIME_FORMAT.parse(endTime) : null;
+        return submitRecordService.getSubmitRecordWithStats(
+                loginUserAccount, start, end,
+                callee, mcc, mnc,
+                innerReportState, innerReportError,
+                pageNum, pageSize
         );
     }
 }
