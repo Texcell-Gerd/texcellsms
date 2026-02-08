@@ -5,17 +5,25 @@ server:
     context-path: /
   tomcat:
     uri-encoding: UTF-8
+    # 新增：适配30万条导出，调大Tomcat线程池和连接数
+    threads:
+      max: 200
+      min-spare: 50
+    connection-timeout: 300000
+    max-connections: 10000
 
 # Spring核心配置
 spring:
-  # 数据源基础配置（原生HikariCP）
+  # 数据源基础配置（覆盖默认值，适配30万条导出）
   datasource:
     type: com.zaxxer.hikari.HikariDataSource
     hikari:
-      maximum-pool-size: 10
-      minimum-idle: 2
-      connection-timeout: 30000
+      maximum-pool-size: 50
+      minimum-idle: 10
+      connection-timeout: 300000
       idle-timeout: 600000
+
+
   # 跨域配置（注释，如需开启可解除）
   #  cors:
   #    allowed-origin-patterns: "*"
@@ -24,22 +32,30 @@ spring:
   #    allow-credentials: true
   #    max-age: 3600
   # Security配置（自定义账号密码，如需开启可解除）
-#  security:
-#    user:
-#      name: admin
-#      password: 123456
+  #  security:
+  #    user:
+  #      name: admin
+  #      password: 123456
+  # 新增：适配30万条导出，调大异步请求超时（30分钟）
+  mvc:
+    async:
+      request-timeout: 1800000
 
 # MyBatis核心配置（注解式，无需XML扫描）
 mybatis:
   type-aliases-package: com.texcellsms.sms.model.entity,com.texcellsms.sms.model.DTO
-  type-handlers-package: com.texcellsms.sms.config # 自定义处理器包路径
+  type-handlers-package: com.texcellsms.sms.config
   configuration:
     map-underscore-to-camel-case: true
     log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
     lazy-loading-enabled: true
     aggressive-lazy-loading: false
-    # 新增：关闭MyBatis自动映射，强制使用@Results手动映射（避免字段匹配异常）
     auto-mapping-behavior: NONE
+    # 新增：适配30万条导出，全局调大SQL超时和批量参数
+    default-statement-timeout: 300
+    default-fetch-size: 1000
+  # 核心新增：明确指定空的XML扫描路径，禁用XML解析
+  mapper-locations: classpath:empty.xml
 
 # 日志配置
 logging:
