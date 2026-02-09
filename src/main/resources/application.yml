@@ -5,64 +5,55 @@ server:
     context-path: /
   tomcat:
     uri-encoding: UTF-8
-    # 新增：适配30万条导出，调大Tomcat线程池和连接数
     threads:
-      max: 200
-      min-spare: 50
+      max: 100
+      min-spare: 20
     connection-timeout: 300000
-    max-connections: 10000
+    max-connections: 5000
 
 # Spring核心配置
 spring:
-  # 数据源基础配置（覆盖默认值，适配30万条导出）
   datasource:
     type: com.zaxxer.hikari.HikariDataSource
     hikari:
-      maximum-pool-size: 50
-      minimum-idle: 10
-      connection-timeout: 300000
-      idle-timeout: 600000
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 300000      # 5分钟，适配长查询
+      idle-timeout: 28800000          # 8小时，避免连接提前回收
+      leak-detection-threshold: 0     # 关闭泄漏检测
+      max-lifetime: 28800000          # 8小时，匹配数据库默认连接超时
+      validation-timeout: 300000      # 5分钟
+      connection-test-query: "SELECT 1"
+      test-while-idle: false          # 关闭空闲连接检测
+      test-on-borrow: false           # 关闭获取连接时检测
 
-
-  # 跨域配置（注释，如需开启可解除）
-  #  cors:
-  #    allowed-origin-patterns: "*"
-  #    allowed-methods: GET,POST,PUT,DELETE,OPTIONS
-  #    allowed-headers: X-Request,Authorization,Content-Type
-  #    allow-credentials: true
-  #    max-age: 3600
-  # Security配置（自定义账号密码，如需开启可解除）
-  #  security:
-  #    user:
-  #      name: admin
-  #      password: 123456
-  # 新增：适配30万条导出，调大异步请求超时（30分钟）
   mvc:
     async:
-      request-timeout: 1800000
+      request-timeout: 1800000        # 30分钟，兜底长查询
 
-# MyBatis核心配置（注解式，无需XML扫描）
+# MyBatis核心配置
 mybatis:
   type-aliases-package: com.texcellsms.sms.model.entity,com.texcellsms.sms.model.DTO
   type-handlers-package: com.texcellsms.sms.config
   configuration:
     map-underscore-to-camel-case: true
     log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
-    lazy-loading-enabled: true
+    lazy-loading-enabled: false
     aggressive-lazy-loading: false
-    auto-mapping-behavior: NONE
-    # 新增：适配30万条导出，全局调大SQL超时和批量参数
-    default-statement-timeout: 300
+    auto-mapping-behavior: PARTIAL
+    default-statement-timeout: 1800    # 30分钟，适配长查询
     default-fetch-size: 1000
-  # 核心新增：明确指定空的XML扫描路径，禁用XML解析
+    local-cache-scope: STATEMENT
+    cache-enabled: false
   mapper-locations: classpath:empty.xml
 
 # 日志配置
 logging:
   level:
-    com.texcellsms.sms.mapper: debug  # 打印Mapper调试日志
+    com.texcellsms.sms.mapper: info
     com.texcellsms.sms.controller: info
-    org.springframework.jdbc.datasource: info
+    com.texcellsms.sms.service: warn
+    org.springframework.jdbc.datasource: warn
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{50} - %msg%n"
     file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{50} - %msg%n"
@@ -87,7 +78,7 @@ texcellsms:
 # SpringDoc/OpenAPI配置
 springdoc:
   packages-to-scan: com.texcellsms.sms.controller
-  models-package: com.texcellsms.sms.model.entity,com.texcellsms.sms.model.dto  # 包含DTO
+  models-package: com.texcellsms.sms.model.entity,com.texcellsms.sms.model.dto
   swagger-ui:
     path: /swagger-ui.html
     operationsSorter: method

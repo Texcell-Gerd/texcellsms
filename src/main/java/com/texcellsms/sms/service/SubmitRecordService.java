@@ -37,7 +37,7 @@ public class SubmitRecordService {
     }
 
     /**
-     * 原始查询方法，移除金额计算逻辑
+     * 查询方法 - 回退到原有逻辑，移除2000条限制
      */
     private List<SubmitRecordDTO> querySubmitRecordsCommon(
             String sourAccount, Date startTime, Date endTime,
@@ -130,11 +130,6 @@ public class SubmitRecordService {
             record.setChargeFee(null); // 原始ChargeFee字段清空
         }
     }
-
-    // 以下原有方法（getSubmitRecordsByLoginUser、getSubmitRecordsForDebug、getSubmitRecordWithStats、getSubmitRecordsFast）
-    // 完全保留，无需修改
-
-    // 移除formatActualFee方法（不再使用）
 
     public List<SubmitRecordDTO> getSubmitRecordsByLoginUser(
             String loginUserAccount, Date startTime, Date endTime,

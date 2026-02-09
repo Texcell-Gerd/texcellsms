@@ -1,6 +1,7 @@
 package com.texcellsms.sms.config;
 
 import com.texcellsms.sms.interceptor.DynamicDataSourceInterceptor;
+import com.zaxxer.hikari.HikariDataSource;
 import org.apache.ibatis.session.LocalCacheScope;
 import org.apache.ibatis.session.SqlSessionFactory;
 import org.mybatis.spring.SqlSessionFactoryBean;
@@ -10,8 +11,6 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.datasource.lookup.AbstractRoutingDataSource;
-
-import com.zaxxer.hikari.HikariDataSource;
 
 import javax.sql.DataSource;
 import java.util.HashMap;
@@ -36,14 +35,15 @@ public class DynamicDataSourceConfig {
         HikariDataSource ds = new HikariDataSource();
         ds.setDriverClassName("com.mysql.cj.jdbc.Driver");
 
-        ds.setJdbcUrl("jdbc:mysql://192.168.120.248:14333/CDR_DB?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC&allowPublicKeyRetrieval=true&useSSL=false&connectTimeout=300000&socketTimeout=600000&queryTimeout=600&rewriteBatchedStatements=true");
+        ds.setJdbcUrl("jdbc:mysql://192.168.120.248:14333/CDR_DB?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC&allowPublicKeyRetrieval=true&useSSL=false&connectTimeout=30000&socketTimeout=60000&rewriteBatchedStatements=true");
         ds.setUsername("Harry");
         ds.setPassword("z147258");
-        ds.setMaximumPoolSize(10); // 恢复原始值
+        // 核心：与yml保持一致，消除参数冲突
+        ds.setMaximumPoolSize(10);
         ds.setMinimumIdle(2);
         ds.setConnectionTimeout(30000);
         ds.setIdleTimeout(600000);
-        ds.setLeakDetectionThreshold(60000);
+        ds.setLeakDetectionThreshold(300000);
         ds.setMaxLifetime(28800000);
         ds.setValidationTimeout(30000);
         ds.setConnectionTestQuery("SELECT 1");
@@ -61,6 +61,10 @@ public class DynamicDataSourceConfig {
         ds.setMinimumIdle(2);
         ds.setConnectionTimeout(30000);
         ds.setIdleTimeout(600000);
+        ds.setLeakDetectionThreshold(300000);
+        ds.setMaxLifetime(28800000);
+        ds.setValidationTimeout(30000);
+        ds.setConnectionTestQuery("SELECT 1");
         return ds;
     }
 
@@ -75,7 +79,10 @@ public class DynamicDataSourceConfig {
         ds.setMinimumIdle(1);
         ds.setConnectionTimeout(30000);
         ds.setIdleTimeout(600000);
-        ds.setLeakDetectionThreshold(60000);
+        ds.setLeakDetectionThreshold(300000);
+        ds.setMaxLifetime(28800000);
+        ds.setValidationTimeout(30000);
+        ds.setConnectionTestQuery("SELECT 1");
         return ds;
     }
 
@@ -90,7 +97,10 @@ public class DynamicDataSourceConfig {
         ds.setMinimumIdle(1);
         ds.setConnectionTimeout(30000);
         ds.setIdleTimeout(600000);
-        ds.setLeakDetectionThreshold(60000);
+        ds.setLeakDetectionThreshold(300000);
+        ds.setMaxLifetime(28800000);
+        ds.setValidationTimeout(30000);
+        ds.setConnectionTestQuery("SELECT 1");
         return ds;
     }
 
@@ -129,15 +139,15 @@ public class DynamicDataSourceConfig {
 
         org.apache.ibatis.session.Configuration configuration = new org.apache.ibatis.session.Configuration();
         configuration.setMapUnderscoreToCamelCase(true);
-        configuration.setDefaultStatementTimeout(600); // 10分钟SQL超时
-        configuration.setDefaultFetchSize(1000); // 与数据源的defaultFetchSize保持一致
+        configuration.setDefaultStatementTimeout(300); // 从600下调到5分钟，避免长查询
+        configuration.setDefaultFetchSize(1000);
         configuration.setLocalCacheScope(LocalCacheScope.STATEMENT);
         configuration.setCacheEnabled(false);
-        configuration.setLazyLoadingEnabled(false); // 禁用延迟加载
+        configuration.setLazyLoadingEnabled(false);
         configuration.setAggressiveLazyLoading(false);
         configuration.setMultipleResultSetsEnabled(true);
         configuration.setUseColumnLabel(true);
-        configuration.setUseGeneratedKeys(false); // 对于查询操作可禁用
+        configuration.setUseGeneratedKeys(false);
 
         sessionFactoryBean.setConfiguration(configuration);
 
@@ -152,7 +162,9 @@ public class DynamicDataSourceConfig {
 
         org.apache.ibatis.session.Configuration configuration = new org.apache.ibatis.session.Configuration();
         configuration.setMapUnderscoreToCamelCase(true);
-        configuration.setDefaultStatementTimeout(30);
+        configuration.setDefaultStatementTimeout(30); // 保持30秒，适配轻量查询
+        configuration.setLocalCacheScope(LocalCacheScope.STATEMENT); // 新增：禁用会话缓存
+        configuration.setCacheEnabled(false);                       // 新增：禁用二级缓存
         sessionFactoryBean.setConfiguration(configuration);
 
         return sessionFactoryBean.getObject();
@@ -166,7 +178,9 @@ public class DynamicDataSourceConfig {
 
         org.apache.ibatis.session.Configuration configuration = new org.apache.ibatis.session.Configuration();
         configuration.setMapUnderscoreToCamelCase(true);
-        configuration.setDefaultStatementTimeout(30);
+        configuration.setDefaultStatementTimeout(30); // 保持30秒
+        configuration.setLocalCacheScope(LocalCacheScope.STATEMENT); // 新增
+        configuration.setCacheEnabled(false);                       // 新增
         sessionFactoryBean.setConfiguration(configuration);
 
         return sessionFactoryBean.getObject();
@@ -180,7 +194,9 @@ public class DynamicDataSourceConfig {
 
         org.apache.ibatis.session.Configuration configuration = new org.apache.ibatis.session.Configuration();
         configuration.setMapUnderscoreToCamelCase(true);
-        configuration.setDefaultStatementTimeout(30);
+        configuration.setDefaultStatementTimeout(30); // 保持30秒
+        configuration.setLocalCacheScope(LocalCacheScope.STATEMENT); // 新增
+        configuration.setCacheEnabled(false);                       // 新增
         sessionFactoryBean.setConfiguration(configuration);
 
         return sessionFactoryBean.getObject();
@@ -194,9 +210,10 @@ public class DynamicDataSourceConfig {
 
         org.apache.ibatis.session.Configuration configuration = new org.apache.ibatis.session.Configuration();
         configuration.setMapUnderscoreToCamelCase(true);
-        configuration.setDefaultStatementTimeout(180);
-        configuration.setDefaultFetchSize(500);
+        configuration.setDefaultStatementTimeout(180); // 保持3分钟
+        configuration.setDefaultFetchSize(500);        // 保持500
         configuration.setLocalCacheScope(LocalCacheScope.STATEMENT);
+        configuration.setCacheEnabled(false); // 新增：禁用二级缓存
         sessionFactoryBean.setConfiguration(configuration);
 
         return sessionFactoryBean.getObject();

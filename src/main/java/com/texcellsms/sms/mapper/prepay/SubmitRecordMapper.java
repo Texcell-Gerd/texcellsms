@@ -11,9 +11,9 @@ import java.util.Map;
 @Mapper
 public interface SubmitRecordMapper {
 
-    // 1. 分页查询方法 - 修复参数绑定问题
+    // 1. 分页查询方法 - 保留索引提示
     @Select({
-            "SELECT ",
+            "SELECT /*+ INDEX(sb idx_submitmsgId) INDEX(fb idx_recvmsgId) */ ",
             "    sb.SourAccount,",
             "    sb.SubmitMsgId,",
             "    sb.SubmitMsgTime,",
@@ -76,9 +76,9 @@ public interface SubmitRecordMapper {
             @Param("offset") Integer offset
     );
 
-    // 2. 导出查询方法 - 同步修复
+    // 2. 导出查询方法 - 保留索引提示
     @Select({
-            "SELECT ",
+            "SELECT /*+ INDEX(sb idx_submitmsgId) INDEX(fb idx_recvmsgId) */ ",
             "    sb.SourAccount,",
             "    sb.SubmitMsgId,",
             "    sb.SubmitMsgTime,",
@@ -138,7 +138,7 @@ public interface SubmitRecordMapper {
             @Param("innerReportError") String innerReportError
     );
 
-    // 3. 统计方法保持不变
+    // 3. 统计方法 - 保留原有countSubmitTotal，注释countTotalRecords（避免触发慢查询）
     @Select("SELECT COUNT(*) FROM Submit_Bill_${tableSuffix} " +
             "WHERE (SourAccount = #{sourAccount} OR #{sourAccount} IS NULL) " +
             "AND (SubmitMsgTime >= #{startTimeStr} OR #{startTimeStr} IS NULL) " +
@@ -162,4 +162,17 @@ public interface SubmitRecordMapper {
             @Param("startTimeStr") String startTimeStr,
             @Param("endTimeStr") String endTimeStr
     );
+
+    // ========== 临时注释：避免触发慢查询 ==========
+    // Long countTotalRecords(
+    //         @Param("tableSuffix") String tableSuffix,
+    //         @Param("sourAccount") String sourAccount,
+    //         @Param("startTimeStr") String startTimeStr,
+    //         @Param("endTimeStr") String endTimeStr,
+    //         @Param("callee") String callee,
+    //         @Param("mcc") String mcc,
+    //         @Param("mnc") String mnc,
+    //         @Param("innerReportState") String innerReportState,
+    //         @Param("innerReportError") String innerReportError
+    // );
 }
