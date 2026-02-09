@@ -26,7 +26,7 @@ import java.util.Date;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/submit-record") // 匹配你的/api前缀路径
+@RequestMapping("/api/prepay/submit-record") // 匹配你的/api前缀路径
 @Tag(name = "短信发送记录查询", description = "Submit_Bill主表+Fee_Bill副表关联查询")
 public class SubmitRecordController {
 

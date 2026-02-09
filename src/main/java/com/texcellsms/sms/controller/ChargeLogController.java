@@ -18,7 +18,7 @@ import java.util.List;
 
 @Tag(name = "充值记录接口", description = "查询当前登录用户的充值记录")
 @RestController
-@RequestMapping("/api/charge")
+@RequestMapping("/api/prepay/charge")
 public class ChargeLogController {
 
     @Resource

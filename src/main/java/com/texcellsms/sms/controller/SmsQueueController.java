@@ -21,7 +21,7 @@ import java.net.URLEncoder;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/sms-queue")
+@RequestMapping("/api/prepay/sms-queue")
 @Tag(name = "短信队列接口", description = "按秒分组查询队列数据（列表+详情+导出）")
 public class SmsQueueController {
 
