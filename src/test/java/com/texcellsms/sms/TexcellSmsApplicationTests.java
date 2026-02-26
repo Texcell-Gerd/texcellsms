@@ -1,7 +1,7 @@
 package com.texcellsms.sms;
 
 
-import com.texcellsms.sms.CacheDB.NCacheDBLink;
+import CacheDB.NCacheDBLink;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 
