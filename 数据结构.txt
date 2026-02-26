@@ -1,0 +1,256 @@
+CREATE TABLE `tbl_APIScheduleSend` (
+  `TaskID` varchar(64) NOT NULL COMMIT "任务ID,主键",
+  `ScheduleSendTime` varchar(32) NOT NULL COMMIT "计划发送时间，使用服务器时区",
+  `ScheduleStatus` tinyint(4) DEFAULT '0' COMMIT "任务状态：0-待发送 1-已发送 2-发送端读取文件失败 4-任务被删除 其他:发送端异常",
+  `CalleeCount` int(11) DEFAULT '0' COMMIT "上传的被叫号码数量",
+  `SplitCount` int(11) DEFAULT '0' COMMIT "拆分条数",
+  `TotalCount` int(11) DEFAULT '0' COMMIT "总计费条数",
+  `TaskTime` varchar(32) DEFAULT '' COMMIT "提交任务时间",
+  `TaskIP` varchar(32) DEFAULT '' COMMIT "任务提交IP",
+  `SubAccount` varchar(32) DEFAULT '' COMMIT "提交帐号",
+  `TaskTimeZone` varchar(8) DEFAULT '+08:00' COMMIT "任务时区",
+  `Short_Message` varchar(2048) DEFAULT NULL COMMIT "任务内容",
+  `TaskName` varchar(64) DEFAULT '' COMMIT "任务名称",
+  `SubmitSuccCount` int(11) DEFAULT '0' COMMIT "发送端提交成功数",
+  `SubmitFailCount` int(11) DEFAULT '0' COMMIT "发送端提交失败数",
+  `DRSuccCount` int(11) DEFAULT '0' COMMIT "DR成功数,目前无用",
+  `DRFailCount` int(11) DEFAULT '0' COMMIT "DR失败数,目前无用",
+  PRIMARY KEY (`TaskID`),
+  KEY `IDX_SCHEDULETIME` (`ScheduleSendTime`),
+  KEY `IDX_TASKTIME` (`TaskTime`),
+  KEY `IDX_SUBACC` (`SubAccount`),
+  KEY `IDX_TASKNAME` (`TaskName`),
+  KEY `IDX_TASKSTATUS` (`TaskID`,`ScheduleStatus`),
+  KEY `IDX_COUNTER` (`TaskID`,`ScheduleStatus`,`SubAccount`,`SubmitSuccCount`,`SubmitFailCount`),
+  KEY `IDX_EXPIREKEY` (`TaskID`,`ScheduleSendTime`,`ScheduleStatus`,`SubAccount`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+CREATE TABLE `tbl_APITask` (
+  `UNID` bigint(20) unsigned NOT NULL AUTO_INCREMENT COMMIT "标识ID",
+  `APITaskId` varchar(64) NOT NULL COMMIT "任务ID",
+  `SubmitMsgId` varchar(64) DEFAULT NULL COMMIT "SMSC返回的提交消息ID",
+  `Caller` varchar(32) DEFAULT '' COMMIT "主叫",
+  `Callee` varchar(32) DEFAULT NULL COMMIT "被叫",
+  `SubmitMsgTime` varchar(32) NOT NULL COMMIT "提交时间",
+  `SubmitAck` varchar(10) DEFAULT '0' COMMIT "提交ACK",
+  `RecvDRTime` varchar(32) DEFAULT '' COMMIT "收到DR时间",
+  `RecvDRStatus` varchar(32) DEFAULT '' COMMIT "DR状态",
+  `RecvDRError` varchar(10) DEFAULT '' COMMIT "DR错误码",
+  `SubAccount` varchar(32) DEFAULT NULL COMMIT "提交帐号",
+  `DestroyTime` bigint(20) DEFAULT '0' COMMIT "删除时间,timestamp类型.设计逻辑为提交后的72小时后删除",
+  `DLRSendStatus` tinyint(1) DEFAULT '0' COMMIT "DR接收标识0-pending,1-已经收到DR",
+  `DLRTryTime` int(11) DEFAULT '0' COMMIT "无用",
+  `VendorID` varchar(10) DEFAULT '000000' COMMIT "MCCMNC",
+  `PKTotal` int(11) DEFAULT '1' COMMIT "提交总数",
+  `PKNumber` int(11) DEFAULT '1' COMMIT "当前计数",
+  PRIMARY KEY (`UNID`),
+  KEY `IDX_APIID` (`APITaskId`),
+  KEY `IDX_SUBACCOUNT` (`SubAccount`),
+  KEY `IDX_DESTROYTIME` (`DestroyTime`),
+  KEY `IDX_SUBMITMSGID` (`SubmitMsgId`),
+  KEY `IDX_CALLLEE` (`Callee`),
+  KEY `IDX_DRSTATUS_AND_ACC` (`SubAccount`,`DLRSendStatus`),
+  KEY `IDX_DRSTATUS` (`DLRSendStatus`),
+  KEY `IDX_PAGESHOW` (`APITaskId`,`RecvDRStatus`,`DLRSendStatus`)
+) ENGINE=InnoDB AUTO_INCREMENT=150024184 DEFAULT CHARSET=utf8;
+
+登录/费率/密码/余额查询修改使用的CacheDB存储过程：
+192.168.112.250 11781 example example
+
+登录：
+QueryGWUserPass_With2FA
+           //帐号
+		   pPara[0] = new CADBPROCPARA
+            {
+                nDataType = 12,//GString
+                nParaType = 0,//input
+                sName = "InUserName",
+                sInput = strUserName
+            };
+            pPara[0].nSize = pPara[0].sInput.Length;
+            pPara[0].sOutput = "";
+			
+			//密码
+            pPara[1] = new CADBPROCPARA
+            {
+                nDataType = 12,//GString
+                nParaType = 0,//input
+                sName = "InPassWord",
+                sInput = strPassWord
+            };
+            pPara[1].nSize = pPara[1].sInput.Length; ;
+            pPara[1].sOutput = "";
+			
+			//登录IP
+            pPara[2] = new CADBPROCPARA
+            {
+                nDataType = 12,//GString
+                nParaType = 0,//input
+                sName = "InRequestIP",
+                sInput = strReqIP
+            };
+            pPara[2].nSize = pPara[2].sInput.Length; ;
+            pPara[2].sOutput = "";
+
+			//存储过程结果
+            pPara[3] = new CADBPROCPARA
+            {
+                nDataType = 12,//GString
+                nParaType = 1,//output
+                sName = "Result",
+                sInput = "",
+                nSize = 1,
+                sOutput = ""
+            };
+			
+			//白名单IP
+            pPara[4] = new CADBPROCPARA
+            {
+                nDataType = 12,//GString
+                nParaType = 1,//output
+                sName = "WhitelistIP",
+                sInput = "",
+                nSize = 1,
+                sOutput = ""
+            };
+
+			//2FA 秘钥
+            pPara[5] = new CADBPROCPARA
+            {
+                nDataType = 12,//GString
+                nParaType = 1,//output
+                sName = "FAKey",
+                sInput = "",
+                nSize = 1,
+                sOutput = ""
+            };
+			
+			//账号启用标识
+            pPara[6] = new CADBPROCPARA
+            {
+                nDataType = 12,//GString
+                nParaType = 1,//output
+                sName = "IsEnable",
+                sInput = "",
+                nSize = 1,
+                sOutput = ""
+            };
+
+
+余额查询：
+prc_MMSIFQueryBalance
+		   //帐号
+           pPara[0] = new CADBPROCPARA
+            {
+                nDataType = 12,//GString
+                nParaType = 0,//input
+                sName = "UserName",
+                sInput = sSubAccount
+            };
+            pPara[0].nSize = pPara[0].sInput.Length;
+            pPara[0].sOutput = "";
+
+			//存储过程结果
+            pPara[1] = new CADBPROCPARA
+            {
+                nDataType = 12,//GString
+                nParaType = 1,//input
+                sName = "Result",
+                sInput = "",
+                nSize = 1,
+                sOutput = ""
+            };
+			
+			//余额，必须除以10000
+            pPara[2] = new CADBPROCPARA
+            {
+                nDataType = 12,//GString
+                nParaType = 1,//input
+                sName = "Balance",
+                sInput = "",
+                nSize = 1,
+                sOutput = ""
+            };
+			
+			//信用额度,必须除以10000
+            pPara[3] = new CADBPROCPARA
+            {
+                nDataType = 12,//GString
+                nParaType = 1,//input
+                sName = "Credit",
+                sInput = "",
+                nSize = 1,
+                sOutput = ""
+            };
+
+密码修改：
+prc_ChangeSwitchAccountPWD
+				//帐号
+                pPara[0] = new CADBPROCPARA
+                {
+                    nDataType = 12,//GString
+                    nParaType = 0,//input
+                    sName = "Account",
+                    sInput = strUserName
+                };
+                pPara[0].nSize = pPara[0].sInput.Length;
+                pPara[0].sOutput = "";
+
+				//旧密码
+                pPara[1] = new CADBPROCPARA
+                {
+                    nDataType = 12,//GString
+                    nParaType = 0,//input
+                    sName = "Oldpass",
+                    sInput = strOldPass
+                };
+                pPara[1].nSize = pPara[1].sInput.Length;
+                pPara[1].sOutput = "";
+
+				//新密码
+                pPara[2] = new CADBPROCPARA
+                {
+                    nDataType = 12,//GString
+                    nParaType = 0,//input
+                    sName = "Newpass",
+                    sInput = strNewPass
+                };
+                pPara[2].nSize = pPara[2].sInput.Length;
+                pPara[2].sOutput = "";
+
+				//结果
+                pPara[3] = new CADBPROCPARA
+                {
+                    nDataType = 12,//GString
+                    nParaType = 1,//input
+                    sName = "Ret",
+                    sInput = "",
+                    nSize = 1,
+                    sOutput = ""
+                };
+				
+				
+费率列表：
+web_QueryUserRate
+			   //帐号
+               pPara[0] = new CADBPROCPARA
+                {
+                    nDataType = 12,//GString
+                    nParaType = 0,//input
+                    sName = "Account",
+                    sInput = strUserName
+                };
+                pPara[0].nSize = pPara[0].sInput.Length;
+                pPara[0].sOutput = "";
+
+				//指定的MCCMNC，获取全部用 %
+                pPara[1] = new CADBPROCPARA
+                {
+                    nDataType = 12,//GString
+                    nParaType = 0,//input
+                    sName = "VendorId",
+                    sInput = strVendorId
+                };
+                pPara[1].nSize = pPara[1].sInput.Length;
+                pPara[1].sOutput = "";
+***注意：此存储过程返回记录集，需要先调用JNI 的 GetDataSetSummary获取记录集数量，再使用JNI 的 GetTableInDataSet获取记录集
