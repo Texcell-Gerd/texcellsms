@@ -162,17 +162,4 @@ public interface SubmitRecordMapper {
             @Param("startTimeStr") String startTimeStr,
             @Param("endTimeStr") String endTimeStr
     );
-
-    // ========== 临时注释：避免触发慢查询 ==========
-    // Long countTotalRecords(
-    //         @Param("tableSuffix") String tableSuffix,
-    //         @Param("sourAccount") String sourAccount,
-    //         @Param("startTimeStr") String startTimeStr,
-    //         @Param("endTimeStr") String endTimeStr,
-    //         @Param("callee") String callee,
-    //         @Param("mcc") String mcc,
-    //         @Param("mnc") String mnc,
-    //         @Param("innerReportState") String innerReportState,
-    //         @Param("innerReportError") String innerReportError
-    // );
 }

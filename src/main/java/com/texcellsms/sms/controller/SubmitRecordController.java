@@ -1,7 +1,9 @@
 package com.texcellsms.sms.controller;
 
+import com.alibaba.excel.EasyExcel;
 import com.texcellsms.sms.model.DTO.SubmitRecordDTO;
 import com.texcellsms.sms.model.DTO.SubmitRecordWithStatsDTO;
+import com.texcellsms.sms.model.vo.SubmitRecordExportVO;
 import com.texcellsms.sms.service.SubmitRecordService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -88,7 +90,7 @@ public class SubmitRecordController {
 
     // ========== 导出接口Excel下载 ==========
     @GetMapping("/export/batch-excel")
-    @Operation(summary = "批量导出Excel（支持30万条）", description = "分批查询+流式写入，避免内存溢出")
+    @Operation(summary = "批量导出Excel（支持100万条）", description = "分批查询+流式写入，避免内存溢出")
     public void batchExportExcel(
             @Parameter(description = "用户账号", example = "CTU506AT") @RequestParam String sourAccount,
             @Parameter(description = "开始时间（yyyy-MM-dd HH:mm:ss）", example = "2026-02-08 00:00:00") @RequestParam String startTime,
@@ -236,5 +238,41 @@ public class SubmitRecordController {
                 innerReportState, innerReportError,
                 pageNum, pageSize
         );
+    }
+
+    // ========== EasyExcel 导出接口 ==========
+    @GetMapping("/export/easyexcel")
+    @Operation(summary = "EasyExcel批量导出（支持百万级数据）", description = "流式导出，无内存溢出风险，代码更简洁")
+    public void easyExcelExport(
+            @Parameter(description = "用户账号", example = "CTU506AT") @RequestParam String sourAccount,
+            @Parameter(description = "开始时间（yyyy-MM-dd HH:mm:ss）", example = "2026-02-08 00:00:00") @RequestParam String startTime,
+            @Parameter(description = "结束时间（yyyy-MM-dd HH:mm:ss）", example = "2026-02-08 23:59:59") @RequestParam String endTime,
+            @Parameter(description = "被叫号码", example = "85212345678") @RequestParam(required = false) String callee,
+            @Parameter(description = "MCC", example = "454") @RequestParam(required = false) String mcc,
+            @Parameter(description = "MNC", example = "01") @RequestParam(required = false) String mnc,
+            @Parameter(description = "回执状态", example = "DELIVRD") @RequestParam(required = false) String innerReportState,
+            @Parameter(description = "回执状态码", example = "000") @RequestParam(required = false) String innerReportError,
+            HttpServletResponse response
+    ) throws Exception {
+        // 1. 解析时间参数
+        Date start = DATETIME_FORMAT.parse(startTime);
+        Date end = DATETIME_FORMAT.parse(endTime);
+
+        // 2. 设置响应头（优化中文文件名）
+        String fileName = URLEncoder.encode("短信发送记录_" + System.currentTimeMillis(), "UTF-8");
+        response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        response.setHeader("Content-Disposition", "attachment; filename=\"" + fileName + ".xlsx\"");
+        response.setHeader("Pragma", "no-cache");
+        response.setHeader("Cache-Control", "no-cache");
+
+        // 3. 查询导出数据（EasyExcel 自动流式处理）
+        List<SubmitRecordExportVO> exportData = submitRecordService.queryExportDataForEasyExcel(
+                sourAccount, start, end, callee, mcc, mnc, innerReportState, innerReportError
+        );
+
+        // 4. EasyExcel 核心导出逻辑（仅3行代码，替代原有几十行POI代码）
+        EasyExcel.write(response.getOutputStream(), SubmitRecordExportVO.class)
+                .sheet("短信发送记录")
+                .doWrite(exportData);
     }
 }

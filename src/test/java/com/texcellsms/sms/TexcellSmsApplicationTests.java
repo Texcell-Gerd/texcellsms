@@ -11,7 +11,6 @@ class TexcellSmsApplicationTests {
     public static NCacheDBLink pLink = null;
     @Test
     void contextLoads() {
-        System.out.println("test submit xunxun");
         pLink = new NCacheDBLink();
         pLink.InitEnv("192.168.112.250",11781,"example","example","example","utf-8","utf-8");
         pLink.ConnectToCacheDB();

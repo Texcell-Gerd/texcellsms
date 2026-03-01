@@ -1,183 +1,121 @@
 package com.texcellsms.sms.service;
 
-import com.texcellsms.sms.config.DynamicDataSourceConfig;
-import com.texcellsms.sms.interceptor.DynamicDataSourceInterceptor;
+import com.alibaba.excel.EasyExcel;
 import com.texcellsms.sms.mapper.prepay.SmsQueueMapper;
-import com.texcellsms.sms.model.DTO.SmsQueueDTO;
-import com.texcellsms.sms.model.DTO.SmsQueueDetailDTO;
-import com.texcellsms.sms.model.DTO.SmsQueueDetailItemDTO;
-import com.texcellsms.sms.model.DTO.SmsQueueItemDTO;
+import com.texcellsms.sms.model.entity.TblAPITask;
+import com.texcellsms.sms.model.vo.ScheduleTaskVO;
+import com.texcellsms.sms.model.vo.TaskDetailExcelVO;
+import com.texcellsms.sms.model.vo.TaskDetailVO;
+import com.texcellsms.sms.util.TimeRangeUtils;
+import com.texcellsms.sms.util.UserUtils;
+import lombok.RequiredArgsConstructor;
+import org.springframework.beans.BeanUtils;
+import org.springframework.stereotype.Service;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Service;
 
-import javax.annotation.Resource;
-import java.text.SimpleDateFormat;
-import java.util.*;
+import javax.servlet.http.HttpServletResponse;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
-/**
- * 短信队列Service（支持测试/线上环境）
- */
 @Service
+@RequiredArgsConstructor
 public class SmsQueueService {
 
-    private static final Logger logger = LoggerFactory.getLogger(SmsQueueService.class);
+    private final SmsQueueMapper smsQueueMapper;
 
-    @Resource
-    private SmsQueueMapper smsQueueMapper;
-
-    // 分表后缀格式化器
-    private static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("yyyyMMdd");
-    // 数据库时间格式
-    private static final SimpleDateFormat DATETIME_FORMAT_DB = new SimpleDateFormat("yyyy/MM/dd HH:mm:ss");
-    // 时间解析格式（兼容前端传入）
-    private static final SimpleDateFormat DATETIME_FORMAT_PARSE = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-
-    /**
-     * 查询近三天队列列表（支持分页）
-     */
-    public SmsQueueDTO getSmsQueueList(String loginUserAccount, Integer page, Integer pageSize) {
-        DynamicDataSourceInterceptor.setCurrentDataSource(DynamicDataSourceConfig.DS_PREPAY);
-        try {
-            // 1. 参数校验与默认值
-            if (page == null || page < 1) page = 1;
-            if (pageSize == null || pageSize < 1) pageSize = 10;
-            pageSize = Math.min(pageSize, 50); // 最大50条
-            Integer offset = (page - 1) * pageSize;
-
-            // 2. 计算近三天时间范围（当前时间-3天 到 当前时间）
-            Date endTime = new Date();
-            Date startTime = new Date(endTime.getTime() - 3L * 24 * 3600 * 1000);
-            String startTimeStr = DATETIME_FORMAT_DB.format(startTime);
-            String endTimeStr = DATETIME_FORMAT_DB.format(endTime);
-
-            // 3. 处理分表查询
-            String tableSuffix = DATE_FORMAT.format(startTime);
-            logger.info("查询队列列表: 用户={}, 时间范围={}~{}, 分页={}/{}",
-                    loginUserAccount, startTimeStr, endTimeStr, page, pageSize);
-
-            // 4. 查询队列列表
-            long sqlStart = System.currentTimeMillis();
-            List<SmsQueueItemDTO> queueItems = smsQueueMapper.queryQueueListBySecond(
-                    tableSuffix, loginUserAccount, startTimeStr, endTimeStr, offset, pageSize
-            );
-            long sqlEnd = System.currentTimeMillis();
-            logger.info("队列列表查询耗时: {}ms, 返回{}条", sqlEnd - sqlStart, queueItems.size());
-
-            // 5. 统计总条数和总页数
-            Long total = smsQueueMapper.countQueueTotal(tableSuffix, loginUserAccount, startTimeStr, endTimeStr);
-            total = total == null ? 0L : total;
-            Integer pageCount = total > 0 ? (int) Math.ceil((double) total / pageSize) : 0;
-
-            // 6. 组装返回结果
-            SmsQueueDTO result = new SmsQueueDTO();
-            result.setPage(page);
-            result.setPageSize(pageSize);
-            result.setTotal(total);
-            result.setPageCount(pageCount);
-            result.setItems(queueItems);
-
-            return result;
-        } finally {
-            DynamicDataSourceInterceptor.clearCurrentDataSource();
-        }
+    // ==================== 任务列表（分页） ====================
+    public Map<String, Object> getQueueTasks(Integer pageNum, Integer pageSize, String taskName, Byte scheduleStatus) {
+        // 1. 获取当前登录用户的subAccount
+        String subAccount = UserUtils.getCurrentSubAccount();
+        // 2. 获取3天前的时间
+        String threeDaysAgoTime = TimeRangeUtils.getThreeDaysAgoTime();
+        // 3. 计算分页偏移量
+        int offset = (pageNum - 1) * pageSize;
+        // 4. 查询数据
+        List<ScheduleTaskVO> list = smsQueueMapper.selectScheduleTaskList(
+                subAccount, threeDaysAgoTime, taskName, scheduleStatus, offset, pageSize
+        );
+        Long total = smsQueueMapper.countScheduleTaskList(
+                subAccount, threeDaysAgoTime, taskName, scheduleStatus
+        );
+        // 5. 封装返回结果
+        Map<String, Object> result = new HashMap<>();
+        result.put("records", list);
+        result.put("total", total);
+        result.put("pageNum", pageNum);
+        result.put("pageSize", pageSize);
+        return result;
     }
 
-    /**
-     * 查询指定队列的明细数据
-     */
-    public SmsQueueDetailDTO getSmsQueueDetail(String loginUserAccount, String targetTime, String callee) {
-        DynamicDataSourceInterceptor.setCurrentDataSource(DynamicDataSourceConfig.DS_PREPAY);
-        try {
-            // 1. 参数校验
-            if (targetTime == null || targetTime.isEmpty()) {
-                throw new IllegalArgumentException("队列时间不能为空");
-            }
+    // ==================== 任务详情（分页） ====================
+    public Map<String, Object> getQueueTaskDetail(String taskId, Integer pageNum, Integer pageSize, String callee) {
+        String subAccount = UserUtils.getCurrentSubAccount();
+        String threeDaysAgoTime = TimeRangeUtils.getThreeDaysAgoTime();
+        int offset = (pageNum - 1) * pageSize;
 
-            // 2. 解析目标时间，获取表后缀
-            Date targetDate = DATETIME_FORMAT_DB.parse(targetTime);
-            String tableSuffix = DATE_FORMAT.format(targetDate);
-            logger.info("查询队列明细: 用户={}, 目标时间={}, 表后缀={}, 搜索号码={}",
-                    loginUserAccount, targetTime, tableSuffix, callee);
+        List<TaskDetailVO> list = smsQueueMapper.selectTaskDetailList(
+                subAccount, threeDaysAgoTime, taskId, callee, offset, pageSize
+        );
+        Long total = smsQueueMapper.countTaskDetailList(
+                subAccount, threeDaysAgoTime, taskId, callee
+        );
 
-            // 3. 查询明细数据（设置超时控制）
-            long sqlStart = System.currentTimeMillis();
-            List<SmsQueueDetailItemDTO> detailItems = new ArrayList<>();
-            try {
-                // 限制查询超时时间（10秒）
-                detailItems = smsQueueMapper.queryQueueDetailByTime(
-                        tableSuffix, loginUserAccount, targetTime, callee // 传入搜索参数
-                );
-            } catch (Exception e) {
-                if (e.getMessage().contains("timeout") || e.getMessage().contains("closed")) {
-                    logger.warn("查询队列明细超时，返回空列表", e);
-                    detailItems = new ArrayList<>();
-                } else {
-                    throw e;
-                }
-            }
-            long sqlEnd = System.currentTimeMillis();
-            logger.info("队列明细查询耗时: {}ms, 返回{}条", sqlEnd - sqlStart, detailItems.size());
-
-            // 4. 组装返回结果
-            SmsQueueDetailDTO result = new SmsQueueDetailDTO();
-            result.setSubmitMsgTime(targetTime);
-            result.setDetails(detailItems);
-
-            return result;
-        } catch (Exception e) {
-            logger.error("查询队列明细失败", e);
-            // 异常返回空结果
-            SmsQueueDetailDTO errorResult = new SmsQueueDetailDTO();
-            errorResult.setSubmitMsgTime(targetTime);
-            errorResult.setDetails(new ArrayList<>());
-            errorResult.setERROR("查询失败: " + e.getMessage());
-            return errorResult;
-        } finally {
-            DynamicDataSourceInterceptor.clearCurrentDataSource();
-        }
+        Map<String, Object> result = new HashMap<>();
+        result.put("records", list);
+        result.put("total", total);
+        result.put("pageNum", pageNum);
+        result.put("pageSize", pageSize);
+        return result;
     }
 
+    // ==================== 导出全部详情 ====================
+    public void exportAllTaskDetailsByTaskId(String taskId, HttpServletResponse response) throws Exception {
+        String subAccount = UserUtils.getCurrentSubAccount();
+        String threeDaysAgoTime = TimeRangeUtils.getThreeDaysAgoTime();
+
+        // 查询符合条件的数据
+        List<TblAPITask> entityList = smsQueueMapper.selectAllTaskDetailsByTaskId(
+                subAccount, threeDaysAgoTime, taskId
+        );
+        // 转换为Excel VO
+        List<TaskDetailExcelVO> excelList = entityList.stream()
+                .map(e -> {
+                    TaskDetailExcelVO vo = new TaskDetailExcelVO();
+                    BeanUtils.copyProperties(e, vo);
+                    return vo;
+                })
+                .collect(Collectors.toList());
+
+        // 设置导出响应头
+        String fileName = URLEncoder.encode("队列任务详情_" + taskId, StandardCharsets.UTF_8.name()).replaceAll("\\+", "%20");
+        response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        response.setCharacterEncoding("UTF-8");
+        response.setHeader("Content-Disposition", "attachment;filename*=UTF-8''" + fileName + ".xlsx");
+
+        // 写入Excel
+        EasyExcel.write(response.getOutputStream(), TaskDetailExcelVO.class)
+                .sheet("任务详情")
+                .doWrite(excelList);
+    }
+
+    // ========== 新增：批量修改状态（伪删除） ==========
     /**
-     * 测试环境查询队列列表（指定时间范围）
+     * 批量修改任务状态为4（前端显示删除，后台仅改状态）
+     * @param taskIds 任务ID集合
+     * @return 修改成功的数量
      */
-    public SmsQueueDTO getSmsQueueListForTest(String loginUserAccount, String startTimeStr, String endTimeStr, Integer page, Integer pageSize) {
-        DynamicDataSourceInterceptor.setCurrentDataSource(DynamicDataSourceConfig.DS_PREPAY);
-        try {
-            // 1. 参数校验
-            if (page == null || page < 1) page = 1;
-            if (pageSize == null || pageSize < 1) pageSize = 10;
-            pageSize = Math.min(pageSize, 50);
-            Integer offset = (page - 1) * pageSize;
-
-            // 2. 解析时间参数（兼容yyyy-MM-dd HH:mm:ss）
-            Date startTime = DATETIME_FORMAT_PARSE.parse(startTimeStr);
-            Date endTime = DATETIME_FORMAT_PARSE.parse(endTimeStr);
-            String dbStartTime = DATETIME_FORMAT_DB.format(startTime);
-            String dbEndTime = DATETIME_FORMAT_DB.format(endTime);
-            String tableSuffix = DATE_FORMAT.format(startTime);
-
-            // 3. 查询列表和统计
-            List<SmsQueueItemDTO> queueItems = smsQueueMapper.queryQueueListBySecond(
-                    tableSuffix, loginUserAccount, dbStartTime, dbEndTime, offset, pageSize
-            );
-            Long total = smsQueueMapper.countQueueTotal(tableSuffix, loginUserAccount, dbStartTime, dbEndTime);
-            Integer pageCount = total > 0 ? (int) Math.ceil((double) total / pageSize) : 0;
-
-            // 4. 组装结果
-            SmsQueueDTO result = new SmsQueueDTO();
-            result.setPage(page);
-            result.setPageSize(pageSize);
-            result.setTotal(total);
-            result.setPageCount(pageCount);
-            result.setItems(queueItems);
-
-            return result;
-        } catch (Exception e) {
-            logger.error("测试环境查询队列失败", e);
-            throw new RuntimeException("测试查询失败: " + e.getMessage());
-        } finally {
-            DynamicDataSourceInterceptor.clearCurrentDataSource();
+    public int batchDeleteTask(Set<String> taskIds) {
+        if (taskIds == null || taskIds.isEmpty()) {
+            return 0;
         }
+        String subAccount = UserUtils.getCurrentSubAccount();
+        String threeDaysAgo = TimeRangeUtils.getThreeDaysAgoTime();
+        return smsQueueMapper.batchUpdateScheduleStatus(subAccount, threeDaysAgo, taskIds);
     }
 }
