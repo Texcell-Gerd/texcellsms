@@ -5,6 +5,7 @@ import org.springframework.web.servlet.HandlerInterceptor;
 
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
+import javax.servlet.http.HttpSession;
 
 public class AuthInterceptor implements HandlerInterceptor {
 
@@ -37,8 +38,27 @@ public class AuthInterceptor implements HandlerInterceptor {
             response.getWriter().write("X-Request header is required");
             return false;
         }
-
-        // 直接返回true，允许所有请求通过
-        return true;
+        //登录接口放行
+        if (xRequest.equals("Login")){
+            return true;
+        }
+        // 1. 注释Authorization校验
+         String token = request.getHeader("Authorization");
+         if (token == null || token.trim().isEmpty()) {
+             response.setStatus(401);
+             response.getWriter().write("Authorization token is required");
+             return false;
+         }
+         //验证令牌
+         HttpSession session = request.getSession();
+         String authorization = (String) session.getServletContext().getAttribute(token);
+         //验证通过放行
+         if (authorization != null&&!authorization.trim().equals("")){
+             return true;
+         }
+        //直接返回true，允许所有请求通过
+        response.setStatus(401);
+        response.getWriter().write("Authorization token is error");
+        return false;
     }
 }

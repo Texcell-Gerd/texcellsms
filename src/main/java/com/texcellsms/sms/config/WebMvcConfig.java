@@ -15,10 +15,10 @@ public class WebMvcConfig implements WebMvcConfigurer {
         registry.addInterceptor(new DynamicDataSourceInterceptor())
                 .addPathPatterns("/api/**");
 
-        // ========== 注释掉鉴权拦截器 ==========
-        // 2. 鉴权拦截器（注释后彻底不生效）
-        // registry.addInterceptor(new AuthInterceptor())
-        //        .addPathPatterns("/api/**")
-        //        .excludePathPatterns("/api/auth/login");
+//         ========== 注释掉鉴权拦截器 ==========
+//         2. 鉴权拦截器（注释后彻底不生效）
+         registry.addInterceptor(new AuthInterceptor())
+                .addPathPatterns("/**")
+                .excludePathPatterns("/api/auth/login");
     }
 }
