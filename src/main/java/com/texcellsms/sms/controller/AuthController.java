@@ -29,18 +29,13 @@ public class AuthController {
     @Autowired
     private AuthService authService;
 
-//    @PostMapping("/api/auth/test")
-//    public LoginResponse test(
-//            @RequestHeader(RequestHeaderConstants.X_REQUEST) String xRequest,
-//            @RequestBody LoginRequest loginRequest,
-//            HttpServletRequest request) {
-//
-//        // 1. 验证X-Request是否为login
-//            return LoginResponse.builder()
-//                    .code(400)
-//                    .msg("X-Request值必须为login")
-//                    .build();
-//    }
+    @PostMapping("/api/auth/getBalance")
+    public AjaxResult getBalance(
+            @RequestHeader(RequestHeaderConstants.AUTHORIZATION) String authorization,
+            @RequestBody LoginRequest loginRequest,
+            HttpServletRequest request) {
+            return authService.getBalance();
+    }
     /**
      * 登录接口（无需Authorization，X-Request=login）
      */
