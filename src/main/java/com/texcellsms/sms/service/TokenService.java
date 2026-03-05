@@ -1,22 +1,19 @@
 package com.texcellsms.sms.service;
 
 import CacheDB.NCacheDBLink;
-import com.texcellsms.sms.model.VO.CacheDBLonginResult;
-import com.texcellsms.sms.model.VO.LoginUser;
+
+import com.texcellsms.sms.model.vo.CacheDBLonginResult;
+import com.texcellsms.sms.model.vo.LoginUser;
 import com.texcellsms.sms.util.Constants;
 import com.texcellsms.sms.util.ServletUtils;
 import org.apache.commons.lang3.StringUtils;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.stereotype.Service;
 
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpSession;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
+
 
 /**
  * token验证处理

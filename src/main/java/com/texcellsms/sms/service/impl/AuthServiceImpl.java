@@ -1,16 +1,14 @@
 package com.texcellsms.sms.service.impl;
 
 import CacheDB.NCacheDBLink;
-import com.beust.ah.A;
 import com.texcellsms.sms.controller.AuthController;
-import com.texcellsms.sms.model.VO.CacheDBLonginResult;
-import com.texcellsms.sms.model.VO.LoginUser;
+import com.texcellsms.sms.model.vo.CacheDBLonginResult;
+import com.texcellsms.sms.model.vo.LoginUser;
 import com.texcellsms.sms.service.AuthService;
 import com.texcellsms.sms.service.TokenService;
 import com.texcellsms.sms.util.AjaxResult;
 import org.springframework.stereotype.Service;
 
-import java.util.HashMap;
 import java.util.Map;
 
 @Service
@@ -41,6 +39,4 @@ public class AuthServiceImpl implements AuthService {
         nCacheDBLink.Disconnect();
         return AjaxResult.success(map);
     }
-
-
 }

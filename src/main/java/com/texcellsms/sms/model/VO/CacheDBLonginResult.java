@@ -1,4 +1,4 @@
-package com.texcellsms.sms.model.VO;
+package com.texcellsms.sms.model.vo;
 
 import lombok.Data;
 

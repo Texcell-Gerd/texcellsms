@@ -11,8 +11,6 @@ import com.texcellsms.sms.util.UserUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import javax.servlet.http.HttpServletResponse;
 import java.net.URLEncoder;
@@ -32,7 +30,7 @@ public class SmsQueueService {
     // ==================== 任务列表（分页） ====================
     public Map<String, Object> getQueueTasks(Integer pageNum, Integer pageSize, String taskName, Byte scheduleStatus) {
         // 1. 获取当前登录用户的subAccount
-        String subAccount = UserUtils.getCurrentSubAccount();
+        String subAccount = TokenService.getUsername();
         // 2. 获取3天前的时间
         String threeDaysAgoTime = TimeRangeUtils.getThreeDaysAgoTime();
         // 3. 计算分页偏移量
