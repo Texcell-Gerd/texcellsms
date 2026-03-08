@@ -1,0 +1,19 @@
+2017-03-01 16:48:26 存储过程: select top 100 * from userinfo 调用发生异常: 错误码: 1000 描述: 琛: 1 琛: userinfo 涓嶅瓨鍦
+2017-03-01 16:48:26 [ERROR][NCacheLinkHelper.cpp:373:CNCacheLinkHelper::GetDataSetSummary]Query Is finished or you are released previously handle
+2017-03-01 17:08:34 存储过程: select top 100 * from userinfo 调用发生异常: 错误码: 1000 描述: 琛: 1 琛: userinfo 涓嶅瓨鍦
+2017-03-01 17:08:34 [ERROR][NCacheLinkHelper.cpp:373:CNCacheLinkHelper::GetDataSetSummary]Query Is finished or you are released previously handle
+2017-03-01 17:14:49 存储过程: select top 100 * from userinfo 调用发生异常: 错误码: 1000 描述: 琛: 1 琛: userinfo 涓嶅瓨鍦
+2017-03-01 17:14:49 [ERROR][NCacheLinkHelper.cpp:373:CNCacheLinkHelper::GetDataSetSummary]Query Is finished or you are released previously handle
+2017-03-01 17:15:12 数据库网关调用发生异常: 错误码: 900 描述: 
+2017-03-01 17:15:12 数据库网关调用发生异常: 错误码: 900 描述: 
+2017-03-01 17:15:12 [ERROR][NCacheLinkHelper.cpp:105:CNCacheLinkHelper::ExecProc]CacheDB Client Is not Connected!
+2017-03-01 17:15:36 数据库网关调用发生异常: 错误码: 900 描述: 
+2017-03-01 17:15:36 数据库网关调用发生异常: 错误码: 900 描述: 
+2017-03-01 17:15:36 [ERROR][NCacheLinkHelper.cpp:105:CNCacheLinkHelper::ExecProc]CacheDB Client Is not Connected!
+2017-03-01 17:18:55 存储过程: select top 100 * from userinfo 调用发生异常: 错误码: 1000 描述: 琛: 1 琛: userinfo 涓嶅瓨鍦
+2017-03-01 17:18:55 [ERROR][NCacheLinkHelper.cpp:373:CNCacheLinkHelper::GetDataSetSummary]Query Is finished or you are released previously handle
+2017-03-01 17:27:36 存储过程: select top 100 * from userinfo 调用发生异常: 错误码: 1000 描述: 琛: 1 琛: userinfo 涓嶅瓨鍦
+2017-03-01 17:27:36 [ERROR][NCacheLinkHelper.cpp:373:CNCacheLinkHelper::GetDataSetSummary]Query Is finished or you are released previously handle
+2017-03-01 17:28:00 数据库网关调用发生异常: 错误码: 900 描述: 
+2017-03-01 17:28:00 数据库网关调用发生异常: 错误码: 900 描述: 
+2017-03-01 17:28:00 [ERROR][NCacheLinkHelper.cpp:105:CNCacheLinkHelper::ExecProc]CacheDB Client Is not Connected!

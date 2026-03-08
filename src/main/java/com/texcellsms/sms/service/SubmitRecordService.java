@@ -5,6 +5,7 @@ import com.texcellsms.sms.interceptor.DynamicDataSourceInterceptor;
 import com.texcellsms.sms.mapper.prepay.SubmitRecordMapper;
 import com.texcellsms.sms.model.DTO.SubmitRecordDTO;
 import com.texcellsms.sms.model.DTO.SubmitRecordWithStatsDTO;
+import com.texcellsms.sms.model.vo.SubmitRecordExportVO;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -13,6 +14,7 @@ import javax.annotation.Resource;
 import java.text.NumberFormat;
 import java.text.SimpleDateFormat;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 public class SubmitRecordService {
@@ -37,7 +39,7 @@ public class SubmitRecordService {
     }
 
     /**
-     * 查询方法 - 回退到原有逻辑，移除2000条限制
+     * 查询方法
      */
     private List<SubmitRecordDTO> querySubmitRecordsCommon(
             String sourAccount, Date startTime, Date endTime,
@@ -107,7 +109,7 @@ public class SubmitRecordService {
     }
 
     /**
-     * 分批处理记录 - 仅保留必要逻辑，移除金额计算
+     * 分批处理记录
      */
     private void processBatchRecords(List<SubmitRecordDTO> batch) {
         for (SubmitRecordDTO record : batch) {
@@ -243,5 +245,47 @@ public class SubmitRecordService {
                 null, null, null, null, null,
                 pageNum, pageSize
         );
+    }
+
+    /**
+     * 查询导出数据（EasyExcel专用，流式查询避免OOM）
+     */
+    public List<SubmitRecordExportVO> queryExportDataForEasyExcel(
+            String sourAccount, Date startTime, Date endTime,
+            String callee, String mcc, String mnc,
+            String innerReportState, String innerReportError
+    ) {
+        DynamicDataSourceInterceptor.setCurrentDataSource(DynamicDataSourceConfig.DS_PREPAY);
+        try {
+            String startTimeStr = DATETIME_FORMAT_DB.format(startTime);
+            String endTimeStr = DATETIME_FORMAT_DB.format(endTime);
+            String tableSuffix = DATE_FORMAT.format(startTime);
+
+            // 调用原有导出查询方法（无分页，直接查全量）
+            List<SubmitRecordDTO> dtoList = submitRecordMapper.querySubmitRecordsForExportWithJoin(
+                    tableSuffix, sourAccount, startTimeStr, endTimeStr,
+                    callee, mcc, mnc, innerReportState, innerReportError
+            );
+
+            // DTO 转 VO（处理空值、优化展示）
+            return dtoList.stream().map(dto -> {
+                SubmitRecordExportVO vo = new SubmitRecordExportVO();
+                vo.setSourAccount(dto.getSourAccount() == null ? "" : dto.getSourAccount());
+                vo.setSubmitMsgId(dto.getSubmitMsgId() == null ? "" : dto.getSubmitMsgId());
+                vo.setSubmitMsgTime(dto.getSubmitMsgTime() == null ? "" : dto.getSubmitMsgTime());
+                vo.setCaller(dto.getCaller() == null ? "" : dto.getCaller());
+                vo.setCallee(dto.getCallee() == null ? "" : dto.getCallee());
+                vo.setSmLength(dto.getSmLength() == null ? "" : dto.getSmLength());
+                vo.setActualChargeFee(dto.getActualChargeFee() == null ? "0.0000" : dto.getActualChargeFee());
+                vo.setShortMessage(dto.getShortMessage() == null ? "" : dto.getShortMessage().replaceAll("\\n", " "));
+                vo.setMcc(dto.getMcc() == null ? "" : dto.getMcc());
+                vo.setMnc(dto.getMnc() == null ? "" : dto.getMnc());
+                vo.setInnerReportState(dto.getInnerReportState() == null ? "已提交" : dto.getInnerReportState());
+                vo.setRecvDRTime(dto.getRecvDRTime() == null ? "" : dto.getRecvDRTime());
+                return vo;
+            }).collect(Collectors.toList());
+        } finally {
+            DynamicDataSourceInterceptor.clearCurrentDataSource();
+        }
     }
 }

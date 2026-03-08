@@ -1,111 +1,148 @@
 package com.texcellsms.sms.mapper.prepay;
 
-import com.texcellsms.sms.model.DTO.SmsQueueDetailItemDTO;
-import com.texcellsms.sms.model.DTO.SmsQueueItemDTO;
+import com.texcellsms.sms.model.entity.TblAPITask;
+import com.texcellsms.sms.model.vo.ScheduleTaskVO;
+import com.texcellsms.sms.model.vo.TaskDetailVO;
 import org.apache.ibatis.annotations.*;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Set;
 
-/**
- * 短信队列Mapper（注解式SQL，无XML）
- */
 @Repository
 @Mapper
 public interface SmsQueueMapper {
 
-    /**
-     * 按秒分组查询近三天队列列表（分页）
-     */
+    // ==================== 任务列表（分页） ====================
     @Select({
-            "SELECT ",
-            "    DATE_FORMAT(sb.SubmitMsgTime, '%Y/%m/%d %H:%i:%s') as submitMsgTime,",
-            "    COUNT(*) as totalCount,",
-            "    COUNT(*) as sendCount,",
-            "    COUNT(*) as submitSuccessCount,",
-            "    SUM(CASE WHEN fb.InnerReportState = 'DELIVRD' THEN 1 ELSE 0 END) as deliverSuccessCount,",
-            "    SUM(CASE WHEN fb.InnerReportState != 'DELIVRD' OR fb.InnerReportState IS NULL THEN 1 ELSE 0 END) as deliverFailCount,",
-            "    CASE ",
-            "        WHEN sb.DCS='0' THEN CAST(UNHEX(sb.Short_Message) AS CHAR) ",
-            "        WHEN sb.DCS='1' THEN CAST(CONVERT(UNHEX(sb.Short_Message) USING ASCII) AS CHAR)  ",
-            "        WHEN sb.DCS='8' THEN CAST(CONVERT(UNHEX(sb.Short_Message) USING UCS2) AS CHAR) ",
-            "        ELSE sb.Short_Message ",
-            "    END as msg",
-            "FROM Submit_Bill_${tableSuffix} sb",
-            "LEFT JOIN Fee_Bill_${tableSuffix} fb ON sb.SubmitMsgId = fb.RecvMsgId",
-            "WHERE 1=1",
-            "  AND sb.SourAccount = #{sourAccount}",
-            "  AND sb.SubmitMsgTime >= #{startTimeStr}",
-            "  AND sb.SubmitMsgTime <= #{endTimeStr}",
-            "GROUP BY DATE_FORMAT(sb.SubmitMsgTime, '%Y/%m/%d %H:%i:%s')",
-            "ORDER BY sb.SubmitMsgTime DESC",
-            "LIMIT #{offset}, #{pageSize}"
+            "<script>",
+            "SELECT TaskName, TaskTime, ScheduleSendTime, TaskTimeZone, ScheduleStatus, TotalCount, CalleeCount, ",
+            "       SubmitSuccCount, DRSuccCount, DRFailCount, Short_Message, SplitCount ",
+            "FROM tbl_APIScheduleSend ",
+            "<where>",
+            "  SubAccount = #{subAccount} ", // 权限限制：当前用户的subAccount
+            "  AND TaskTime >= #{threeDaysAgoTime} ", // 时间限制：最近3天
+            "  <if test='taskName != null and taskName != \"\"'>",
+            "    AND TaskName LIKE CONCAT('%', #{taskName}, '%')",
+            "  </if>",
+            "  <if test='scheduleStatus != null'>",
+            "    AND ScheduleStatus = #{scheduleStatus}",
+            "  </if>",
+            "</where>",
+            "ORDER BY TaskTime DESC ",
+            "LIMIT #{offset}, #{pageSize}",
+            "</script>"
     })
-    @Results({
-            @Result(column = "submitMsgTime", property = "submitMsgTime"),
-            @Result(column = "totalCount", property = "totalCount"),
-            @Result(column = "sendCount", property = "sendCount"),
-            @Result(column = "submitSuccessCount", property = "submitSuccessCount"),
-            @Result(column = "deliverSuccessCount", property = "deliverSuccessCount"),
-            @Result(column = "deliverFailCount", property = "deliverFailCount"),
-            @Result(column = "msg", property = "msg")
-    })
-    List<SmsQueueItemDTO> queryQueueListBySecond(
-            @Param("tableSuffix") String tableSuffix,
-            @Param("sourAccount") String sourAccount,
-            @Param("startTimeStr") String startTimeStr,
-            @Param("endTimeStr") String endTimeStr,
+    @ResultType(ScheduleTaskVO.class)
+    List<ScheduleTaskVO> selectScheduleTaskList(
+            @Param("subAccount") String subAccount, // 当前登录用户subAccount
+            @Param("threeDaysAgoTime") String threeDaysAgoTime, // 3天前时间
+            @Param("taskName") String taskName,
+            @Param("scheduleStatus") Byte scheduleStatus,
             @Param("offset") Integer offset,
             @Param("pageSize") Integer pageSize
     );
 
-    /**
-     * 统计近三天队列总条数（用于计算分页）
-     */
     @Select({
-            "SELECT COUNT(DISTINCT DATE_FORMAT(sb.SubmitMsgTime, '%Y/%m/%d %H:%i:%s')) as total",
-            "FROM Submit_Bill_${tableSuffix} sb",
-            "LEFT JOIN Fee_Bill_${tableSuffix} fb ON sb.SubmitMsgId = fb.RecvMsgId",
-            "WHERE 1=1",
-            "  AND sb.SourAccount = #{sourAccount}",
-            "  AND sb.SubmitMsgTime >= #{startTimeStr}",
-            "  AND sb.SubmitMsgTime <= #{endTimeStr}"
+            "<script>",
+            "SELECT COUNT(*) FROM tbl_APIScheduleSend ",
+            "<where>",
+            "  SubAccount = #{subAccount} ",
+            "  AND TaskTime >= #{threeDaysAgoTime} ",
+            "  <if test='taskName != null and taskName != \"\"'>",
+            "    AND TaskName LIKE CONCAT('%', #{taskName}, '%')",
+            "  </if>",
+            "  <if test='scheduleStatus != null'>",
+            "    AND ScheduleStatus = #{scheduleStatus}",
+            "  </if>",
+            "</where>",
+            "</script>"
     })
-    Long countQueueTotal(
-            @Param("tableSuffix") String tableSuffix,
-            @Param("sourAccount") String sourAccount,
-            @Param("startTimeStr") String startTimeStr,
-            @Param("endTimeStr") String endTimeStr
+    Long countScheduleTaskList(
+            @Param("subAccount") String subAccount,
+            @Param("threeDaysAgoTime") String threeDaysAgoTime,
+            @Param("taskName") String taskName,
+            @Param("scheduleStatus") Byte scheduleStatus
     );
 
-    /**
-     * 查询指定秒级队列的明细数据
-     */
+    // ==================== 任务详情（分页） ====================
     @Select({
-            "SELECT ",
-            "    sb.SubmitMsgId as submitMsgId,",
-            "    sb.Callee as callee,",
-            "    IFNULL(fb.InnerReportState, '已提交') as innerReportState,",
-            "    fb.RecvDRTime as recvDRTime,",
-            "    IFNULL(fb.InnerReportError, '') as innerReportError",
-            "FROM Submit_Bill_${tableSuffix} sb",
-            "LEFT JOIN Fee_Bill_${tableSuffix} fb ON sb.SubmitMsgId = fb.RecvMsgId",
-            "WHERE 1=1",
-            "  AND sb.SourAccount = #{sourAccount}",
-            "  AND DATE_FORMAT(sb.SubmitMsgTime, '%Y/%m/%d %H:%i:%s') = #{targetTime}",
-            "  AND (sb.Callee = #{callee} OR #{callee} IS NULL OR #{callee} = '')"
+            "<script>",
+            "SELECT t1.SubmitMsgId, t1.Caller, t1.Callee, t1.RecvDRTime, t1.RecvDRStatus, t1.RecvDRError, t1.PKNumber, t1.PKTotal ",
+            "FROM tbl_APITask t1 ",
+            "INNER JOIN tbl_APIScheduleSend t2 ON t1.APITaskId = t2.TaskID ",
+            "WHERE t2.SubAccount = #{subAccount} ", // 关联主表的subAccount
+            "  AND t2.TaskTime >= #{threeDaysAgoTime} ", // 主表的时间限制
+            "  AND t1.APITaskId = #{taskId} ",
+            "  <if test='callee != null and callee != \"\"'>",
+            "    AND t1.Callee LIKE CONCAT('%', #{callee}, '%')",
+            "  </if>",
+            "ORDER BY t1.RecvDRTime DESC ",
+            "LIMIT #{offset}, #{pageSize}",
+            "</script>"
     })
-    @Results({
-            @Result(column = "submitMsgId", property = "submitMsgId"),
-            @Result(column = "callee", property = "callee"),
-            @Result(column = "innerReportState", property = "innerReportState"),
-            @Result(column = "recvDRTime", property = "recvDRTime"),
-            @Result(column = "innerReportError", property = "innerReportError")
+    @ResultType(TaskDetailVO.class)
+    List<TaskDetailVO> selectTaskDetailList(
+            @Param("subAccount") String subAccount,
+            @Param("threeDaysAgoTime") String threeDaysAgoTime,
+            @Param("taskId") String taskId,
+            @Param("callee") String callee,
+            @Param("offset") Integer offset,
+            @Param("pageSize") Integer pageSize
+    );
+
+    @Select({
+            "<script>",
+            "SELECT COUNT(*) FROM tbl_APITask t1 ",
+            "INNER JOIN tbl_APIScheduleSend t2 ON t1.APITaskId = t2.TaskID ",
+            "WHERE t2.SubAccount = #{subAccount} ",
+            "  AND t2.TaskTime >= #{threeDaysAgoTime} ",
+            "  AND t1.APITaskId = #{taskId} ",
+            "  <if test='callee != null and callee != \"\"'>",
+            "    AND t1.Callee LIKE CONCAT('%', #{callee}, '%')",
+            "  </if>",
+            "</script>"
     })
-    List<SmsQueueDetailItemDTO> queryQueueDetailByTime(
-            @Param("tableSuffix") String tableSuffix,
-            @Param("sourAccount") String sourAccount,
-            @Param("targetTime") String targetTime,
-            @Param("callee") String callee // 精准匹配的接收号码参数
+    Long countTaskDetailList(
+            @Param("subAccount") String subAccount,
+            @Param("threeDaysAgoTime") String threeDaysAgoTime,
+            @Param("taskId") String taskId,
+            @Param("callee") String callee
+    );
+
+    // ==================== 导出全部详情 ====================
+    @Select({
+            "SELECT t1.SubmitMsgId, t1.Caller, t1.Callee, t1.RecvDRTime, t1.RecvDRStatus, t1.RecvDRError, t1.PKNumber, t1.PKTotal ",
+            "FROM tbl_APITask t1 ",
+            "INNER JOIN tbl_APIScheduleSend t2 ON t1.APITaskId = t2.TaskID ",
+            "WHERE t2.SubAccount = #{subAccount} ",
+            "  AND t2.TaskTime >= #{threeDaysAgoTime} ",
+            "  AND t1.APITaskId = #{taskId} ",
+            "ORDER BY t1.RecvDRTime DESC"
+    })
+    @ResultType(TblAPITask.class)
+    List<TblAPITask> selectAllTaskDetailsByTaskId(
+            @Param("subAccount") String subAccount,
+            @Param("threeDaysAgoTime") String threeDaysAgoTime,
+            @Param("taskId") String taskId
+    );
+
+    // ========== 新增：批量修改状态（伪删除） ==========
+    @Update({
+            "<script>",
+            "UPDATE tbl_APIScheduleSend ",
+            "SET ScheduleStatus = 4 ", // 改为删除状态4
+            "WHERE SubAccount = #{subAccount} ", // 仅当前用户
+            "  AND TaskTime >= #{threeDaysAgoTime} ", // 仅最近3天
+            "  AND TaskID IN ",
+            "<foreach collection='taskIds' item='taskId' open='(' separator=',' close=')'>",
+            "  #{taskId}",
+            "</foreach>",
+            "</script>"
+    })
+    int batchUpdateScheduleStatus(
+            @Param("subAccount") String subAccount,
+            @Param("threeDaysAgoTime") String threeDaysAgoTime,
+            @Param("taskIds") Set<String> taskIds // 用Set避免重复ID
     );
 }
