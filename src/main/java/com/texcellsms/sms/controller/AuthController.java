@@ -3,6 +3,7 @@ package com.texcellsms.sms.controller;
 
 import com.texcellsms.sms.constant.RequestHeaderConstants;
 import com.texcellsms.sms.service.AuthService;
+import com.texcellsms.sms.service.TokenService;
 import com.texcellsms.sms.util.*;
 
 import lombok.AllArgsConstructor;
@@ -10,10 +11,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import javax.servlet.http.HttpServletRequest;
 
@@ -30,10 +28,18 @@ public class AuthController {
     @PostMapping("/api/auth/getBalance")
     public AjaxResult getBalance(
             @RequestHeader(RequestHeaderConstants.AUTHORIZATION) String authorization,
-            @RequestBody LoginRequest loginRequest,
             HttpServletRequest request) {
-            return authService.getBalance();
+            return authService.getBalance(TokenService.getUsername(authorization));
     }
+
+    @PostMapping("/api/auth/ChangeSwitchAccountPWD")
+    public AjaxResult ChangeSwitchAccountPWD(
+            @RequestHeader(RequestHeaderConstants.AUTHORIZATION) String authorization,
+            HttpServletRequest request, @RequestParam("OldPass") String OldPass,@RequestParam("NewPass") String NewPass) {
+        return authService.ChangeSwitchAccountPWD(TokenService.getUsername(authorization),OldPass,NewPass);
+    }
+
+
     /**
      * 登录接口（无需Authorization，X-Request=login）
      */

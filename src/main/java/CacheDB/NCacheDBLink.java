@@ -169,6 +169,136 @@ public class NCacheDBLink {
 		return map;
 	}
 
+
+	public Map<String, Object> web_QueryUserRate(String strUserName){
+
+		String strSQL ="web_QueryUserRate";
+		int nParaCount = 2;
+		CADBPROCPARA[] pPara = new CADBPROCPARA[2];
+		//帐号
+		pPara[0] = new CADBPROCPARA();
+		pPara[0].nDataType = 12;//GString
+		pPara[0].nParaType = 0;//input
+		pPara[0].sName = "Account";
+		pPara[0].sInput = strUserName;
+		pPara[0].nSize = pPara[0].sInput.length();
+		pPara[0].sOutput = "";
+
+		//指定的MCCMNC，获取全部用 %
+		pPara[1] = new CADBPROCPARA();
+
+		pPara[1].nDataType = 12;//GString
+		pPara[1].nParaType = 0;//input
+		pPara[1].sName = "VendorId";
+		pPara[1].sInput = "%";
+		pPara[1].nSize = pPara[1].sInput.length();
+		pPara[1].sOutput = "";
+		String pResultS = Client.ExecProc(pClient, strSQL, nParaCount, pPara);
+		Gson parser = new Gson();
+		ProcResult pResult = parser.fromJson(pResultS, ProcResult.class);
+
+		String decodeErr = "";
+		if( pResult.getnRet() > -90)
+		{
+			byte [] bErr = Base64Util.decode(pResult.getsError());
+			decodeErr = new String(bErr);
+		}
+		else
+		{
+			decodeErr = pResult.getsError();
+		}
+		System.out.println("---------------prc_MMSIFQueryBalance--------------");
+		System.out.println("Ret=" + pResult.getnRet() + ",sError=" + decodeErr + ",outputCount=" + pResult.getnOutputParaCount() + ",totaldataset:" + pResult.getnTotalDataSet());
+		List<Recordset> pOutVal = pResult.getOutputPara();
+		Map<String, Object> map = new HashMap<String, Object>();
+		if( pOutVal.size() > 0 )
+		{
+			for( int i = 0; i < pOutVal.size(); i++ )
+			{
+				byte [] sVal = Base64Util.decode(pOutVal.get(i).getFieldValue());
+				String strVal = new String(sVal);
+				System.out.println(pOutVal.get(i).getFieldName() + ":" + strVal );
+				map.put(pOutVal.get(i).getFieldName(),strVal);
+			}
+		}
+		map.put("sError",decodeErr);
+		System.out.println("---------------prc_MMSIFQueryBalance-----------");
+		return map;
+	}
+
+	public Map<String, Object> prc_ChangeSwitchAccountPWD(String strUserName,String strOldPass,String strNewPass){
+		String strSQL ="prc_ChangeSwitchAccountPWD";
+		int nParaCount = 4;
+		//帐号
+		CADBPROCPARA[] pPara = new CADBPROCPARA[4];
+		pPara[0] = new CADBPROCPARA();
+		pPara[0].nDataType = 12;//GString
+		pPara[0].nParaType = 0;//input
+		pPara[0].sName = "Account";
+		pPara[0].sInput = strUserName;
+		pPara[0].nSize = pPara[0].sInput.length();
+		pPara[0].sOutput = "";
+
+		//旧密码
+		pPara[1] = new CADBPROCPARA();
+
+		pPara[1].nDataType = 12;//GString
+		pPara[1].nParaType = 0;//input
+		pPara[1].sName = "Oldpass";
+		pPara[1].sInput = strOldPass;
+		pPara[1].nSize = pPara[1].sInput.length();
+		pPara[1].sOutput = "";
+
+		//新密码
+		pPara[2] = new CADBPROCPARA();
+		pPara[2].nDataType = 12;//GString
+		pPara[2].nParaType = 0;//input
+		pPara[2].sName = "Newpass";
+		pPara[2].sInput = strNewPass;
+		pPara[2].nSize = pPara[2].sInput.length();
+		pPara[2].sOutput = "";
+
+		//结果
+		pPara[3] = new CADBPROCPARA();
+		pPara[3].nDataType = 12;//GString
+		pPara[3].nParaType = 1;//input
+		pPara[3].sName = "Ret";
+		pPara[3].sInput = "";
+		pPara[3].nSize = 1;
+		pPara[3].sOutput = "";
+		String pResultS = Client.ExecProc(pClient, strSQL, nParaCount, pPara);
+		Gson parser = new Gson();
+		ProcResult pResult = parser.fromJson(pResultS, ProcResult.class);
+
+		String decodeErr = "";
+		if( pResult.getnRet() > -90)
+		{
+			byte [] bErr = Base64Util.decode(pResult.getsError());
+			decodeErr = new String(bErr);
+		}
+		else
+		{
+			decodeErr = pResult.getsError();
+		}
+		System.out.println("---------------prc_ChangeSwitchAccountPWD--------------");
+		System.out.println("Ret=" + pResult.getnRet() + ",sError=" + decodeErr + ",outputCount=" + pResult.getnOutputParaCount() + ",totaldataset:" + pResult.getnTotalDataSet());
+		List<Recordset> pOutVal = pResult.getOutputPara();
+		Map<String, Object> map = new HashMap<String, Object>();
+		if( pOutVal.size() > 0 )
+		{
+			for( int i = 0; i < pOutVal.size(); i++ )
+			{
+				byte [] sVal = Base64Util.decode(pOutVal.get(i).getFieldValue());
+				String strVal = new String(sVal);
+				System.out.println(pOutVal.get(i).getFieldName() + ":" + strVal );
+				map.put(pOutVal.get(i).getFieldName(),strVal);
+			}
+		}
+		map.put("sError",decodeErr);
+		System.out.println("---------------prc_ChangeSwitchAccountPWD-----------");
+		return map;
+	}
+
 	public Map<String, Object> ExecProc_QueryGWUserPass_With2FA(String strUserName, String strPassWord, String strReqIP){
 		int nParaCount = 7;
 		CADBPROCPARA[] pPara = new CADBPROCPARA[7];

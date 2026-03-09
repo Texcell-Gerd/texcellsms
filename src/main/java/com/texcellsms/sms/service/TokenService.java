@@ -44,6 +44,17 @@ public class TokenService
         return username;
     }
 
+
+    public static String getUsername(String Authorization)
+    {
+        String username=null;
+        if (StringUtils.isNotEmpty(Authorization))
+        {
+            username = (String) ServletUtils.getSession().getServletContext().getAttribute(Authorization);
+        }
+        return username;
+    }
+
 //    /**
 //     * 获取用户ID
 //     */

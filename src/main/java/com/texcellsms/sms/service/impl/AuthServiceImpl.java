@@ -10,6 +10,7 @@ import com.texcellsms.sms.util.AjaxResult;
 import org.springframework.stereotype.Service;
 
 import java.util.Map;
+import java.util.UUID;
 
 @Service
 public class AuthServiceImpl implements AuthService {
@@ -22,7 +23,7 @@ public class AuthServiceImpl implements AuthService {
         loginUser.setPassword(loginRequest.getPassword());
         loginUser.setIP(TokenService.getIpAddress());
         CacheDBLonginResult cacheDBLonginResult = tokenService.getToken(loginUser);
-        loginUser.setToken(cacheDBLonginResult.getFAKey());
+        loginUser.setToken(cacheDBLonginResult.getFAKey()+ UUID.randomUUID().toString().replace("-", ""));
         tokenService.createToken(loginUser);
         if (!cacheDBLonginResult.getResult().equals("0")){
             return new AjaxResult(Integer.parseInt(cacheDBLonginResult.getResult()),"");
@@ -31,12 +32,23 @@ public class AuthServiceImpl implements AuthService {
     }
 
     @Override
-    public AjaxResult getBalance() {
+    public AjaxResult getBalance(String Username) {
         NCacheDBLink nCacheDBLink=NCacheDBLink.getNCacheDBLink();
         nCacheDBLink.InitEnv();
         nCacheDBLink.ConnectToCacheDB();
-        Map<String,Object> map = nCacheDBLink.prc_MMSIFQueryBalance(TokenService.getUsername());
+        Map<String,Object> map = nCacheDBLink.prc_MMSIFQueryBalance(Username);
         nCacheDBLink.Disconnect();
         return AjaxResult.success(map);
     }
+
+    @Override
+    public AjaxResult ChangeSwitchAccountPWD(String Username, String OldPass, String NewPass) {
+        NCacheDBLink nCacheDBLink=NCacheDBLink.getNCacheDBLink();
+        nCacheDBLink.InitEnv();
+        nCacheDBLink.ConnectToCacheDB();
+        Map<String,Object> map = nCacheDBLink.prc_ChangeSwitchAccountPWD(Username,OldPass,NewPass);
+        nCacheDBLink.Disconnect();
+        return AjaxResult.success(map);
+    }
+
 }

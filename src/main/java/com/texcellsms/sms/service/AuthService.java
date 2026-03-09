@@ -9,5 +9,7 @@ import org.springframework.stereotype.Service;
 public interface AuthService {
   AjaxResult login(AuthController.LoginRequest loginRequest);
 
-  AjaxResult getBalance();
+  AjaxResult getBalance(String Username);
+
+  AjaxResult ChangeSwitchAccountPWD(String Username,String OldPass,String NewPass);
 }
