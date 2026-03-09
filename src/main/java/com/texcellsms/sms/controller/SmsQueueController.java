@@ -25,10 +25,8 @@ public class SmsQueueController {
     @GetMapping("/tasks")
     public Map<String, Object> getQueueTasks(
             @Parameter(description = "页码，默认1") @RequestParam(defaultValue = "1") Integer pageNum,
-            @Parameter(description = "每页条数，默认10") @RequestParam(defaultValue = "10") Integer pageSize,
-            @Parameter(description = "任务名称") @RequestParam(required = false) String taskName,
-            @Parameter(description = "发送状态") @RequestParam(required = false) Byte scheduleStatus) {
-        return smsQueueService.getQueueTasks(pageNum, pageSize, taskName, scheduleStatus);
+            @Parameter(description = "每页条数，默认10") @RequestParam(defaultValue = "10") Integer pageSize) {
+        return smsQueueService.getQueueTasks(pageNum, pageSize);
     }
 
     @Operation(summary = "获取队列任务详情（分页）")
@@ -70,7 +68,6 @@ public class SmsQueueController {
             map.put("msg", "任务ID不能为空");
             return map;
         }
-
         int count = smsQueueService.batchDeleteTask(taskIds);
 
         map.put("code", 200);

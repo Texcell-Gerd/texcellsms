@@ -29,7 +29,7 @@ public class SubmitRecordDTO {
     @Schema(description = "真实计费金额（ChargeFee÷10000）", example = "0.0500")
     private String actualChargeFee;
 
-    @Schema(description = "短信内容（解码后）", example = "您的验证码是123456")
+    @Schema(description = "短信内容（解码后BASE64加密）", example = "5L2g5oiR57yW56CB5rWL6K+VMTIzNDU2")
     private String shortMessage;
 
     @Schema(description = "移动国家码（MCC）", example = "454")
@@ -57,4 +57,11 @@ public class SubmitRecordDTO {
     @Schema(description = "判断用", hidden = true) // Swagger隐藏
     @JsonIgnore // JSON序列化忽略
     private String fbInnerReportState;
+
+    @Schema(description = "DCS编码类型", example = "8") // 放开Swagger注释，返回给前端
+    private String dcs;
+
+    @Schema(description = "原始加密短信内容（解析用，不返回）", hidden = true)
+    @JsonIgnore // 序列化时忽略，不返回给前端
+    private String originalShortMessage;
 }

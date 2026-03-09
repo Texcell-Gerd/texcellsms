@@ -6,6 +6,7 @@ import com.texcellsms.sms.model.entity.TblAPITask;
 import com.texcellsms.sms.model.vo.ScheduleTaskVO;
 import com.texcellsms.sms.model.vo.TaskDetailExcelVO;
 import com.texcellsms.sms.model.vo.TaskDetailVO;
+import com.texcellsms.sms.util.Base64Util;
 import com.texcellsms.sms.util.TimeRangeUtils;
 import com.texcellsms.sms.util.UserUtils;
 import lombok.RequiredArgsConstructor;
@@ -27,24 +28,39 @@ public class SmsQueueService {
 
     private final SmsQueueMapper smsQueueMapper;
 
+    // 获取当前登录用户的subAccount
+    private String SubAccount(){
+        return TokenService.getUsername();
+    }
+
     // ==================== 任务列表（分页） ====================
-    public Map<String, Object> getQueueTasks(Integer pageNum, Integer pageSize, String taskName, Byte scheduleStatus) {
-        // 1. 获取当前登录用户的subAccount
-        String subAccount = TokenService.getUsername();
-        // 2. 获取3天前的时间
+    public Map<String, Object> getQueueTasks(Integer pageNum, Integer pageSize) {
+        String subAccount = SubAccount();
+
+        // 1. 获取3天前的时间
         String threeDaysAgoTime = TimeRangeUtils.getThreeDaysAgoTime();
-        // 3. 计算分页偏移量
+        // 2. 计算分页偏移量
         int offset = (pageNum - 1) * pageSize;
-        // 4. 查询数据
+        // 3. 查询数据
         List<ScheduleTaskVO> list = smsQueueMapper.selectScheduleTaskList(
-                subAccount, threeDaysAgoTime, taskName, scheduleStatus, offset, pageSize
+                subAccount, threeDaysAgoTime, offset, pageSize
         );
+
+        // ========== 调用Base64工具类加密短信内容 ==========
+        if (list != null && !list.isEmpty()) {
+            for (ScheduleTaskVO vo : list) {
+                // 加密shortMessage字段，空值自动处理（工具类已做兜底）
+                String encryptedMsg = Base64Util.encrypt(vo.getShortMessage());
+                vo.setShortMessage(encryptedMsg);
+            }
+        }
+
         Long total = smsQueueMapper.countScheduleTaskList(
-                subAccount, threeDaysAgoTime, taskName, scheduleStatus
+                subAccount, threeDaysAgoTime
         );
         // 5. 封装返回结果
         Map<String, Object> result = new HashMap<>();
-        result.put("records", list);
+        result.put("records", list); //shortMessage已加密
         result.put("total", total);
         result.put("pageNum", pageNum);
         result.put("pageSize", pageSize);
@@ -53,15 +69,13 @@ public class SmsQueueService {
 
     // ==================== 任务详情（分页） ====================
     public Map<String, Object> getQueueTaskDetail(String taskId, Integer pageNum, Integer pageSize, String callee) {
-        String subAccount = UserUtils.getCurrentSubAccount();
-        String threeDaysAgoTime = TimeRangeUtils.getThreeDaysAgoTime();
         int offset = (pageNum - 1) * pageSize;
 
         List<TaskDetailVO> list = smsQueueMapper.selectTaskDetailList(
-                subAccount, threeDaysAgoTime, taskId, callee, offset, pageSize
+                 taskId, callee, offset, pageSize
         );
         Long total = smsQueueMapper.countTaskDetailList(
-                subAccount, threeDaysAgoTime, taskId, callee
+                taskId, callee
         );
 
         Map<String, Object> result = new HashMap<>();
@@ -74,12 +88,9 @@ public class SmsQueueService {
 
     // ==================== 导出全部详情 ====================
     public void exportAllTaskDetailsByTaskId(String taskId, HttpServletResponse response) throws Exception {
-        String subAccount = UserUtils.getCurrentSubAccount();
-        String threeDaysAgoTime = TimeRangeUtils.getThreeDaysAgoTime();
-
         // 查询符合条件的数据
         List<TblAPITask> entityList = smsQueueMapper.selectAllTaskDetailsByTaskId(
-                subAccount, threeDaysAgoTime, taskId
+                taskId
         );
         // 转换为Excel VO
         List<TaskDetailExcelVO> excelList = entityList.stream()

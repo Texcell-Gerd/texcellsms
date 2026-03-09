@@ -22,12 +22,8 @@ public interface SubmitRecordMapper {
             "    sb.SM_Length,",
             "    sb.ChargeFee,",
             "    ROUND(IFNULL(CAST(sb.ChargeFee AS DECIMAL)/10000, 0), 4) as actualChargeFee,",
-            "    CASE ",
-            "        WHEN sb.DCS='0' THEN CAST(UNHEX(sb.Short_Message) AS CHAR) ",
-            "        WHEN sb.DCS='1' THEN CAST(CONVERT(UNHEX(sb.Short_Message) USING ASCII) AS CHAR)  ",
-            "        WHEN sb.DCS='8' THEN CAST(CONVERT(UNHEX(sb.Short_Message) USING UCS2) AS CHAR) ",
-            "        ELSE sb.Short_Message ",
-            "    END as shortMessage,",
+            "    sb.Short_Message as originalShortMessage,  -- 原始加密短信内容",
+            "    sb.DCS as dcs,  -- DCS编码类型（用于Java解析）",
             "    sb.MCC as mcc,",
             "    sb.MNC as mnc,",
             "    fb.InnerReportState as fbInnerReportState,",
@@ -87,12 +83,8 @@ public interface SubmitRecordMapper {
             "    sb.SM_Length,",
             "    sb.ChargeFee,",
             "    ROUND(IFNULL(CAST(sb.ChargeFee AS DECIMAL)/10000, 0), 4) as actualChargeFee,",
-            "    CASE ",
-            "        WHEN sb.DCS='0' THEN CAST(UNHEX(sb.Short_Message) AS CHAR) ",
-            "        WHEN sb.DCS='1' THEN CAST(CONVERT(UNHEX(sb.Short_Message) USING ASCII) AS CHAR)  ",
-            "        WHEN sb.DCS='8' THEN CAST(CONVERT(UNHEX(sb.Short_Message) USING UCS2) AS CHAR) ",
-            "        ELSE sb.Short_Message ",
-            "    END as shortMessage,",
+            "    sb.Short_Message as originalShortMessage,  -- 原始加密短信内容",
+            "    sb.DCS as dcs,  -- DCS编码类型（用于Java解析）",
             "    sb.MCC as mcc,",
             "    sb.MNC as mnc,",
             "    fb.InnerReportState as fbInnerReportState,",
@@ -119,7 +111,8 @@ public interface SubmitRecordMapper {
             @Result(column = "SM_Length", property = "smLength"),
             @Result(column = "ChargeFee", property = "chargeFee"),
             @Result(column = "actualChargeFee", property = "actualChargeFee"),
-            @Result(column = "shortMessage", property = "shortMessage"),
+            @Result(column = "originalShortMessage", property = "originalShortMessage"), // 原始短信字段
+            @Result(column = "dcs", property = "dcs"), // DCS编码字段
             @Result(column = "mcc", property = "mcc"),
             @Result(column = "mnc", property = "mnc"),
             @Result(column = "fbInnerReportState", property = "fbInnerReportState"),
@@ -137,6 +130,7 @@ public interface SubmitRecordMapper {
             @Param("innerReportState") String innerReportState,
             @Param("innerReportError") String innerReportError
     );
+
 
     // 3. 统计方法 - 保留原有countSubmitTotal，注释countTotalRecords（避免触发慢查询）
     @Select("SELECT COUNT(*) FROM Submit_Bill_${tableSuffix} " +

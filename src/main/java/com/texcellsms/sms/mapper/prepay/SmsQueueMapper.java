@@ -22,12 +22,6 @@ public interface SmsQueueMapper {
             "<where>",
             "  SubAccount = #{subAccount} ", // 权限限制：当前用户的subAccount
             "  AND TaskTime >= #{threeDaysAgoTime} ", // 时间限制：最近3天
-            "  <if test='taskName != null and taskName != \"\"'>",
-            "    AND TaskName LIKE CONCAT('%', #{taskName}, '%')",
-            "  </if>",
-            "  <if test='scheduleStatus != null'>",
-            "    AND ScheduleStatus = #{scheduleStatus}",
-            "  </if>",
             "</where>",
             "ORDER BY TaskTime DESC ",
             "LIMIT #{offset}, #{pageSize}",
@@ -37,8 +31,6 @@ public interface SmsQueueMapper {
     List<ScheduleTaskVO> selectScheduleTaskList(
             @Param("subAccount") String subAccount, // 当前登录用户subAccount
             @Param("threeDaysAgoTime") String threeDaysAgoTime, // 3天前时间
-            @Param("taskName") String taskName,
-            @Param("scheduleStatus") Byte scheduleStatus,
             @Param("offset") Integer offset,
             @Param("pageSize") Integer pageSize
     );
@@ -49,42 +41,29 @@ public interface SmsQueueMapper {
             "<where>",
             "  SubAccount = #{subAccount} ",
             "  AND TaskTime >= #{threeDaysAgoTime} ",
-            "  <if test='taskName != null and taskName != \"\"'>",
-            "    AND TaskName LIKE CONCAT('%', #{taskName}, '%')",
-            "  </if>",
-            "  <if test='scheduleStatus != null'>",
-            "    AND ScheduleStatus = #{scheduleStatus}",
-            "  </if>",
             "</where>",
             "</script>"
     })
     Long countScheduleTaskList(
             @Param("subAccount") String subAccount,
-            @Param("threeDaysAgoTime") String threeDaysAgoTime,
-            @Param("taskName") String taskName,
-            @Param("scheduleStatus") Byte scheduleStatus
+            @Param("threeDaysAgoTime") String threeDaysAgoTime
     );
 
     // ==================== 任务详情（分页） ====================
     @Select({
             "<script>",
-            "SELECT t1.SubmitMsgId, t1.Caller, t1.Callee, t1.RecvDRTime, t1.RecvDRStatus, t1.RecvDRError, t1.PKNumber, t1.PKTotal ",
-            "FROM tbl_APITask t1 ",
-            "INNER JOIN tbl_APIScheduleSend t2 ON t1.APITaskId = t2.TaskID ",
-            "WHERE t2.SubAccount = #{subAccount} ", // 关联主表的subAccount
-            "  AND t2.TaskTime >= #{threeDaysAgoTime} ", // 主表的时间限制
-            "  AND t1.APITaskId = #{taskId} ",
+            "SELECT SubmitMsgId, Caller, Callee, RecvDRTime, RecvDRStatus, RecvDRError, PKNumber, PKTotal ",
+            "FROM tbl_APITask",
+            "WHERE APITaskId = #{taskId} ",
             "  <if test='callee != null and callee != \"\"'>",
             "    AND t1.Callee LIKE CONCAT('%', #{callee}, '%')",
             "  </if>",
-            "ORDER BY t1.RecvDRTime DESC ",
+            "ORDER BY RecvDRTime DESC ",
             "LIMIT #{offset}, #{pageSize}",
             "</script>"
     })
     @ResultType(TaskDetailVO.class)
     List<TaskDetailVO> selectTaskDetailList(
-            @Param("subAccount") String subAccount,
-            @Param("threeDaysAgoTime") String threeDaysAgoTime,
             @Param("taskId") String taskId,
             @Param("callee") String callee,
             @Param("offset") Integer offset,
@@ -93,37 +72,27 @@ public interface SmsQueueMapper {
 
     @Select({
             "<script>",
-            "SELECT COUNT(*) FROM tbl_APITask t1 ",
-            "INNER JOIN tbl_APIScheduleSend t2 ON t1.APITaskId = t2.TaskID ",
-            "WHERE t2.SubAccount = #{subAccount} ",
-            "  AND t2.TaskTime >= #{threeDaysAgoTime} ",
-            "  AND t1.APITaskId = #{taskId} ",
+            "SELECT COUNT(*) FROM tbl_APITask",
+            "WHERE APITaskId = #{taskId} ",
             "  <if test='callee != null and callee != \"\"'>",
             "    AND t1.Callee LIKE CONCAT('%', #{callee}, '%')",
             "  </if>",
             "</script>"
     })
     Long countTaskDetailList(
-            @Param("subAccount") String subAccount,
-            @Param("threeDaysAgoTime") String threeDaysAgoTime,
             @Param("taskId") String taskId,
             @Param("callee") String callee
     );
 
     // ==================== 导出全部详情 ====================
     @Select({
-            "SELECT t1.SubmitMsgId, t1.Caller, t1.Callee, t1.RecvDRTime, t1.RecvDRStatus, t1.RecvDRError, t1.PKNumber, t1.PKTotal ",
-            "FROM tbl_APITask t1 ",
-            "INNER JOIN tbl_APIScheduleSend t2 ON t1.APITaskId = t2.TaskID ",
-            "WHERE t2.SubAccount = #{subAccount} ",
-            "  AND t2.TaskTime >= #{threeDaysAgoTime} ",
-            "  AND t1.APITaskId = #{taskId} ",
-            "ORDER BY t1.RecvDRTime DESC"
+            "SELECT SubmitMsgId, Caller, Callee, RecvDRTime, RecvDRStatus, RecvDRError, PKNumber, PKTotal ",
+            "FROM tbl_APITask",
+            "WHERE APITaskId = #{taskId} ",
+            "ORDER BY RecvDRTime DESC"
     })
     @ResultType(TblAPITask.class)
     List<TblAPITask> selectAllTaskDetailsByTaskId(
-            @Param("subAccount") String subAccount,
-            @Param("threeDaysAgoTime") String threeDaysAgoTime,
             @Param("taskId") String taskId
     );
 

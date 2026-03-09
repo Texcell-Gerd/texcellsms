@@ -6,6 +6,7 @@ import com.texcellsms.sms.mapper.prepay.SubmitRecordMapper;
 import com.texcellsms.sms.model.DTO.SubmitRecordDTO;
 import com.texcellsms.sms.model.DTO.SubmitRecordWithStatsDTO;
 import com.texcellsms.sms.model.vo.SubmitRecordExportVO;
+import com.texcellsms.sms.util.SmsContentParserUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -24,6 +25,11 @@ public class SubmitRecordService {
     @Resource
     private SubmitRecordMapper submitRecordMapper;
 
+    //获取当前登录用户名
+    private String SubAccount() {
+        return TokenService.getUsername();
+    };
+
     // 分表后缀格式化器
     private static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("yyyyMMdd");
     // 数据库需要的日期格式（/分隔）
@@ -39,10 +45,10 @@ public class SubmitRecordService {
     }
 
     /**
-     * 查询方法
+     * 发送记录查询
      */
     private List<SubmitRecordDTO> querySubmitRecordsCommon(
-            String sourAccount, Date startTime, Date endTime,
+            Date startTime, Date endTime,
             String callee, String mcc, String mnc,
             String innerReportState, String innerReportError,
             Integer pageNum, Integer pageSize
@@ -59,10 +65,11 @@ public class SubmitRecordService {
             if (endTime == null) {
                 endTime = new Date(now);
             }
-
+            String subAccount = SubAccount();
             String startTimeStr = DATETIME_FORMAT_DB.format(startTime);
             String endTimeStr = DATETIME_FORMAT_DB.format(endTime);
             String tableSuffix = DATE_FORMAT.format(startTime);
+
 
             pageSize = Math.min(pageSize, 50);
             Integer offset = (pageNum - 1) * pageSize;
@@ -73,11 +80,11 @@ public class SubmitRecordService {
             }
 
             logger.info("开始查询: account={}, start={}, end={}, page={}, size={}, offset={}",
-                    sourAccount, startTimeStr, endTimeStr, pageNum, pageSize, offset);
+                    subAccount, startTimeStr, endTimeStr, pageNum, pageSize, offset);
 
             long sqlStart = System.currentTimeMillis();
             List<SubmitRecordDTO> records = submitRecordMapper.querySubmitRecordsWithJoin(
-                    tableSuffix, sourAccount, startTimeStr, endTimeStr,
+                    tableSuffix, subAccount, startTimeStr, endTimeStr,
                     callee, mcc, mnc, innerReportState, innerReportError,
                     pageSize, offset
             );
@@ -85,13 +92,40 @@ public class SubmitRecordService {
 
             logger.info("SQL查询耗时: {}ms, 返回记录数: {}", sqlEnd - sqlStart, records.size());
 
-            // 分批处理记录，移除金额计算逻辑
+            // ========== 数据逻辑处理 ==========
             if (!records.isEmpty()) {
                 int batchSize = Math.min(100, records.size());
                 for (int i = 0; i < records.size(); i += batchSize) {
                     int end = Math.min(i + batchSize, records.size());
                     List<SubmitRecordDTO> batch = records.subList(i, end);
-                    processBatchRecords(batch);
+
+                    // 批量处理每条记录
+                    for (SubmitRecordDTO record : batch) {
+                        // 1. 统一回执状态（原有逻辑）
+                        if (record.getFbInnerReportState() != null && !record.getFbInnerReportState().isEmpty()) {
+                            record.setInnerReportState(record.getFbInnerReportState());
+                        } else {
+                            record.setRecvDRTime(null);
+                            record.setInnerReportState("已提交");
+                        }
+
+                        // 2. 解析+BASE64加密短信内容
+                        String encryptedMsg = SmsContentParserUtil.parseAndEncryptShortMessage(
+                                record.getOriginalShortMessage(),
+                                record.getDcs()
+                        );
+                        record.setShortMessage(encryptedMsg);
+
+                        // 3. 处理短信内容换行符
+                        if (record.getShortMessage() != null) {
+                            record.setShortMessage(record.getShortMessage().replaceAll("\\n", " "));
+                        }
+
+                        // 4. 清空临时字段
+                        record.setFbInnerReportState(null);
+                        record.setInnerReportError(null);
+                        record.setChargeFee(null);
+                    }
                 }
             }
 
@@ -108,53 +142,14 @@ public class SubmitRecordService {
         }
     }
 
-    /**
-     * 分批处理记录
-     */
-    private void processBatchRecords(List<SubmitRecordDTO> batch) {
-        for (SubmitRecordDTO record : batch) {
-            // 1. 统一回执状态
-            if (record.getFbInnerReportState() != null && !record.getFbInnerReportState().isEmpty()) {
-                record.setInnerReportState(record.getFbInnerReportState());
-            } else {
-                record.setRecvDRTime(null);
-                record.setInnerReportState("已提交");
-            }
-
-            // 2. 处理短信内容换行符
-            if (record.getShortMessage() != null) {
-                record.setShortMessage(record.getShortMessage().replaceAll("\\n", " "));
-            }
-
-            // 3. 清空临时字段（移除金额格式化逻辑）
-            record.setFbInnerReportState(null);
-            record.setInnerReportError(null);
-            record.setChargeFee(null); // 原始ChargeFee字段清空
-        }
-    }
-
     public List<SubmitRecordDTO> getSubmitRecordsByLoginUser(
-            String loginUserAccount, Date startTime, Date endTime,
+            Date startTime, Date endTime,
             String callee, String mcc, String mnc,
             String innerReportState, String innerReportError,
             Integer pageNum, Integer pageSize
     ) {
         return querySubmitRecordsCommon(
-                loginUserAccount, startTime, endTime,
-                callee, mcc, mnc,
-                innerReportState, innerReportError,
-                pageNum, pageSize
-        );
-    }
-
-    public List<SubmitRecordDTO> getSubmitRecordsForDebug(
-            String sourAccount, Date startTime, Date endTime,
-            String callee, String mcc, String mnc,
-            String innerReportState, String innerReportError,
-            Integer pageNum, Integer pageSize
-    ) {
-        return querySubmitRecordsCommon(
-                sourAccount, startTime, endTime,
+                startTime, endTime,
                 callee, mcc, mnc,
                 innerReportState, innerReportError,
                 pageNum, pageSize
@@ -162,7 +157,7 @@ public class SubmitRecordService {
     }
 
     public SubmitRecordWithStatsDTO getSubmitRecordWithStats(
-            String sourAccount, Date startTime, Date endTime,
+            Date startTime, Date endTime,
             String callee, String mcc, String mnc,
             String innerReportState, String innerReportError,
             Integer pageNum, Integer pageSize
@@ -176,22 +171,23 @@ public class SubmitRecordService {
             String startTimeStr = DATETIME_FORMAT_DB.format(startTime);
             String endTimeStr = DATETIME_FORMAT_DB.format(endTime);
             String tableSuffix = DATE_FORMAT.format(startTime);
+            String subAccount = SubAccount();
             pageSize = Math.min(pageSize, 50);
 
             List<SubmitRecordDTO> records = querySubmitRecordsCommon(
-                    sourAccount, startTime, endTime,
+                    startTime, endTime,
                     callee, mcc, mnc,
                     innerReportState, innerReportError,
                     pageNum, pageSize
             );
 
             Long submitTotal = submitRecordMapper.countSubmitTotal(
-                    tableSuffix, sourAccount, startTimeStr, endTimeStr
+                    tableSuffix, subAccount, startTimeStr, endTimeStr
             );
             if (submitTotal == null) submitTotal = 0L;
 
             List<Map<String, Object>> deliverStats = submitRecordMapper.countDeliverStats(
-                    tableSuffix, sourAccount, startTimeStr, endTimeStr
+                    tableSuffix, subAccount, startTimeStr, endTimeStr
             );
             Long deliverSuccess = 0L;
             Long deliverFail = 0L;
@@ -231,27 +227,11 @@ public class SubmitRecordService {
         }
     }
 
-    public List<SubmitRecordDTO> getSubmitRecordsFast(
-            String sourAccount, Date startTime, Date endTime,
-            Integer pageNum, Integer pageSize
-    ) {
-        if (pageNum > 10) {
-            logger.warn("页码过大: {}, 限制为前10页", pageNum);
-            return Collections.emptyList();
-        }
-
-        return getSubmitRecordsForDebug(
-                sourAccount, startTime, endTime,
-                null, null, null, null, null,
-                pageNum, pageSize
-        );
-    }
-
     /**
      * 查询导出数据（EasyExcel专用，流式查询避免OOM）
      */
     public List<SubmitRecordExportVO> queryExportDataForEasyExcel(
-            String sourAccount, Date startTime, Date endTime,
+            Date startTime, Date endTime,
             String callee, String mcc, String mnc,
             String innerReportState, String innerReportError
     ) {
@@ -260,14 +240,17 @@ public class SubmitRecordService {
             String startTimeStr = DATETIME_FORMAT_DB.format(startTime);
             String endTimeStr = DATETIME_FORMAT_DB.format(endTime);
             String tableSuffix = DATE_FORMAT.format(startTime);
+            String subAccount = SubAccount();
 
-            // 调用原有导出查询方法（无分页，直接查全量）
+            // 调用导出专用查询
             List<SubmitRecordDTO> dtoList = submitRecordMapper.querySubmitRecordsForExportWithJoin(
-                    tableSuffix, sourAccount, startTimeStr, endTimeStr,
+                    tableSuffix, subAccount, startTimeStr, endTimeStr,
                     callee, mcc, mnc, innerReportState, innerReportError
             );
 
-            // DTO 转 VO（处理空值、优化展示）
+            logger.info("导出查询返回记录数: {}", dtoList.size());
+
+            // DTO 转 VO（仅解析短信内容，不加密）
             return dtoList.stream().map(dto -> {
                 SubmitRecordExportVO vo = new SubmitRecordExportVO();
                 vo.setSourAccount(dto.getSourAccount() == null ? "" : dto.getSourAccount());
@@ -277,10 +260,24 @@ public class SubmitRecordService {
                 vo.setCallee(dto.getCallee() == null ? "" : dto.getCallee());
                 vo.setSmLength(dto.getSmLength() == null ? "" : dto.getSmLength());
                 vo.setActualChargeFee(dto.getActualChargeFee() == null ? "0.0000" : dto.getActualChargeFee());
-                vo.setShortMessage(dto.getShortMessage() == null ? "" : dto.getShortMessage().replaceAll("\\n", " "));
+
+                // 解析短信内容
+                String parsedMsg = SmsContentParserUtil.parseShortMessageOnly(
+                        dto.getOriginalShortMessage(),
+                        dto.getDcs()
+                );
+                // 处理换行符，优化导出格式
+                vo.setShortMessage(parsedMsg == null ? "" : parsedMsg.replaceAll("\\n", " "));
+
                 vo.setMcc(dto.getMcc() == null ? "" : dto.getMcc());
                 vo.setMnc(dto.getMnc() == null ? "" : dto.getMnc());
-                vo.setInnerReportState(dto.getInnerReportState() == null ? "已提交" : dto.getInnerReportState());
+
+                // 统一回执状态
+                String reportState = dto.getFbInnerReportState() != null && !dto.getFbInnerReportState().isEmpty()
+                        ? dto.getFbInnerReportState()
+                        : "已提交";
+                vo.setInnerReportState(reportState);
+
                 vo.setRecvDRTime(dto.getRecvDRTime() == null ? "" : dto.getRecvDRTime());
                 return vo;
             }).collect(Collectors.toList());
