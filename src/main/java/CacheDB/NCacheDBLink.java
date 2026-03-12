@@ -1,6 +1,9 @@
 package CacheDB;
 import com.google.gson.Gson;
 import CacheDB.CacheDBResult.*;
+import com.texcellsms.sms.interceptor.AuthInterceptor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -11,6 +14,8 @@ import java.util.concurrent.CopyOnWriteArrayList;
 //@Service
 public class NCacheDBLink {
 	private static  List<NCacheDBLink> plist =new CopyOnWriteArrayList();
+
+	private static final Logger logger = LoggerFactory.getLogger(NCacheDBLink.class);
 
 	private static final int connections = 10;
 
@@ -53,11 +58,13 @@ public class NCacheDBLink {
 		pClient = Client.InitEnv(sServer,nPort,sUserName,sPassword,sDB,sPageCoding,sDBCoding);
 		if( pClient != 0 )
 		{
-			System.out.println("Init OK!");
+//			System.out.println("Init OK!");
+			logger.info("CacheDB初始化成功:sServer: {} nPort: {} sUserName: {} sPassword: {} sDB: {}",sServer,nPort,sUserName,sPassword,sDB);
 		}
 		else
 		{
-			System.out.println("Init Fail!");
+//			System.out.println("Init Fail!");
+			logger.error("CacheDB初始化失敗:sServer: {} nPort: {} sUserName: {} sPassword: {} sDB: {} sPageCoding: {} sDBCoding: {}",sServer,nPort,sUserName,sPassword,sDB,sPageCoding,sDBCoding);
 		}
 		return 0;
 	}
@@ -67,11 +74,13 @@ public class NCacheDBLink {
 		pClient = Client.InitEnv(sServer,nPort,sUserName,sPassword,sDB,sPageCoding,sDBCoding);
 		if( pClient != 0 )
 		{
-			System.out.println("Init OK!");
+			//System.out.println("Init OK!");
+			logger.info("CacheDB初始化成功:sServer: {} nPort: {} sUserName: {} sPassword: {} sDB: {} ",sServer,nPort,sUserName,sPassword,sDB);
 		}
 		else
 		{
-			System.out.println("Init Fail!");
+//			System.out.println("Init Fail!");
+			logger.error("CacheDB初始化失敗:sServer: {} nPort: {} sUserName: {} sPassword: {} sDB: {} sPageCoding: {} sDBCoding: {}",sServer,nPort,sUserName,sPassword,sDB,sPageCoding,sDBCoding);
 		}
 		return 0;
 	}
@@ -81,11 +90,13 @@ public class NCacheDBLink {
 	{
 		if( pClient == 0 )
 		{
-			System.out.println("Not Init!");
+//			System.out.println("Not Init!");
+			logger.error("连接未初始化");
 			return 1;
 		}
 		int nRet =  Client.Connect(pClient);
-		System.out.println("Connect Result:" + nRet);
+		logger.info("连接结果: {}",nRet);
+//		System.out.println("Connect Result:" + nRet);
 		return nRet;
 	}
 
@@ -93,11 +104,13 @@ public class NCacheDBLink {
 	{
 		if( pClient == 0 )
 		{
-			System.out.println("Not Init!");
+//			System.out.println("Not Init!");
+			logger.error("连接未初始化");
 			return 1;
 		}
 		int nRet =  Client.CloseConnect(pClient);
-		System.out.println("Disconnect Result:" + nRet);
+//		System.out.println("Disconnect Result:" + nRet);
+		logger.info("断开结果: {}",nRet);
 		return nRet;
 	}
 
@@ -105,11 +118,13 @@ public class NCacheDBLink {
 	{
 		if( pClient == 0 )
 		{
-			System.out.println("Not Init!");
+//			System.out.println("Not Init!");
+			logger.error("连接未初始化");
 		}
 		int nRet =  Client.Destroy(pClient);
 		//pClient = 0;
-		System.out.println("Destroy Result:" + nRet);
+//		System.out.println("Destroy Result:" + nRet);
+		logger.info("销毁结果: {}",nRet);
 	}
 
 	public Map<String, Object> prc_MMSIFQueryBalance(String sSubAccount){
@@ -168,8 +183,9 @@ public class NCacheDBLink {
 		{
 			decodeErr = pResult.getsError();
 		}
-		System.out.println("---------------prc_MMSIFQueryBalance--------------");
-		System.out.println("Ret=" + pResult.getnRet() + ",sError=" + decodeErr + ",outputCount=" + pResult.getnOutputParaCount() + ",totaldataset:" + pResult.getnTotalDataSet());
+		logger.info(strSQL+"调用开始 用户: {}",sSubAccount);
+		logger.info("Ret={} sError={} outputCount={} totaldataset:{}", pResult.getnRet(),decodeErr, pResult.getnOutputParaCount() , pResult.getnTotalDataSet());
+		//System.out.println("Ret=" + pResult.getnRet() + ",sError=" + decodeErr + ",outputCount=" + pResult.getnOutputParaCount() + ",totaldataset:" + pResult.getnTotalDataSet());
 		List<Recordset> pOutVal = pResult.getOutputPara();
 		Map<String, Object> map = new HashMap<String, Object>();
 		if( pOutVal.size() > 0 )
@@ -178,12 +194,13 @@ public class NCacheDBLink {
 			{
 				byte [] sVal = Base64Util.decode(pOutVal.get(i).getFieldValue());
 				String strVal = new String(sVal);
-				System.out.println(pOutVal.get(i).getFieldName() + ":" + strVal );
+//				System.out.println(pOutVal.get(i).getFieldName() + ":" + strVal );
+				logger.info("KEY:{} Val:{}",pOutVal.get(i).getFieldName(),strVal);
 				map.put(pOutVal.get(i).getFieldName(),strVal);
 			}
 		}
 		map.put("sError",decodeErr);
-		System.out.println("---------------prc_MMSIFQueryBalance-----------");
+		logger.info(strSQL+"调用结束 用户: {}",sSubAccount);
 		return map;
 	}
 
@@ -231,8 +248,8 @@ public class NCacheDBLink {
 		{
 			decodeErr = pResult.getsError();
 		}
-		System.out.println("---------------web_QueryUserRate--------------");
-		System.out.println("Ret=" + pResult.getnRet() + ",sError=" + decodeErr + ",outputCount=" + pResult.getnOutputParaCount() + ",totaldataset:" + pResult.getnTotalDataSet());
+		logger.info(strSQL+"调用开始 用户: {}",strUserName);
+		logger.info("Ret={} sError={} outputCount={} totaldataset:{}", pResult.getnRet(),decodeErr, pResult.getnOutputParaCount() , pResult.getnTotalDataSet());
 		List<Recordset> pOutVal = pResult.getOutputPara();
 		if( pOutVal.size() > 0 )
 		{
@@ -240,7 +257,8 @@ public class NCacheDBLink {
 			{
 				byte [] sVal = Base64Util.decode(pOutVal.get(i).getFieldValue());
 				String strVal = new String(sVal);
-				System.out.println(pOutVal.get(i).getFieldName() + ":" + strVal );
+				//System.out.println(pOutVal.get(i).getFieldName() + ":" + strVal );
+				logger.info("KEY:{} Val:{}",pOutVal.get(i).getFieldName(),strVal);
 			}
 		}
 		if( pResult.getnTotalDataSet() > 0 )
@@ -261,11 +279,13 @@ public class NCacheDBLink {
 //			System.out.println("Ret=" + pSummary.getRet() + ",sError=" + decodeErr);
 			for( int j = 0; j < pItem.size(); j++ )
 			{
-				System.out.println("DataSet:" + pItem.get(j).getDataSetNumber() + ",Rows:" + pItem.get(j).getnRowCount() + ",ColumnCount is:" + pItem.get(j).getnColumnCount());
+				logger.info("DataSet: {} Rows:{} ColumnCount is:{}",pItem.get(j).getDataSetNumber(),pItem.get(j).getnRowCount(),pItem.get(j).getnColumnCount());
+				//System.out.println("DataSet:" + pItem.get(j).getDataSetNumber() + ",Rows:" + pItem.get(j).getnRowCount() + ",ColumnCount is:" + pItem.get(j).getnColumnCount());
 				list.add(GetDataSetItem(pItem.get(j).getnRowCount(),pItem.get(j).getDataSetNumber()));
 			}
 //			System.out.println("---------------ExecProc_InAndOutAndRecordSet_WithUnicode GetSummary end------");
 		}
+		logger.info(strSQL+"调用结束 用户:{}",strUserName);
 //		System.out.println("---------------ExecProc_InAndOutAndRecordSet_WithUnicode  End----------");
 		return list;
 	}
@@ -324,8 +344,10 @@ public class NCacheDBLink {
 		{
 			decodeErr = pResult.getsError();
 		}
-		System.out.println("---------------prc_ChangeSwitchAccountPWD--------------");
-		System.out.println("Ret=" + pResult.getnRet() + ",sError=" + decodeErr + ",outputCount=" + pResult.getnOutputParaCount() + ",totaldataset:" + pResult.getnTotalDataSet());
+		//System.out.println("---------------prc_ChangeSwitchAccountPWD--------------");
+		//System.out.println("Ret=" + pResult.getnRet() + ",sError=" + decodeErr + ",outputCount=" + pResult.getnOutputParaCount() + ",totaldataset:" + pResult.getnTotalDataSet());
+		logger.info(strSQL+"调用开始 用户: {}",strUserName);
+		logger.info("Ret={} ,sError={} outputCount={} totaldataset:{}", pResult.getnRet(),decodeErr, pResult.getnOutputParaCount() , pResult.getnTotalDataSet());
 		List<Recordset> pOutVal = pResult.getOutputPara();
 		Map<String, Object> map = new HashMap<String, Object>();
 		if( pOutVal.size() > 0 )
@@ -339,7 +361,8 @@ public class NCacheDBLink {
 			}
 		}
 		map.put("sError",decodeErr);
-		System.out.println("---------------prc_ChangeSwitchAccountPWD-----------");
+		//System.out.println("---------------prc_ChangeSwitchAccountPWD-----------");
+		logger.info(strSQL+"调用结束 用户: {}",strUserName);
 		return map;
 	}
 
@@ -422,8 +445,10 @@ public class NCacheDBLink {
 		{
 			decodeErr = pResult.getsError();
 		}
-		System.out.println("---------------QueryGWUserPass_With2FA--------------");
-		System.out.println("Ret=" + pResult.getnRet() + ",sError=" + decodeErr + ",outputCount=" + pResult.getnOutputParaCount() + ",totaldataset:" + pResult.getnTotalDataSet());
+		//System.out.println("---------------QueryGWUserPass_With2FA--------------");
+		//System.out.println("Ret=" + pResult.getnRet() + ",sError=" + decodeErr + ",outputCount=" + pResult.getnOutputParaCount() + ",totaldataset:" + pResult.getnTotalDataSet());
+		logger.info(strSQL+"调用开始 用户: {}",strUserName);
+		logger.info("Ret={} ,sError={} outputCount={} totaldataset:{}", pResult.getnRet(),decodeErr, pResult.getnOutputParaCount() , pResult.getnTotalDataSet());
 		List<Recordset> pOutVal = pResult.getOutputPara();
 		Map<String, Object> map = new HashMap<String, Object>();
 		if( pOutVal.size() > 0 )
@@ -437,7 +462,8 @@ public class NCacheDBLink {
 			}
 		}
 		map.put("sError",decodeErr);
-		System.out.println("---------------QueryGWUserPass_With2FA-----------");
+		logger.info(strSQL+"调用结束 用户: {}",strUserName);
+		//System.out.println("---------------QueryGWUserPass_With2FA-----------");
 		return map;
 	}
 	public void ExecProc_NoneOutputAndDataSet()
