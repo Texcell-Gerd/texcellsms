@@ -356,7 +356,8 @@ public class NCacheDBLink {
 			{
 				byte [] sVal = Base64Util.decode(pOutVal.get(i).getFieldValue());
 				String strVal = new String(sVal);
-				System.out.println(pOutVal.get(i).getFieldName() + ":" + strVal );
+//				System.out.println(pOutVal.get(i).getFieldName() + ":" + strVal );
+				logger.info("KEY:{} Val:{}",pOutVal.get(i).getFieldName(),strVal);
 				map.put(pOutVal.get(i).getFieldName(),strVal);
 			}
 		}
@@ -457,7 +458,8 @@ public class NCacheDBLink {
 			{
 				byte [] sVal = Base64Util.decode(pOutVal.get(i).getFieldValue());
 				String strVal = new String(sVal);
-				System.out.println(pOutVal.get(i).getFieldName() + ":" + strVal );
+				//System.out.println(pOutVal.get(i).getFieldName() + ":" + strVal );
+				logger.info("KEY:{} Val:{}",pOutVal.get(i).getFieldName(),strVal);
 				map.put(pOutVal.get(i).getFieldName(),strVal);
 			}
 		}
