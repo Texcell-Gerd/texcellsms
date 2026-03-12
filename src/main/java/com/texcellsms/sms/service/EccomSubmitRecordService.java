@@ -5,9 +5,11 @@ import com.texcellsms.sms.interceptor.DynamicDataSourceInterceptor;
 import com.texcellsms.sms.mapper.eccom.SubmitRecordMapper;
 import com.texcellsms.sms.model.DTO.SubmitRecordDTO;
 import com.texcellsms.sms.model.DTO.SubmitRecordWithStatsDTO;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+
 
 import javax.annotation.Resource;
 import java.text.NumberFormat;
@@ -57,10 +59,6 @@ public class EccomSubmitRecordService {
             pageSize = Math.min(pageSize, 50);
             Integer offset = (pageNum - 1) * pageSize;
 
-//            if (offset > 1000) {
-//                logger.warn("OFFSET过大: {}，查询可能很慢，建议添加索引或使用其他方案", offset);
-//                return Collections.emptyList();
-//            }
 
             logger.info("开始查询: account={}, start={}, end={}, page={}, size={}, offset={}",
                     sourAccount, startTimeStr, endTimeStr, pageNum, pageSize, offset);

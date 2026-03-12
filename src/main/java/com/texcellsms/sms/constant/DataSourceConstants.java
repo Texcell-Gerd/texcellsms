@@ -1,12 +1,12 @@
 package com.texcellsms.sms.constant;
 
 /**
- * 纯数据源常量类（仅存储常量，无业务逻辑）
+ * 数据源常量类（统一管理所有数据源key，避免硬编码）
  */
 public class DataSourceConstants {
-    // 物理数据源常量
-    public static final String DS_ECCOM = "eccom";
+    // 原有常量
     public static final String DS_PREPAY = "prepay";
-    public static final String DS_EXAMPLE = "example";
-    public static final String DS_AUTH = "auth";
+    public static final String DS_ECCOM = "eccom";
+    // 新增WEBPortal常量（和配置类保持一致）
+    public static final String DS_WEB_PORTAL = "webPortal";
 }

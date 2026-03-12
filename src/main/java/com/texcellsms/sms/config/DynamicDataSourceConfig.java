@@ -31,22 +31,17 @@ import java.util.Map;
         sqlSessionFactoryRef = "eccomSqlSessionFactory",
         nameGenerator = ModulePrefixBeanNameGenerator.class
 )
+// 新增WEBPortal的Mapper扫描
 @MapperScan(
-        basePackages = "com.texcellsms.sms.mapper.example",
-        sqlSessionFactoryRef = "exampleSqlSessionFactory",
-        nameGenerator = ModulePrefixBeanNameGenerator.class
-)
-@MapperScan(
-        basePackages = "com.texcellsms.sms.mapper.auth",
-        sqlSessionFactoryRef = "authSqlSessionFactory",
+        basePackages = "com.texcellsms.sms.mapper.webportal", // 建议新增专属包
+        sqlSessionFactoryRef = "webPortalSqlSessionFactory",
         nameGenerator = ModulePrefixBeanNameGenerator.class
 )
 public class DynamicDataSourceConfig {
 
     public static final String DS_PREPAY = "prepay";
     public static final String DS_ECCOM = "eccom";
-    public static final String DS_EXAMPLE = "example";
-    public static final String DS_AUTH = "auth";
+    public static final String DS_WEB_PORTAL = "webPortal"; // 新增WEBPortal数据源标识
 
     @Bean(name = "prepayDataSource")
     @Primary
@@ -85,33 +80,17 @@ public class DynamicDataSourceConfig {
         return ds;
     }
 
-    @Bean(name = "exampleDataSource")
-    public DataSource exampleDataSource() {
+    // 新增WEBPortal数据源配置
+    @Bean(name = "webPortalDataSource")
+    public DataSource webPortalDataSource() {
         HikariDataSource ds = new HikariDataSource();
-        ds.setDriverClassName("com.mysql.cj.jdbc.Driver");
-        ds.setJdbcUrl("jdbc:mysql://192.168.112.250:11781/example?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC&allowPublicKeyRetrieval=true&useSSL=false&connectTimeout=5000&socketTimeout=30000");
-        ds.setUsername("example");
-        ds.setPassword("example");
-        ds.setMaximumPoolSize(8);
-        ds.setMinimumIdle(1);
-        ds.setConnectionTimeout(30000);
-        ds.setIdleTimeout(600000);
-        ds.setLeakDetectionThreshold(300000);
-        ds.setMaxLifetime(28800000);
-        ds.setValidationTimeout(30000);
-        ds.setConnectionTestQuery("SELECT 1");
-        return ds;
-    }
-
-    @Bean(name = "authDataSource")
-    public DataSource authDataSource() {
-        HikariDataSource ds = new HikariDataSource();
-        ds.setDriverClassName("com.mysql.cj.jdbc.Driver");
-        ds.setJdbcUrl("jdbc:mysql://192.168.112.250:18801/auth?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC&allowPublicKeyRetrieval=true&useSSL=false&connectTimeout=5000&socketTimeout=30000");
-        ds.setUsername("auth");
-        ds.setPassword("auth");
-        ds.setMaximumPoolSize(8);
-        ds.setMinimumIdle(1);
+        ds.setDriverClassName("com.mysql.cj.jdbc.Driver"); // 如果是SQL Server需改为com.microsoft.sqlserver.jdbc.SQLServerDriver
+        // 根据数据库类型调整URL：MySQL格式 jdbc:mysql://IP:端口/库名 | SQL Server格式 jdbc:sqlserver://IP:端口;DatabaseName=库名
+        ds.setJdbcUrl("jdbc:mysql://192.168.128.247:14333/WEBPortal?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC&allowPublicKeyRetrieval=true&useSSL=false");
+        ds.setUsername("root");
+        ds.setPassword("9c98eCFD84F299F76F6D4252DE111484(*&^%$");
+        ds.setMaximumPoolSize(10);
+        ds.setMinimumIdle(2);
         ds.setConnectionTimeout(30000);
         ds.setIdleTimeout(600000);
         ds.setLeakDetectionThreshold(300000);
@@ -125,12 +104,14 @@ public class DynamicDataSourceConfig {
     public AbstractRoutingDataSource routingDataSource(
             DataSource prepayDataSource,
             DataSource eccomDataSource,
-            DataSource exampleDataSource,
-            DataSource authDataSource) {
+            DataSource webPortalDataSource) {
         AbstractRoutingDataSource routingDataSource = new AbstractRoutingDataSource() {
             @Override
             protected Object determineCurrentLookupKey() {
-                String key = DynamicDataSourceInterceptor.getCurrentDataSource();
+                // 关键修改：从新的 DataSourceInterceptor 获取数据源key
+                String key = com.texcellsms.sms.constant.DataSourceInterceptor.getCurrentDataSource();
+                // 新增日志，方便调试
+                System.out.println("当前路由数据源key：" + key);
                 return key == null ? DS_PREPAY : key;
             }
         };
@@ -138,8 +119,7 @@ public class DynamicDataSourceConfig {
         Map<Object, Object> dataSourceMap = new HashMap<>();
         dataSourceMap.put(DS_PREPAY, prepayDataSource);
         dataSourceMap.put(DS_ECCOM, eccomDataSource);
-        dataSourceMap.put(DS_EXAMPLE, exampleDataSource);
-        dataSourceMap.put(DS_AUTH, authDataSource);
+        dataSourceMap.put(DS_WEB_PORTAL, webPortalDataSource);
 
         routingDataSource.setTargetDataSources(dataSourceMap);
         routingDataSource.setDefaultTargetDataSource(prepayDataSource);
@@ -187,26 +167,11 @@ public class DynamicDataSourceConfig {
         return sessionFactoryBean.getObject();
     }
 
-    @Bean(name = "exampleSqlSessionFactory")
-    public SqlSessionFactory exampleSqlSessionFactory() throws Exception {
+    // 新增WEBPortal的SqlSessionFactory
+    @Bean(name = "webPortalSqlSessionFactory")
+    public SqlSessionFactory webPortalSqlSessionFactory() throws Exception {
         SqlSessionFactoryBean sessionFactoryBean = new SqlSessionFactoryBean();
-        sessionFactoryBean.setDataSource(exampleDataSource());
-        sessionFactoryBean.setTypeAliasesPackage("com.texcellsms.sms.model.entity,com.texcellsms.sms.model.DTO");
-
-        org.apache.ibatis.session.Configuration configuration = new org.apache.ibatis.session.Configuration();
-        configuration.setMapUnderscoreToCamelCase(true);
-        configuration.setDefaultStatementTimeout(30);
-        configuration.setLocalCacheScope(LocalCacheScope.STATEMENT);
-        configuration.setCacheEnabled(false);
-        sessionFactoryBean.setConfiguration(configuration);
-
-        return sessionFactoryBean.getObject();
-    }
-
-    @Bean(name = "authSqlSessionFactory")
-    public SqlSessionFactory authSqlSessionFactory() throws Exception {
-        SqlSessionFactoryBean sessionFactoryBean = new SqlSessionFactoryBean();
-        sessionFactoryBean.setDataSource(authDataSource());
+        sessionFactoryBean.setDataSource(webPortalDataSource());
         sessionFactoryBean.setTypeAliasesPackage("com.texcellsms.sms.model.entity,com.texcellsms.sms.model.DTO");
 
         org.apache.ibatis.session.Configuration configuration = new org.apache.ibatis.session.Configuration();
@@ -246,14 +211,10 @@ public class DynamicDataSourceConfig {
         return new SqlSessionTemplate(eccomSqlSessionFactory());
     }
 
-    @Bean(name = "exampleSqlSessionTemplate")
-    public SqlSessionTemplate exampleSqlSessionTemplate() throws Exception {
-        return new SqlSessionTemplate(exampleSqlSessionFactory());
-    }
-
-    @Bean(name = "authSqlSessionTemplate")
-    public SqlSessionTemplate authSqlSessionTemplate() throws Exception {
-        return new SqlSessionTemplate(authSqlSessionFactory());
+    // 新增WEBPortal的SqlSessionTemplate
+    @Bean(name = "webPortalSqlSessionTemplate")
+    public SqlSessionTemplate webPortalSqlSessionTemplate() throws Exception {
+        return new SqlSessionTemplate(webPortalSqlSessionFactory());
     }
 
     @Bean

@@ -1,4 +1,4 @@
-package com.texcellsms.sms.mapper.prepay;
+package com.texcellsms.sms.mapper.webportal;
 
 import com.texcellsms.sms.model.entity.TblAPITask;
 import com.texcellsms.sms.model.vo.ScheduleTaskVO;
@@ -56,7 +56,7 @@ public interface SmsQueueMapper {
             "FROM tbl_APITask",
             "WHERE APITaskId = #{taskId} ",
             "  <if test='callee != null and callee != \"\"'>",
-            "    AND t1.Callee LIKE CONCAT('%', #{callee}, '%')",
+            "    AND Callee LIKE CONCAT('%', #{callee}, '%')", // 移除错误的t1.前缀
             "  </if>",
             "ORDER BY RecvDRTime DESC ",
             "LIMIT #{offset}, #{pageSize}",
@@ -75,7 +75,7 @@ public interface SmsQueueMapper {
             "SELECT COUNT(*) FROM tbl_APITask",
             "WHERE APITaskId = #{taskId} ",
             "  <if test='callee != null and callee != \"\"'>",
-            "    AND t1.Callee LIKE CONCAT('%', #{callee}, '%')",
+            "    AND Callee LIKE CONCAT('%', #{callee}, '%')", // 移除错误的t1.前缀
             "  </if>",
             "</script>"
     })
