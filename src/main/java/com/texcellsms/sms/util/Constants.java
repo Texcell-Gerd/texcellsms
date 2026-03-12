@@ -107,8 +107,14 @@ public class Constants
      */
     public static final String RESOURCE_PREFIX = "/profile";
 
+
+    /**
+     * 登录路径
+     */
+    public static final String LOGIN="/api/auth/login";
+
     /**
      * 令牌
      */
-    public static final String HEADER = "authorization";
+    public static final String HEADER = "Authorization";
 }

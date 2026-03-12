@@ -44,18 +44,18 @@ public class AuthInterceptor implements HandlerInterceptor {
         // }
 
         // ========== 保留X-Request校验（可选，也可以注释） ==========
-        // 如果连X-Request也不想传，把下面这段也注释掉
+        // 获取请求地址
         String url = request.getRequestURI();
         if (url == null || url.trim().isEmpty()) {
             setUnauthorizedResponse(request,response,SMSResponseMessage.REQUESTERROR);
             return false;
         }
         //登录接口放行
-        if (url.equals("/api/auth/login")){
+        if (url.equals(Constants.LOGIN)){
             return true;
         }
         // 1. 注释Authorization校验
-         String token = request.getHeader("Authorization");
+         String token = request.getHeader(Constants.HEADER);
          if (token == null || token.trim().isEmpty()) {
              setUnauthorizedResponse(request,response,SMSResponseMessage.AUTHORIZATIONERROR);
              return false;
@@ -88,9 +88,9 @@ public class AuthInterceptor implements HandlerInterceptor {
         try
         {
             response.setContentType("application/json");
-            response.setStatus(200);
+            response.setStatus(Constants.FAIL);
             logger.error("[鉴权异常处理]请求路径:{}", request.getRequestURI());
-            response.setCharacterEncoding("UTF-8");
+            response.setCharacterEncoding(Constants.UTF8);
             response.getWriter().print(JSON.toJSON(smsResponseMessage).toString());
         }
         catch (IOException e)
