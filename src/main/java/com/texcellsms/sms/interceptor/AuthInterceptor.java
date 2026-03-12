@@ -8,6 +8,7 @@ import com.texcellsms.sms.util.Constants;
 import com.texcellsms.sms.util.SMSResponseMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import com.texcellsms.sms.util.AjaxResult;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.servlet.HandlerInterceptor;
 
@@ -91,7 +92,7 @@ public class AuthInterceptor implements HandlerInterceptor {
             response.setStatus(Constants.FAIL);
             logger.error("[鉴权异常处理]请求路径:{}", request.getRequestURI());
             response.setCharacterEncoding(Constants.UTF8);
-            response.getWriter().print(JSON.toJSON(smsResponseMessage).toString());
+            response.getWriter().print(JSON.toJSON(AjaxResult.error(smsResponseMessage.getCode(),smsResponseMessage.getMessage())).toString());
         }
         catch (IOException e)
         {
