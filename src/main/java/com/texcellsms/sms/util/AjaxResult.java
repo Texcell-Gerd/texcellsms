@@ -2,6 +2,9 @@ package com.texcellsms.sms.util;
 
 import java.util.HashMap;
 
+import static com.texcellsms.sms.util.SMSResponseMessage.ERROR;
+import static com.texcellsms.sms.util.SMSResponseMessage.SUCCECC;
+
 /**
  * 操作消息提醒
  *
@@ -83,7 +86,7 @@ public class AjaxResult extends HashMap<String, Object>
      */
     public static AjaxResult success()
     {
-        return AjaxResult.success("操作成功");
+        return AjaxResult.success(SUCCECC.getMessage());
     }
 
     /**
@@ -93,7 +96,7 @@ public class AjaxResult extends HashMap<String, Object>
      */
     public static AjaxResult success(Object data)
     {
-        return AjaxResult.success("操作成功", data);
+        return AjaxResult.success(SUCCECC.getMessage(), data);
     }
 
     /**
@@ -116,7 +119,7 @@ public class AjaxResult extends HashMap<String, Object>
      */
     public static AjaxResult success(String msg, Object data)
     {
-        return new AjaxResult(SMSResponseMessage.SUCCECC.getCode(), msg, data);
+        return new AjaxResult(SUCCECC.getCode(), msg, data);
     }
 
     /**
@@ -126,7 +129,7 @@ public class AjaxResult extends HashMap<String, Object>
      */
     public static AjaxResult error()
     {
-        return AjaxResult.error("操作失败");
+        return AjaxResult.error(ERROR.getMessage());
     }
 
     /**
