@@ -710,7 +710,8 @@ public class NCacheDBLink {
 		for( int i = 0; i < nTotalRow ; i++ )
 		{
 
-			System.out.println("---------------GetDataTable In DataSet "+ nDataSetNumber +"  Row:"+ i +"-----");
+			//System.out.println("---------------GetDataTable In DataSet "+ nDataSetNumber +"  Row:"+ i +"-----");
+			logger.info("费率数据采集 GetDataTable In DataSet {} Row: {}",nDataSetNumber,i);
 
 			strRet = Client.GetDataFromDataSet(pClient, nDataSetNumber, i);
 			pTable = parser.fromJson(strRet, DataTables.class);
@@ -728,12 +729,11 @@ public class NCacheDBLink {
 			{
 				byte [] sVal = Base64Util.decode(p.get(j).getFieldValue());
 				String strVal = new String(sVal);
-				System.out.print(p.get(j).getFieldName() + ":" + strVal );
+				logger.info("KEY: {}, Val: {}",p.get(j).getFieldName(),strVal);
+//				System.out.print(p.get(j).getFieldName() + ":" + strVal );
 				map.put(p.get(j).getFieldName(),strVal);
-				if( (j + 1 ) < p.size())System.out.print("|");
+				if( (j + 1 ) < p.size())logger.info("费率数据采集| next");
 			}
-			System.out.print("\r\n");
-			System.out.println("-------------------------------------------------------------------------------");
 		}
 		return map;
 	}
