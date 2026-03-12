@@ -42,7 +42,6 @@ public class AuthController {
     public AjaxResult ChangeSwitchAccountPWD(
             @RequestHeader(RequestHeaderConstants.AUTHORIZATION) String authorization,
             HttpServletRequest request,HttpServletResponse response, @RequestParam("OldPass") String OldPass,@RequestParam("NewPass") String NewPass) {
-        response.setHeader(Constants.HEADER,TokenService.refreshToken(authorization));
         return authService.ChangeSwitchAccountPWD(TokenService.getUsername(authorization),OldPass,NewPass);
     }
 
