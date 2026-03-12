@@ -10,6 +10,7 @@ import com.texcellsms.sms.util.AjaxResult;
 import org.springframework.stereotype.Service;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -30,7 +31,7 @@ public class AuthServiceImpl implements AuthService {
         loginUser.setToken(loginUser.getUUID()+cacheDBLonginResult.getFAKey());
         tokenService.createToken(loginUser);
         if (cacheDBLonginResult==null){
-            return AjaxResult.success();
+            return AjaxResult.error();
         }
         if (!cacheDBLonginResult.getResult().equals("0")){
             switch (cacheDBLonginResult.getResult()){
@@ -62,6 +63,17 @@ public class AuthServiceImpl implements AuthService {
         nCacheDBLink.Disconnect();
         nCacheDBLink.Destroy();
         return AjaxResult.success(map);
+    }
+
+    @Override
+    public AjaxResult getRate(String Username,String MCC,String MNC) {
+        NCacheDBLink nCacheDBLink=NCacheDBLink.getNCacheDBLink();
+        nCacheDBLink.InitEnv("192.168.112.250",18801,"auth","auth","auth","utf-8","utf-8");
+        nCacheDBLink.ConnectToCacheDB();
+        List<Map<String,String>> list = nCacheDBLink.web_QueryUserRate(Username,MCC,MNC);
+        nCacheDBLink.Disconnect();
+        nCacheDBLink.Destroy();
+        return AjaxResult.success(list);
     }
 
     @Override

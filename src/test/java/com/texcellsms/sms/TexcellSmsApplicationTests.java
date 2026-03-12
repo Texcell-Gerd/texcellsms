@@ -13,7 +13,7 @@ class TexcellSmsApplicationTests {
     void contextLoads() {
         System.out.println("test submit xunxun");
         pLink = NCacheDBLink.getNCacheDBLink();
-        pLink.InitEnv("192.168.112.250",11781,"example","example","example","utf-8","utf-8");
+        pLink.InitEnv("192.168.112.250",18801,"auth","auth","auth","utf-8","utf-8");
         pLink.ConnectToCacheDB();
 //		pLink.ExecProc_NoneOutputAndDataSet();
 //		pLink.ExecProc();
@@ -21,7 +21,7 @@ class TexcellSmsApplicationTests {
 //		pLink.ExecDir();
 //		pLink.ExecProc_InAndOutAndRecordSet_WithUnicode();
 //        pLink.ExecProc_QueryGWUserPass_With2FA("WTest1","123456","192.168.255.255");
-        pLink.web_QueryUserRate("WTest1");
+        pLink.web_QueryUserRate("WTest1","","");
         System.out.println("Status"+pLink.GetConnectStatus());
 //        pLink.Disconnect();
     }

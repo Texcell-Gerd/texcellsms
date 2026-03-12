@@ -11,5 +11,7 @@ public interface AuthService {
 
   AjaxResult getBalance(String Username);
 
+  AjaxResult getRate(String Username,String MCC,String MNC);
+
   AjaxResult ChangeSwitchAccountPWD(String Username,String OldPass,String NewPass);
 }

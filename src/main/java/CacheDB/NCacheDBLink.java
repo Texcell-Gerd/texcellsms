@@ -2,6 +2,7 @@ package CacheDB;
 import com.google.gson.Gson;
 import CacheDB.CacheDBResult.*;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -187,7 +188,9 @@ public class NCacheDBLink {
 	}
 
 
-	public Map<String, Object> web_QueryUserRate(String strUserName){
+	public List<Map<String,String>> web_QueryUserRate(String strUserName,String MCC,String MNC){
+
+		List<Map<String,String>> list =new ArrayList<>();
 
 		String strSQL ="web_QueryUserRate";
 		int nParaCount = 2;
@@ -207,15 +210,16 @@ public class NCacheDBLink {
 		pPara[1].nDataType = 12;//GString
 		pPara[1].nParaType = 0;//input
 		pPara[1].sName = "VendorId";
-		pPara[1].sInput = "%";
+		if (MCC.equals("")||MCC==null){
+			pPara[1].sInput = "%";
+		}else {
+			pPara[1].sInput = MCC+MNC;
+		}
 		pPara[1].nSize = pPara[1].sInput.length();
 		pPara[1].sOutput = "";
-		String pData = Client.GetDataSetItem(pClient);
-		String pRes =Client.GetDataFromDataSet(pClient,0,3);
 		String pResultS = Client.ExecProc(pClient, strSQL, nParaCount, pPara);
 		Gson parser = new Gson();
-		ProcResult pResult = parser.fromJson(pData, ProcResult.class);
-//		ProcResult pResult = parser.fromJson(pResultS, ProcResult.class);
+		ProcResult pResult = parser.fromJson(pResultS, ProcResult.class);
 
 		String decodeErr = "";
 		if( pResult.getnRet() > -90)
@@ -227,10 +231,9 @@ public class NCacheDBLink {
 		{
 			decodeErr = pResult.getsError();
 		}
-		System.out.println("---------------prc_MMSIFQueryBalance--------------");
+		System.out.println("---------------web_QueryUserRate--------------");
 		System.out.println("Ret=" + pResult.getnRet() + ",sError=" + decodeErr + ",outputCount=" + pResult.getnOutputParaCount() + ",totaldataset:" + pResult.getnTotalDataSet());
 		List<Recordset> pOutVal = pResult.getOutputPara();
-		Map<String, Object> map = new HashMap<String, Object>();
 		if( pOutVal.size() > 0 )
 		{
 			for( int i = 0; i < pOutVal.size(); i++ )
@@ -238,12 +241,33 @@ public class NCacheDBLink {
 				byte [] sVal = Base64Util.decode(pOutVal.get(i).getFieldValue());
 				String strVal = new String(sVal);
 				System.out.println(pOutVal.get(i).getFieldName() + ":" + strVal );
-				map.put(pOutVal.get(i).getFieldName(),strVal);
 			}
 		}
-		map.put("sError",decodeErr);
-		System.out.println("---------------prc_MMSIFQueryBalance-----------");
-		return map;
+		if( pResult.getnTotalDataSet() > 0 )
+		{
+			pResultS = Client.GetDataSetItem(pClient);
+			RecordsetSummary pSummary = parser.fromJson(pResultS, RecordsetSummary.class);
+			if( pSummary.getRet() > -90)
+			{
+				byte [] bErr = Base64Util.decode(pSummary.getsError());
+				decodeErr = new String(bErr);
+			}
+			else
+			{
+				decodeErr = pSummary.getsError();
+			}
+			List<RecordSetItems> pItem = pSummary.getDataSet();
+//			System.out.println("---------------ExecProc_InAndOutAndRecordSet_WithUnicode GetSummary----------");
+//			System.out.println("Ret=" + pSummary.getRet() + ",sError=" + decodeErr);
+			for( int j = 0; j < pItem.size(); j++ )
+			{
+				System.out.println("DataSet:" + pItem.get(j).getDataSetNumber() + ",Rows:" + pItem.get(j).getnRowCount() + ",ColumnCount is:" + pItem.get(j).getnColumnCount());
+				list.add(GetDataSetItem(pItem.get(j).getnRowCount(),pItem.get(j).getDataSetNumber()));
+			}
+//			System.out.println("---------------ExecProc_InAndOutAndRecordSet_WithUnicode GetSummary end------");
+		}
+//		System.out.println("---------------ExecProc_InAndOutAndRecordSet_WithUnicode  End----------");
+		return list;
 	}
 
 	public Map<String, Object> prc_ChangeSwitchAccountPWD(String strUserName,String strOldPass,String strNewPass){
@@ -650,12 +674,13 @@ public class NCacheDBLink {
 		System.out.println("---------------JNIDemo3  End----------");
 	}
 
-	private void GetDataSetItem(int nTotalRow,int nDataSetNumber)
+	private Map<String, String> GetDataSetItem(int nTotalRow, int nDataSetNumber)
 	{
 		String strRet = "";
 		DataTables pTable = null;
 		String decodeErr = "";
 		Gson parser = new Gson();
+		Map<String,String> map =new HashMap<>();
 		for( int i = 0; i < nTotalRow ; i++ )
 		{
 
@@ -678,12 +703,13 @@ public class NCacheDBLink {
 				byte [] sVal = Base64Util.decode(p.get(j).getFieldValue());
 				String strVal = new String(sVal);
 				System.out.print(p.get(j).getFieldName() + ":" + strVal );
+				map.put(p.get(j).getFieldName(),strVal);
 				if( (j + 1 ) < p.size())System.out.print("|");
 			}
 			System.out.print("\r\n");
 			System.out.println("-------------------------------------------------------------------------------");
-
 		}
+		return map;
 	}
 
 	public void ExecProc_InAndOutAndRecordSet_WithUnicode()

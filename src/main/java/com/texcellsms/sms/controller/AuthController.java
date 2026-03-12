@@ -41,8 +41,20 @@ public class AuthController {
     @PostMapping("/api/auth/ChangeSwitchAccountPWD")
     public AjaxResult ChangeSwitchAccountPWD(
             @RequestHeader(RequestHeaderConstants.AUTHORIZATION) String authorization,
-            HttpServletRequest request, @RequestParam("OldPass") String OldPass,@RequestParam("NewPass") String NewPass) {
+            HttpServletRequest request,HttpServletResponse response, @RequestParam("OldPass") String OldPass,@RequestParam("NewPass") String NewPass) {
+        response.setHeader(Constants.HEADER,TokenService.refreshToken(authorization));
         return authService.ChangeSwitchAccountPWD(TokenService.getUsername(authorization),OldPass,NewPass);
+    }
+
+
+    @GetMapping("/api/auth/getRate")
+    public AjaxResult getRate(
+            @RequestHeader(RequestHeaderConstants.AUTHORIZATION) String authorization,
+            @RequestParam("MCC") String MCC,@RequestParam("MNC") String MNC,
+            HttpServletRequest request,HttpServletResponse response) {
+        AjaxResult ajaxResult =authService.getRate(TokenService.getUsername(authorization),MCC,MNC);
+        response.setHeader(Constants.HEADER,TokenService.refreshToken(authorization));
+        return ajaxResult;
     }
 
 
