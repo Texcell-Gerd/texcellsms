@@ -20,9 +20,10 @@ class TexcellSmsApplicationTests {
 //		pLink.ExecProc_InAndOutAndRecordSet();
 //		pLink.ExecDir();
 //		pLink.ExecProc_InAndOutAndRecordSet_WithUnicode();
-        pLink.ExecProc_QueryGWUserPass_With2FA("WTest1","123456","192.168.255.255");
-        pLink.Disconnect();
-
+//        pLink.ExecProc_QueryGWUserPass_With2FA("WTest1","123456","192.168.255.255");
+        pLink.web_QueryUserRate("WTest1");
+        System.out.println("Status"+pLink.GetConnectStatus());
+//        pLink.Disconnect();
     }
 
 }

@@ -5,10 +5,13 @@ import CacheDB.CacheDBResult.*;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 //@Service
 public class NCacheDBLink {
-	private static  NCacheDBLink pLink =new NCacheDBLink();
+	private static  List<NCacheDBLink> plist =new CopyOnWriteArrayList();
+
+	private static final int connections = 10;
 
 	private static final String sServer ="192.168.112.250";
 
@@ -25,11 +28,26 @@ public class NCacheDBLink {
 	private static String sDBCoding ="utf-8";
 
 	public  static NCacheDBLink getNCacheDBLink(){
-		return  pLink;
+//		if (plist.isEmpty()||plist==null){
+//			 addlist();
+//		}
+//		for (int i = 0; i <plist.size() ; i++) {
+//			if (plist.get(i).GetConnectStatus()!= 0){
+//				return plist.get(i);
+//			}
+//		}
+		return  new NCacheDBLink();
 	}
 	private NCacheDBLink(){};
+
 	private long pClient = 0;
-	public int InitEnv(String sServer,int nPort,String sUserName,String sPassword,String sDB, String sPageCoding,String sDBCoding)
+
+	private static void addlist(){
+		for (int j = 0; j < connections; j++) {
+			plist.add(new NCacheDBLink());
+		}
+	}
+	public synchronized int  InitEnv(String sServer,int nPort,String sUserName,String sPassword,String sDB, String sPageCoding,String sDBCoding)
 	{
 		pClient = Client.InitEnv(sServer,nPort,sUserName,sPassword,sDB,sPageCoding,sDBCoding);
 		if( pClient != 0 )
@@ -44,7 +62,7 @@ public class NCacheDBLink {
 	}
 
 
-	public int InitEnv(){
+	public synchronized int InitEnv(){
 		pClient = Client.InitEnv(sServer,nPort,sUserName,sPassword,sDB,sPageCoding,sDBCoding);
 		if( pClient != 0 )
 		{
@@ -58,7 +76,7 @@ public class NCacheDBLink {
 	}
 
 
-	public int ConnectToCacheDB()
+	public synchronized int ConnectToCacheDB()
 	{
 		if( pClient == 0 )
 		{
@@ -70,7 +88,7 @@ public class NCacheDBLink {
 		return nRet;
 	}
 
-	public int Disconnect()
+	public synchronized int Disconnect()
 	{
 		if( pClient == 0 )
 		{
@@ -82,7 +100,7 @@ public class NCacheDBLink {
 		return nRet;
 	}
 
-	public void Destroy()
+	public synchronized void Destroy()
 	{
 		if( pClient == 0 )
 		{
@@ -192,9 +210,12 @@ public class NCacheDBLink {
 		pPara[1].sInput = "%";
 		pPara[1].nSize = pPara[1].sInput.length();
 		pPara[1].sOutput = "";
+		String pData = Client.GetDataSetItem(pClient);
+		String pRes =Client.GetDataFromDataSet(pClient,0,3);
 		String pResultS = Client.ExecProc(pClient, strSQL, nParaCount, pPara);
 		Gson parser = new Gson();
-		ProcResult pResult = parser.fromJson(pResultS, ProcResult.class);
+		ProcResult pResult = parser.fromJson(pData, ProcResult.class);
+//		ProcResult pResult = parser.fromJson(pResultS, ProcResult.class);
 
 		String decodeErr = "";
 		if( pResult.getnRet() > -90)

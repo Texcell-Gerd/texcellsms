@@ -1,7 +1,9 @@
 package com.texcellsms.sms.controller;
 
 
+import com.alibaba.fastjson2.JSON;
 import com.texcellsms.sms.constant.RequestHeaderConstants;
+import com.texcellsms.sms.model.vo.LoginUser;
 import com.texcellsms.sms.service.AuthService;
 import com.texcellsms.sms.service.TokenService;
 import com.texcellsms.sms.util.*;
@@ -15,6 +17,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
 import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
 
 
 /**
@@ -29,8 +32,10 @@ public class AuthController {
     @PostMapping("/api/auth/getBalance")
     public AjaxResult getBalance(
             @RequestHeader(RequestHeaderConstants.AUTHORIZATION) String authorization,
-            HttpServletRequest request) {
-            return authService.getBalance(TokenService.getUsername(authorization));
+            HttpServletRequest request,HttpServletResponse response) {
+        AjaxResult ajaxResult =authService.getBalance(TokenService.getUsername(authorization));
+        response.setHeader(Constants.HEADER,TokenService.refreshToken(authorization));
+        return ajaxResult;
     }
 
     @PostMapping("/api/auth/ChangeSwitchAccountPWD")
@@ -43,13 +48,24 @@ public class AuthController {
 
     /**
      * 登录接口（无需Authorization，X-Request=login）
+     * 'AppName'  : this.user.name ,
+     *               'Secret'   : this.user.password,
      */
     @PostMapping("/api/auth/login")
     public AjaxResult login(
             @RequestHeader(RequestHeaderConstants.X_REQUEST) String xRequest,
-            @RequestBody LoginRequest loginRequest,
-            HttpServletRequest request) {
-        return authService.login(loginRequest);
+            @RequestHeader("AppName") String AppName,
+            @RequestHeader("Secret") String Secret,
+            HttpServletRequest request, HttpServletResponse response) {
+        LoginRequest loginRequest = new LoginRequest();
+        loginRequest.setUsername(AppName);
+        loginRequest.setPassword(Secret);
+        String IP =TokenService.getIpAddress(request);
+        AjaxResult ajaxResult = authService.login(loginRequest,IP);
+        if (ajaxResult.get("data")!=null&&!ajaxResult.get("data").equals("")) {
+            response.setHeader(Constants.HEADER, JSON.toJavaObject(ajaxResult.get("data"), LoginUser.class).getToken());
+        }
+        return ajaxResult;
         // 1. 验证X-Request是否为login
 //        if (!"login".equalsIgnoreCase(xRequest)) {
 //            return LoginResponse.builder()

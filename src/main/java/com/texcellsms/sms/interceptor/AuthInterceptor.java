@@ -1,11 +1,14 @@
 package com.texcellsms.sms.interceptor;
 
 
+import com.texcellsms.sms.service.TokenService;
+import com.texcellsms.sms.util.Constants;
 import org.springframework.web.servlet.HandlerInterceptor;
 
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.HttpSession;
+import java.util.Map;
 
 
 public class AuthInterceptor implements HandlerInterceptor {
@@ -40,7 +43,7 @@ public class AuthInterceptor implements HandlerInterceptor {
             return false;
         }
         //登录接口放行
-        if (xRequest.equals("Login")){
+        if (xRequest.equals("LoginBy2FA")){
             return true;
         }
         // 1. 注释Authorization校验
@@ -52,14 +55,27 @@ public class AuthInterceptor implements HandlerInterceptor {
          }
          //验证令牌
          HttpSession session = request.getSession();
-         String authorization = (String) session.getServletContext().getAttribute(token);
-         //验证通过放行
-         if (authorization != null&&!authorization.trim().equals("")){
-             return true;
+         Map<String,String> map = (Map<String, String>) session.getServletContext().getAttribute(token);
+         //map 为空
+         if (map == null|| map.isEmpty()){
+             response.setStatus(401);
+             response.getWriter().write("Authorization token is error1");
+             return false;
          }
-        //直接返回true，允许所有请求通过
-        response.setStatus(401);
-        response.getWriter().write("Authorization token is error");
-        return false;
+         String authorization = map.get(Constants.HEADER);
+         //验证通不通过
+         if (authorization == null||authorization.trim().equals("")){
+             response.setStatus(401);
+             response.getWriter().write("Authorization token is error2");
+             return false;
+         }
+         //IP 发生变化
+         if (!TokenService.getIpAddress(request).equals(map.get("IP"))){
+             response.setStatus(101);
+             response.getWriter().write("IP Change");
+             return false;
+         }
+        //验证通过放行
+        return true;
     }
 }

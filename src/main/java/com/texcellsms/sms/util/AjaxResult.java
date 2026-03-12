@@ -14,7 +14,7 @@ public class AjaxResult extends HashMap<String, Object>
     /**
      * 状态码
      */
-    public static final String CODE_TAG = "code";
+    public static final String CODE_TAG = "Code";
 
     /**
      * 返回内容

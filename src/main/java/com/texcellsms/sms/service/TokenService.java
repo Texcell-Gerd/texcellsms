@@ -12,7 +12,9 @@ import org.springframework.stereotype.Service;
 
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpSession;
+import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 
 
 /**
@@ -39,7 +41,9 @@ public class TokenService
         String token = getToken(ServletUtils.getRequest());
         if (StringUtils.isNotEmpty(token))
         {
-            username = (String) ServletUtils.getSession().getServletContext().getAttribute(token);
+            Map<String,String> map;
+            map = (Map<String, String>) ServletUtils.getSession().getServletContext().getAttribute(token);
+            username = map.get("Username");
         }
         return username;
     }
@@ -50,7 +54,9 @@ public class TokenService
         String username=null;
         if (StringUtils.isNotEmpty(Authorization))
         {
-            username = (String) ServletUtils.getSession().getServletContext().getAttribute(Authorization);
+            Map<String,String> map;
+            map = (Map<String, String>) ServletUtils.getSession().getServletContext().getAttribute(Authorization);
+            username = map.get("Username");
         }
         return username;
     }
@@ -104,11 +110,15 @@ public class TokenService
 //        }
 //        redisService.setCacheObject(ACCESS_TOKEN + token, loginUser, EXPIRE_TIME, TimeUnit.SECONDS);
         HttpSession session = ServletUtils.getSession();
-        session.getServletContext().setAttribute(loginUser.getToken(),loginUser.getUsername());
+        Map<String,String> map = new HashMap<>();
+        map.put("Username",loginUser.getUsername());
+        map.put("IP",loginUser.getIP());
+        map.put(Constants.HEADER,loginUser.getToken());
+        session.getServletContext().setAttribute(loginUser.getToken(),map);
         session.setMaxInactiveInterval(1000*60*60);
     }
 
-    public CacheDBLonginResult getToken(LoginUser loginUser){
+    public synchronized CacheDBLonginResult getToken(LoginUser loginUser){
       CacheDBLink.InitEnv();
       CacheDBLink.ConnectToCacheDB();
       Map<String, Object> map =  CacheDBLink.ExecProc_QueryGWUserPass_With2FA(loginUser.getUsername(),loginUser.getPassword(),loginUser.getIP());
@@ -118,12 +128,12 @@ public class TokenService
       String   IsEnable = (String) map.get("IsEnable");
       CacheDBLonginResult cacheDBLonginResult = new CacheDBLonginResult(Result,WhitelistIP,FAKey,IsEnable);
       CacheDBLink.Disconnect();
+      CacheDBLink.Destroy();
       return cacheDBLonginResult;
     };
 
 
-    public static String getIpAddress() {
-        HttpServletRequest request = ServletUtils.getRequest();
+    public static String getIpAddress(HttpServletRequest request) {
         String ip = request.getHeader("x-forwarded-for");
         if (ip == null || ip.length() == 0 || "unknown".equalsIgnoreCase(ip)) {
             ip = request.getHeader("Proxy-Client-IP");
@@ -236,20 +246,35 @@ public class TokenService
 //        }
 //    }
 //
-//    /**
-//     * 刷新令牌有效期
-//     *
-//     * @param loginUser 登录信息
-//     */
-//    public void refreshToken(LoginUser loginUser)
-//    {
-//        loginUser.setLoginTime(System.currentTimeMillis());
-//        loginUser.setExpireTime(loginUser.getLoginTime() + EXPIRE_TIME * MILLIS_SECOND);
-//        // 根据uuid将loginUser缓存
-//        String userKey = getTokenKey(loginUser.getToken());
-//        redisService.setCacheObject(userKey, loginUser, EXPIRE_TIME, TimeUnit.SECONDS);
-//    }
-//
+    /**
+     * 刷新令牌有效期
+     *
+     * @param loginUser 登录信息
+     */
+    public static String refreshToken(String Authorization)
+    {
+       if (Authorization==null||Authorization.equals("")){
+           return null;
+       }
+        Map<String,String> map;
+        map = (Map<String, String>) ServletUtils.getSession().getServletContext().getAttribute(Authorization);
+        String Token = UUID.randomUUID().toString().replace("-", "") +Authorization.substring(Math.min(Authorization.length(), 32));
+        map.put(Constants.HEADER,Token);
+        HttpSession session = ServletUtils.getSession();
+        new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        Thread.sleep(30000);
+                    }catch (Exception e){}
+                    session.getServletContext().removeAttribute(Authorization);
+                }
+         }).start();
+        session.getServletContext().setAttribute(Token,map);
+//        session.getServletContext().removeAttribute(Authorization);
+        return Token;
+    }
+
 //    private String getTokenKey(String token)
 //    {
 //        return ACCESS_TOKEN + token;

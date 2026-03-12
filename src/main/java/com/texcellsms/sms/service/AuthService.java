@@ -7,7 +7,7 @@ import org.springframework.stereotype.Service;
 
 @Service
 public interface AuthService {
-  AjaxResult login(AuthController.LoginRequest loginRequest);
+  AjaxResult login(AuthController.LoginRequest loginRequest,String IP);
 
   AjaxResult getBalance(String Username);
 

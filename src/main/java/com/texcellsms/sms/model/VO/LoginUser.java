@@ -17,7 +17,6 @@ public class LoginUser implements Serializable {
 
     private String IP;
 
-
-
+    private String UUID;
 
 }

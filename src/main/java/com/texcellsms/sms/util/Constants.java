@@ -110,5 +110,5 @@ public class Constants
     /**
      * 令牌
      */
-    public static final String HEADER = "authorizations";
+    public static final String HEADER = "authorization";
 }
