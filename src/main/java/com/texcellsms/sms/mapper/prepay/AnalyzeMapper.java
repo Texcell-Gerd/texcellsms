@@ -28,7 +28,6 @@ public interface AnalyzeMapper {
             @Param("mcc") String mcc,
             @Param("mnc") String mnc,
             @Param("pageSize") Integer pageSize,
-
             @Param("offset") Integer offset
     );
 }
