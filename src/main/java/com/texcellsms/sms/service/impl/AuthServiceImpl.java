@@ -9,6 +9,7 @@ import com.texcellsms.sms.service.TokenService;
 import com.texcellsms.sms.util.AjaxResult;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -60,6 +61,10 @@ public class AuthServiceImpl implements AuthService {
         nCacheDBLink.InitEnv();
         nCacheDBLink.ConnectToCacheDB();
         Map<String,Object> map = nCacheDBLink.prc_MMSIFQueryBalance(Username);
+        BigDecimal b1 = new BigDecimal((String) map.get("Balance"));
+        BigDecimal b2 = new BigDecimal("10000");
+        BigDecimal result = b1.divide(b2);
+        map.put("Balance",result);
         nCacheDBLink.Disconnect();
         nCacheDBLink.Destroy();
         return AjaxResult.success(map);
