@@ -42,5 +42,4 @@ public class AnalyzeController {
         Date end = endTime != null ? DATETIME_FORMAT.parse(endTime) : null;
         return analyzeService.queryAnalyzeData(sourAccount, start,end,mcc, mnc, pageNum, pageSize);
     }
-
 }

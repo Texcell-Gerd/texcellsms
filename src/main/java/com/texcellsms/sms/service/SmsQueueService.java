@@ -10,7 +10,6 @@ import com.texcellsms.sms.model.vo.TaskDetailExcelVO;
 import com.texcellsms.sms.model.vo.TaskDetailVO;
 import com.texcellsms.sms.util.Base64Util;
 import com.texcellsms.sms.util.TimeRangeUtils;
-import com.texcellsms.sms.util.UserUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
@@ -24,6 +23,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import static com.texcellsms.sms.util.UserUtils.getCurrentSubAccount;
+
 @Service
 @RequiredArgsConstructor
 public class SmsQueueService {
@@ -32,12 +33,12 @@ public class SmsQueueService {
 
     // 获取当前登录用户的subAccount
     private String SubAccount(){
-        return "WTest1";
+        return TokenService.getUsername();
     }
 
     // ==================== 任务列表（分页） ====================
     public Map<String, Object> getQueueTasks(Integer pageNum, Integer pageSize) {
-        // 1. 安全切换数据源（使用常量类，避免硬编码）
+        // 1. 切换数据源
         try {
             DataSourceInterceptor.setCurrentDataSource(DataSourceConstants.DS_WEB_PORTAL);
 
@@ -128,7 +129,7 @@ public class SmsQueueService {
             if (taskIds == null || taskIds.isEmpty()) {
                 return 0;
             }
-            String subAccount = UserUtils.getCurrentSubAccount();
+            String subAccount = getCurrentSubAccount();
             String threeDaysAgo = TimeRangeUtils.getThreeDaysAgoTime();
             return smsQueueMapper.batchUpdateScheduleStatus(subAccount, threeDaysAgo, taskIds);
         } finally {

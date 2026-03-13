@@ -16,7 +16,7 @@ public interface SmsQueueMapper {
     // ==================== 任务列表（分页） ====================
     @Select({
             "<script>",
-            "SELECT TaskName, TaskTime, ScheduleSendTime, TaskTimeZone, ScheduleStatus, TotalCount, CalleeCount, ",
+            "SELECT TaskName,taskId,TaskTime, ScheduleSendTime, TaskTimeZone, ScheduleStatus, TotalCount, CalleeCount, ",
             "       SubmitSuccCount, DRSuccCount, DRFailCount, Short_Message, SplitCount ",
             "FROM tbl_APIScheduleSend ",
             "<where>",

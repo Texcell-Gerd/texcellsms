@@ -17,7 +17,7 @@ public class ChargeLog {
      * 唯一标识
      */
     @Schema(description = "日志唯一标识ID", example = "1001", required = false)
-    private Integer UNIID;
+    private Integer UNID;
 
     /**
      * 记录创建时间（强制指定香港时间格式）
