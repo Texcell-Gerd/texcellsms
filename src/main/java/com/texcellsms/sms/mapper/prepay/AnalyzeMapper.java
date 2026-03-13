@@ -11,7 +11,6 @@ import java.util.List;
 public interface AnalyzeMapper {
 
     @Select({
-            "<script>",
             "SELECT ",
             "SubmitTime AS ReportDate,",
             "ReportTime AS MNC,",
@@ -41,7 +40,6 @@ public interface AnalyzeMapper {
                 "AND MNC = #{mnc}",
             "  </if>",
             "LIMIT #{offset}, #{pageSize}",
-            "</script>"
     })
     @Results({
             @Result(column = "ReportDate", property = "ReportDate"),
