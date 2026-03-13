@@ -1,12 +1,9 @@
 package com.texcellsms.sms.mapper.prepay;
 
-import com.texcellsms.sms.model.DTO.AnalyzeDTO;
 import com.texcellsms.sms.model.DTO.PItemDTO;
-import com.texcellsms.sms.model.DTO.SubmitRecordDTO;
 import org.apache.ibatis.annotations.*;
 import org.springframework.stereotype.Repository;
 
-import java.util.Date;
 import java.util.List;
 
 @Repository
@@ -31,10 +28,10 @@ public interface AnalyzeMapper {
                 "AND ReportAccount = #{sourAccount}",
             "  </if>",
             "<if test='startTimeStr != null and startTimeStr != \"\"'>",
-                "AND SubmitTime > #{startTimeStr}",
+                "AND SubmitTime >= #{startTimeStr}",
             "  </if>",
             "<if test='endTimeStr != null and endTimeStr != \"\"'>",
-                "AND SubmitTime < #{endTimeStr}",
+                "AND SubmitTime <= #{endTimeStr}",
             "  </if>",
             "<if test='mcc != null and mcc != \"\"'>",
                 "AND MCC = #{mcc}",
