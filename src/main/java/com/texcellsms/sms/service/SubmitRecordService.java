@@ -117,20 +117,29 @@ public class SubmitRecordService {
         }
     }
 
-    private Long countTotal(Date startTime, Date endTime, String subAccount) {
+    // ====================== 【已修复】传入所有筛选条件 ======================
+    private Long countTotal(Date startTime, Date endTime, String subAccount,
+                            String callee, String mcc, String mnc,
+                            String innerReportState, String innerReportError) {
         List<String> suffixList = getDateSuffixList(startTime, endTime);
         long total = 0L;
         String sTime = DATETIME_FORMAT_DB.format(startTime);
         String eTime = DATETIME_FORMAT_DB.format(endTime);
 
         for (String suffix : suffixList) {
-            Long count = submitRecordMapper.countSubmitTotal(suffix, subAccount, sTime, eTime);
+            Long count = submitRecordMapper.countSubmitTotal(
+                    suffix, subAccount, sTime, eTime,
+                    callee, mcc, mnc, innerReportState, innerReportError
+            );
             if (count != null) total += count;
         }
         return total;
     }
 
-    private Map<String, Long> countDeliver(Date startTime, Date endTime, String subAccount) {
+    // ====================== 【已修复】传入所有筛选条件 ======================
+    private Map<String, Long> countDeliver(Date startTime, Date endTime, String subAccount,
+                                           String callee, String mcc, String mnc,
+                                           String innerReportState, String innerReportError) {
         List<String> suffixList = getDateSuffixList(startTime, endTime);
         Map<String, Long> result = new HashMap<>();
         result.put("success", 0L);
@@ -140,7 +149,10 @@ public class SubmitRecordService {
         String eTime = DATETIME_FORMAT_DB.format(endTime);
 
         for (String suffix : suffixList) {
-            List<Map<String, Object>> stats = submitRecordMapper.countDeliverStats(suffix, subAccount, sTime, eTime);
+            List<Map<String, Object>> stats = submitRecordMapper.countDeliverStats(
+                    suffix, subAccount, sTime, eTime,
+                    callee, mcc, mnc, innerReportState, innerReportError
+            );
             for (Map<String, Object> map : stats) {
                 String state = String.valueOf(map.get("InnerReportState"));
                 long count = Long.parseLong(String.valueOf(map.get("count")));
@@ -166,14 +178,24 @@ public class SubmitRecordService {
             String subAccount = SubAccount();
             pageSize = Math.min(pageSize, 50);
 
+            String state = (innerReportState == null) ? "" : innerReportState.trim();
+            String error = (innerReportError == null) ? "" : innerReportError.trim();
+            String calleeNo = (callee == null) ? "" : callee.trim();
+            String mccCode = (mcc == null) ? "" : mcc.trim();
+            String mncCode = (mnc == null) ? "" : mnc.trim();
+
             List<SubmitRecordDTO> records = querySubmitRecordsCommon(
                     startTime, endTime, callee, mcc, mnc,
                     innerReportState, innerReportError,
                     pageNum, pageSize
             );
 
-            Long total = countTotal(startTime, endTime, subAccount);
-            Map<String, Long> deliver = countDeliver(startTime, endTime, subAccount);
+            // ====================== 【已修复】统计方法带上条件 ======================
+            Long total = countTotal(startTime, endTime, subAccount,
+                    calleeNo, mccCode, mncCode, state, error);
+            Map<String, Long> deliver = countDeliver(startTime, endTime, subAccount,
+                    calleeNo, mccCode, mncCode, state, error);
+
             Long success = deliver.get("success");
             Long fail = deliver.get("fail");
 

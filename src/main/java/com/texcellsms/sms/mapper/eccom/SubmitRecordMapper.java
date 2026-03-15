@@ -95,33 +95,55 @@ public interface SubmitRecordMapper {
             @Param("innerReportError") String innerReportError
     );
 
-    // 统计总数
+    // ====================== 【已修复】统计总数：和列表完全一致的条件 ======================
     @Select({
-            "SELECT COUNT(*) FROM Submit_Bill_${tableSuffix} ",
-            "WHERE SourAccount = #{sourAccount} ",
-            "AND SubmitMsgTime >= #{startTimeStr} ",
-            "AND SubmitMsgTime <= #{endTimeStr} "
+            "SELECT COUNT(*) FROM Submit_Bill_${tableSuffix} sb ",
+            "LEFT JOIN Fee_Bill_${tableSuffix} fb ON sb.SubmitMsgId = fb.RecvMsgId ",
+            "WHERE sb.SourAccount = #{sourAccount} ",
+            "AND sb.SubmitMsgTime >= #{startTimeStr} ",
+            "AND sb.SubmitMsgTime <= #{endTimeStr} ",
+            "AND (#{callee} = '' OR sb.Callee = #{callee}) ",
+            "AND (#{mcc} = '' OR sb.MCC = #{mcc}) ",
+            "AND (#{mnc} = '' OR sb.MNC = #{mnc}) ",
+            "AND (#{innerReportState} = '' OR IFNULL(fb.InnerReportState, '') = #{innerReportState}) ",
+            "AND (#{innerReportError} = '' OR IFNULL(fb.InnerReportError, '') = #{innerReportError}) "
     })
     Long countSubmitTotal(
             @Param("tableSuffix") String tableSuffix,
             @Param("sourAccount") String sourAccount,
             @Param("startTimeStr") String startTimeStr,
-            @Param("endTimeStr") String endTimeStr
+            @Param("endTimeStr") String endTimeStr,
+            @Param("callee") String callee,
+            @Param("mcc") String mcc,
+            @Param("mnc") String mnc,
+            @Param("innerReportState") String innerReportState,
+            @Param("innerReportError") String innerReportError
     );
 
-    // 送达统计
+    // ====================== 【已修复】送达统计：和列表完全一致的条件 ======================
     @Select({
-            "SELECT InnerReportState, COUNT(*) AS count ",
-            "FROM Fee_Bill_${tableSuffix} ",
-            "WHERE SourAccount = #{sourAccount} ",
-            "AND TransMsgTime >= #{startTimeStr} ",
-            "AND TransMsgTime <= #{endTimeStr} ",
-            "GROUP BY InnerReportState"
+            "SELECT fb.InnerReportState, COUNT(*) AS count ",
+            "FROM Submit_Bill_${tableSuffix} sb ",
+            "LEFT JOIN Fee_Bill_${tableSuffix} fb ON sb.SubmitMsgId = fb.RecvMsgId ",
+            "WHERE sb.SourAccount = #{sourAccount} ",
+            "AND sb.SubmitMsgTime >= #{startTimeStr} ",
+            "AND sb.SubmitMsgTime <= #{endTimeStr} ",
+            "AND (#{callee} = '' OR sb.Callee = #{callee}) ",
+            "AND (#{mcc} = '' OR sb.MCC = #{mcc}) ",
+            "AND (#{mnc} = '' OR sb.MNC = #{mnc}) ",
+            "AND (#{innerReportState} = '' OR IFNULL(fb.InnerReportState, '') = #{innerReportState}) ",
+            "AND (#{innerReportError} = '' OR IFNULL(fb.InnerReportError, '') = #{innerReportError}) ",
+            "GROUP BY fb.InnerReportState"
     })
     List<Map<String, Object>> countDeliverStats(
             @Param("tableSuffix") String tableSuffix,
             @Param("sourAccount") String sourAccount,
             @Param("startTimeStr") String startTimeStr,
-            @Param("endTimeStr") String endTimeStr
+            @Param("endTimeStr") String endTimeStr,
+            @Param("callee") String callee,
+            @Param("mcc") String mcc,
+            @Param("mnc") String mnc,
+            @Param("innerReportState") String innerReportState,
+            @Param("innerReportError") String innerReportError
     );
 }
