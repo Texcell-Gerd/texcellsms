@@ -1,4 +1,4 @@
-package com.texcellsms.sms.mapper.prepay;
+package com.texcellsms.sms.mapper.eccom;
 
 import com.texcellsms.sms.model.DTO.PItemDTO;
 import org.apache.ibatis.annotations.*;
@@ -24,9 +24,6 @@ public interface AnalyzeMapper {
             "TotalCost AS Cost",
             "FROM MngDB.tbl_RefundSum ",
             "WHERE 1 = 1",
-            "<if test='sourAccount != null and sourAccount != \"\"'>",
-                "AND ReportAccount = #{sourAccount}",
-            "  </if>",
             "<if test='startTimeStr != null and startTimeStr != \"\"'>",
                 "AND SubmitTime >= #{startTimeStr}",
             "  </if>",

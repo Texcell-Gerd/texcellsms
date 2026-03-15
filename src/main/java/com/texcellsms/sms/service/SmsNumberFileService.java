@@ -1,7 +1,7 @@
 package com.texcellsms.sms.service;
 
 
-import com.texcellsms.sms.mapper.prepay.SmsNumberFileMapper;
+import com.texcellsms.sms.mapper.eccom.SmsNumberFileMapper;
 import com.texcellsms.sms.util.NumberFileParser;
 import com.texcellsms.sms.util.SmsUtil;
 import com.texcellsms.sms.util.UserUtils;

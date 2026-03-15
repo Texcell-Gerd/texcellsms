@@ -1,4 +1,4 @@
-package com.texcellsms.sms.mapper.prepay;
+package com.texcellsms.sms.mapper.eccom;
 
 import com.texcellsms.sms.model.entity.ChargeLog;
 import com.texcellsms.sms.model.entity.CustomerAccount;
@@ -14,7 +14,7 @@ public interface ChargeLogMapper {
     // ========== 1. 查询prepay物理数据源的MngDB库=========
     @Select({
             "<script>",
-            "SELECT UNID, CreateTime, UserName, Account, Amount, PrevBalance, PostBalance, Remark, AgentID ",
+            "SELECT CreateTime, Account, Amount, PrevBalance, PostBalance, AgentID ",
             "FROM MngDB.tbl_ChargeLog ",
             "WHERE Account = #{account} ",
             "  AND CreateTime BETWEEN #{startTime} AND #{endTime} ",

@@ -1,6 +1,6 @@
 package com.texcellsms.sms.service;
 
-import com.texcellsms.sms.mapper.prepay.ChargeLogMapper;
+import com.texcellsms.sms.mapper.eccom.ChargeLogMapper;
 import com.texcellsms.sms.model.entity.ChargeLog;
 import com.texcellsms.sms.model.entity.CustomerAccount;
 import com.texcellsms.sms.util.ChargeLogUtils;

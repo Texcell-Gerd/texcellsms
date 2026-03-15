@@ -1,6 +1,6 @@
 # 服务器配置
 server:
-  port: 8080
+  port: 8081
   servlet:
     context-path: /
   tomcat:
@@ -18,42 +18,42 @@ spring:
     hikari:
       maximum-pool-size: 10
       minimum-idle: 2
-      connection-timeout: 300000      # 5分钟，适配长查询
-      idle-timeout: 28800000          # 8小时，避免连接提前回收
-      leak-detection-threshold: 0     # 关闭泄漏检测
-      max-lifetime: 28800000          # 8小时，匹配数据库默认连接超时
-      validation-timeout: 300000      # 5分钟
+      connection-timeout: 300000
+      idle-timeout: 28800000
+      leak-detection-threshold: 0
+      max-lifetime: 28800000
+      validation-timeout: 300000
       connection-test-query: "SELECT 1"
-      test-while-idle: false          # 关闭空闲连接检测
-      test-on-borrow: false           # 关闭获取连接时检测
+      test-while-idle: false
+      test-on-borrow: false
 
   mvc:
     async:
-      request-timeout: 1800000        # 30分钟，兜底长查询
+      request-timeout: 1800000
 
-# MyBatis核心配置
+# MyBatis核心配置（已打开日志）
 mybatis:
   type-aliases-package: com.texcellsms.sms.model.entity,com.texcellsms.sms.model.DTO
   type-handlers-package: com.texcellsms.sms.config
+
   configuration:
     map-underscore-to-camel-case: true
-    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl  # 这里打开SQL日志
     lazy-loading-enabled: false
     aggressive-lazy-loading: false
     auto-mapping-behavior: PARTIAL
-    default-statement-timeout: 1800    # 30分钟，适配长查询
+    default-statement-timeout: 180
     default-fetch-size: 1000
     local-cache-scope: STATEMENT
     cache-enabled: false
   mapper-locations: classpath:empty.xml
 
-# 日志配置
+# 日志配置（打开DEBUG）
 logging:
   level:
-    com.texcellsms.sms.mapper: info
-    com.texcellsms.sms.controller: info
-    com.texcellsms.sms.service: warn
-    org.springframework.jdbc.datasource: warn
+    com.texcellsms.sms: debug
+    org.apache.ibatis: debug
+    org.springframework: warn
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{50} - %msg%n"
     file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{50} - %msg%n"
@@ -74,37 +74,3 @@ texcellsms:
   encoding:
     default-charset: UTF-8
     gsm7-charset: GSM0338
-
-# SpringDoc/OpenAPI配置
-springdoc:
-  packages-to-scan: com.texcellsms.sms.controller
-  models-package: com.texcellsms.sms.model.entity,com.texcellsms.sms.model.dto
-  swagger-ui:
-    path: /swagger-ui.html
-    operationsSorter: method
-    tagsSorter: alpha
-  api-docs:
-    enabled: true
-    path: /v3/api-docs
-  default-flat-param-object: true
-  global-headers:
-    - name: X-Request
-      description: 接口类型标识
-      required: true
-      schema:
-        type: string
-    - name: Authorization
-      description: 鉴权令牌（登录接口除外）
-      required: false
-      schema:
-        type: string
-
-# 自定义OpenAPI文档信息
-openapi:
-  info:
-    title: TexcellSMS 短信服务接口文档
-    description: 包含充值，发送记录查询、多数据源操作等核心接口
-    version: 1.0.0
-    contact:
-      name: 开发团队
-      email: dev@texcellsms.com

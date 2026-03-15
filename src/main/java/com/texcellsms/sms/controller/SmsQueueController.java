@@ -1,7 +1,10 @@
 package com.texcellsms.sms.controller;
 
-
+import com.texcellsms.sms.constant.RequestHeaderConstants;
 import com.texcellsms.sms.service.SmsQueueService;
+import com.texcellsms.sms.util.Constants;
+import com.texcellsms.sms.util.Result;
+import com.texcellsms.sms.service.TokenService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -23,58 +26,64 @@ public class SmsQueueController {
 
     @Operation(summary = "获取队列任务列表（分页）")
     @GetMapping("/tasks")
-    public Map<String, Object> getQueueTasks(
+    public Result<Map<String, Object>> getQueueTasks(
+            @RequestHeader(RequestHeaderConstants.AUTHORIZATION) String authorization,
             @Parameter(description = "页码，默认1") @RequestParam(defaultValue = "1") Integer pageNum,
-            @Parameter(description = "每页条数，默认10") @RequestParam(defaultValue = "10") Integer pageSize) {
-        return smsQueueService.getQueueTasks(pageNum, pageSize);
+            @Parameter(description = "每页条数，默认10") @RequestParam(defaultValue = "10") Integer pageSize,
+            HttpServletResponse response) {
+        String newToken = TokenService.refreshToken(authorization);
+        response.setHeader(Constants.HEADER, newToken);
+        return Result.success(smsQueueService.getQueueTasks(pageNum, pageSize));
     }
 
     @Operation(summary = "获取队列任务详情（分页）")
     @GetMapping("/task/detail")
-    public Map<String, Object> getQueueTaskDetail(
+    public Result<Map<String, Object>> getQueueTaskDetail(
+            @RequestHeader(RequestHeaderConstants.AUTHORIZATION) String authorization,
             @Parameter(description = "任务ID", required = true) @RequestParam String taskId,
             @Parameter(description = "页码，默认1") @RequestParam(defaultValue = "1") Integer pageNum,
             @Parameter(description = "每页条数，默认10") @RequestParam(defaultValue = "10") Integer pageSize,
-            @Parameter(description = "接收号码") @RequestParam(required = false) String callee) {
-        return smsQueueService.getQueueTaskDetail(taskId, pageNum, pageSize, callee);
+            @Parameter(description = "接收号码") @RequestParam(required = false) String callee,
+            HttpServletResponse response) {
+        String newToken = TokenService.refreshToken(authorization);
+        response.setHeader(Constants.HEADER, newToken);
+        return Result.success(smsQueueService.getQueueTaskDetail(taskId, pageNum, pageSize, callee));
     }
 
     @Operation(summary = "导出队列任务详情")
     @GetMapping("/task/export")
     public void exportQueueTaskDetail(
+            @RequestHeader(RequestHeaderConstants.AUTHORIZATION) String authorization,
             @Parameter(description = "任务ID", required = true) @RequestParam String taskId,
             HttpServletResponse response) {
+        String newToken = TokenService.refreshToken(authorization);
+        response.setHeader(Constants.HEADER, newToken);
         try {
             smsQueueService.exportAllTaskDetailsByTaskId(taskId, response);
         } catch (Exception e) {
-            response.setContentType("application/json;charset=UTF-8");
             try {
+                response.setContentType("application/json;charset=UTF-8");
                 response.getWriter().write("{\"code\":500,\"msg\":\"导出失败：" + e.getMessage() + "\"}");
-            } catch (Exception ex) {
-                ex.printStackTrace();
-            }
+            } catch (Exception ex) {}
         }
     }
 
-    // ========== 修改预约发送状态 ==========
-    @Operation(summary = "批量删除任务（伪删除，改发送状态为4，用于预约发送的任务删除）")
+    @Operation(summary = "批量删除任务")
     @PostMapping("/tasks/batch-delete")
-    public Map<String, Object> batchDeleteTask(@RequestBody Set<String> taskIds) {
-
-        Map<String, Object> map = new HashMap<>();
+    public Result<Map<String, Object>> batchDeleteTask(
+            @RequestHeader(RequestHeaderConstants.AUTHORIZATION) String authorization,
+            @RequestBody Set<String> taskIds,
+            HttpServletResponse response) {
+        String newToken = TokenService.refreshToken(authorization);
+        response.setHeader(Constants.HEADER, newToken);
 
         if (taskIds == null || taskIds.isEmpty()) {
-            map.put("code", 400);
-            map.put("msg", "任务ID不能为空");
-            return map;
+            return Result.fail(400, "任务ID不能为空");
         }
         int count = smsQueueService.batchDeleteTask(taskIds);
-
-        map.put("code", 200);
-        map.put("msg", "操作成功");
+        Map<String, Object> map = new HashMap<>();
         map.put("total", taskIds.size());
         map.put("success", count);
-
-        return map;
+        return Result.success(map);
     }
 }

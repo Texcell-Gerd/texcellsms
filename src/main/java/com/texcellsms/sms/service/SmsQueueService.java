@@ -1,7 +1,7 @@
 package com.texcellsms.sms.service;
 
 import com.alibaba.excel.EasyExcel;
-import com.texcellsms.sms.constant.DataSourceConstants;
+import com.texcellsms.sms.config.DynamicDataSourceConfig;
 import com.texcellsms.sms.constant.DataSourceInterceptor;
 import com.texcellsms.sms.mapper.webportal.SmsQueueMapper;
 import com.texcellsms.sms.model.entity.TblAPITask;
@@ -40,7 +40,7 @@ public class SmsQueueService {
     public Map<String, Object> getQueueTasks(Integer pageNum, Integer pageSize) {
         // 1. 切换数据源
         try {
-            DataSourceInterceptor.setCurrentDataSource(DataSourceConstants.DS_WEB_PORTAL);
+            DataSourceInterceptor.setCurrentDataSource(DynamicDataSourceConfig.DS_WEB_PORTAL);
 
             String subAccount = SubAccount();
 
@@ -77,7 +77,7 @@ public class SmsQueueService {
     // ==================== 任务详情（分页） ====================
     public Map<String, Object> getQueueTaskDetail(String taskId, Integer pageNum, Integer pageSize, String callee) {
         try {
-            DataSourceInterceptor.setCurrentDataSource(DataSourceConstants.DS_WEB_PORTAL);
+            DataSourceInterceptor.setCurrentDataSource(DynamicDataSourceConfig.DS_WEB_PORTAL);
 
             int offset = (pageNum - 1) * pageSize;
             List<TaskDetailVO> list = smsQueueMapper.selectTaskDetailList(taskId, callee, offset, pageSize);
@@ -97,7 +97,7 @@ public class SmsQueueService {
     // ==================== 导出全部详情 ====================
     public void exportAllTaskDetailsByTaskId(String taskId, HttpServletResponse response) throws Exception {
         try {
-            DataSourceInterceptor.setCurrentDataSource(DataSourceConstants.DS_WEB_PORTAL);
+            DataSourceInterceptor.setCurrentDataSource(DynamicDataSourceConfig.DS_WEB_PORTAL);
 
             List<TblAPITask> entityList = smsQueueMapper.selectAllTaskDetailsByTaskId(taskId);
             List<TaskDetailExcelVO> excelList = entityList.stream()
@@ -124,7 +124,7 @@ public class SmsQueueService {
     // ========== 批量修改状态（伪删除） ==========
     public int batchDeleteTask(Set<String> taskIds) {
         try {
-            DataSourceInterceptor.setCurrentDataSource(DataSourceConstants.DS_WEB_PORTAL);
+            DataSourceInterceptor.setCurrentDataSource(DynamicDataSourceConfig.DS_WEB_PORTAL);
 
             if (taskIds == null || taskIds.isEmpty()) {
                 return 0;

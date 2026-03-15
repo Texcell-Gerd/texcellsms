@@ -1,4 +1,4 @@
-package com.texcellsms.sms.mapper.prepay;
+package com.texcellsms.sms.mapper.eccom;
 
 import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;

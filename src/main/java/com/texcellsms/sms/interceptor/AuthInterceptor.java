@@ -2,14 +2,12 @@ package com.texcellsms.sms.interceptor;
 
 
 import com.alibaba.fastjson2.JSON;
-import com.texcellsms.sms.service.EccomSubmitRecordService;
 import com.texcellsms.sms.service.TokenService;
 import com.texcellsms.sms.util.Constants;
 import com.texcellsms.sms.util.SMSResponseMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import com.texcellsms.sms.util.AjaxResult;
-import org.springframework.http.HttpStatus;
 import org.springframework.web.servlet.HandlerInterceptor;
 
 import javax.servlet.http.HttpServletRequest;

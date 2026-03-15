@@ -39,7 +39,7 @@ public class SecurityConfig {
                 // 权限配置
                 .authorizeRequests()
                 // 放行接口文档相关路径
-                .antMatchers("/swagger-ui.html", "/v3/api-docs/**", "/swagger-ui/**").permitAll()
+//                .antMatchers("/swagger-ui.html", "/v3/api-docs/**", "/swagger-ui/**").permitAll()
                 // 放行所有接口（开发环境，生产环境需按实际权限配置）
                 .anyRequest().permitAll()
                 .and();

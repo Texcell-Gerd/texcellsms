@@ -1,6 +1,5 @@
 package com.texcellsms.sms.config;
 
-import com.texcellsms.sms.interceptor.DynamicDataSourceInterceptor;
 import com.zaxxer.hikari.HikariDataSource;
 import org.apache.ibatis.session.LocalCacheScope;
 import org.apache.ibatis.session.SqlSessionFactory;
@@ -16,53 +15,44 @@ import javax.sql.DataSource;
 import java.util.HashMap;
 import java.util.Map;
 
-/**
- * 动态数据源配置类：修复Mapper Bean名称冲突，为不同模块Mapper添加专属前缀
- */
 @Configuration
-// 关键：指定自定义名称生成器，每个模块的Mapper扫描都用这个规则
-@MapperScan(
-        basePackages = "com.texcellsms.sms.mapper.prepay",
-        sqlSessionFactoryRef = "prepaySqlSessionFactory",
-        nameGenerator = ModulePrefixBeanNameGenerator.class // 自定义名称生成器
-)
 @MapperScan(
         basePackages = "com.texcellsms.sms.mapper.eccom",
         sqlSessionFactoryRef = "eccomSqlSessionFactory",
         nameGenerator = ModulePrefixBeanNameGenerator.class
 )
-// 新增WEBPortal的Mapper扫描
 @MapperScan(
-        basePackages = "com.texcellsms.sms.mapper.webportal", // 建议新增专属包
+        basePackages = "com.texcellsms.sms.mapper.webportal",
         sqlSessionFactoryRef = "webPortalSqlSessionFactory",
         nameGenerator = ModulePrefixBeanNameGenerator.class
 )
 public class DynamicDataSourceConfig {
 
-    public static final String DS_PREPAY = "prepay";
     public static final String DS_ECCOM = "eccom";
-    public static final String DS_WEB_PORTAL = "webPortal"; // 新增WEBPortal数据源标识
+    public static final String DS_WEB_PORTAL = "webPortal";
 
-    @Bean(name = "prepayDataSource")
-    @Primary
-    public DataSource prepayDataSource() {
-        HikariDataSource ds = new HikariDataSource();
-        ds.setDriverClassName("com.mysql.cj.jdbc.Driver");
-        ds.setJdbcUrl("jdbc:mysql://192.168.120.248:14333/CDR_DB?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC&allowPublicKeyRetrieval=true&useSSL=false&connectTimeout=30000&socketTimeout=60000&rewriteBatchedStatements=true");
-        ds.setUsername("Harry");
-        ds.setPassword("z147258");
-        ds.setMaximumPoolSize(10);
-        ds.setMinimumIdle(2);
-        ds.setConnectionTimeout(30000);
-        ds.setIdleTimeout(600000);
-        ds.setLeakDetectionThreshold(300000);
-        ds.setMaxLifetime(28800000);
-        ds.setValidationTimeout(30000);
-        ds.setConnectionTestQuery("SELECT 1");
-        return ds;
+    // 线程本地变量：直接放在这里，不需要独立类
+    private static final ThreadLocal<String> DATA_SOURCE_CONTEXT = new ThreadLocal<>();
+
+    // ================== 工具方法：直接内置 ==================
+    public static String getCurrentDataSource() {
+        String key = DATA_SOURCE_CONTEXT.get();
+        return key == null ? DS_ECCOM : key;
     }
 
+    public static void setCurrentDataSource(String dataSourceKey) {
+        if (dataSourceKey != null && !dataSourceKey.isEmpty()) {
+            DATA_SOURCE_CONTEXT.set(dataSourceKey);
+        }
+    }
+
+    public static void clearCurrentDataSource() {
+        DATA_SOURCE_CONTEXT.remove();
+    }
+
+    // ================== 数据源 ==================
     @Bean(name = "eccomDataSource")
+    @Primary
     public DataSource eccomDataSource() {
         HikariDataSource ds = new HikariDataSource();
         ds.setDriverClassName("com.mysql.cj.jdbc.Driver");
@@ -80,12 +70,10 @@ public class DynamicDataSourceConfig {
         return ds;
     }
 
-    // 新增WEBPortal数据源配置
     @Bean(name = "webPortalDataSource")
     public DataSource webPortalDataSource() {
         HikariDataSource ds = new HikariDataSource();
-        ds.setDriverClassName("com.mysql.cj.jdbc.Driver"); // 如果是SQL Server需改为com.microsoft.sqlserver.jdbc.SQLServerDriver
-        // 根据数据库类型调整URL：MySQL格式 jdbc:mysql://IP:端口/库名 | SQL Server格式 jdbc:sqlserver://IP:端口;DatabaseName=库名
+        ds.setDriverClassName("com.mysql.cj.jdbc.Driver");
         ds.setJdbcUrl("jdbc:mysql://192.168.128.247:14333/WEBPortal?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC&allowPublicKeyRetrieval=true&useSSL=false");
         ds.setUsername("root");
         ds.setPassword("9c98eCFD84F299F76F6D4252DE111484(*&^%$");
@@ -100,58 +88,33 @@ public class DynamicDataSourceConfig {
         return ds;
     }
 
+    // ================== 路由数据源（核心） ==================
     @Bean(name = "routingDataSource")
     public AbstractRoutingDataSource routingDataSource(
-            DataSource prepayDataSource,
             DataSource eccomDataSource,
             DataSource webPortalDataSource) {
         AbstractRoutingDataSource routingDataSource = new AbstractRoutingDataSource() {
             @Override
             protected Object determineCurrentLookupKey() {
-                // 关键修改：从新的 DataSourceInterceptor 获取数据源key
-                String key = com.texcellsms.sms.constant.DataSourceInterceptor.getCurrentDataSource();
-                // 新增日志，方便调试
-                System.out.println("当前路由数据源key：" + key);
-                return key == null ? DS_PREPAY : key;
+                // ✅ 现在直接调用本类方法，不依赖任何外部类
+                return getCurrentDataSource();
             }
         };
 
         Map<Object, Object> dataSourceMap = new HashMap<>();
-        dataSourceMap.put(DS_PREPAY, prepayDataSource);
         dataSourceMap.put(DS_ECCOM, eccomDataSource);
         dataSourceMap.put(DS_WEB_PORTAL, webPortalDataSource);
 
         routingDataSource.setTargetDataSources(dataSourceMap);
-        routingDataSource.setDefaultTargetDataSource(prepayDataSource);
+        routingDataSource.setDefaultTargetDataSource(eccomDataSource);
         routingDataSource.afterPropertiesSet();
 
         return routingDataSource;
     }
 
-    @Bean(name = "prepaySqlSessionFactory")
-    public SqlSessionFactory prepaySqlSessionFactory() throws Exception {
-        SqlSessionFactoryBean sessionFactoryBean = new SqlSessionFactoryBean();
-        sessionFactoryBean.setDataSource(prepayDataSource());
-        sessionFactoryBean.setTypeAliasesPackage("com.texcellsms.sms.model.entity,com.texcellsms.sms.model.DTO");
-
-        org.apache.ibatis.session.Configuration configuration = new org.apache.ibatis.session.Configuration();
-        configuration.setMapUnderscoreToCamelCase(true);
-        configuration.setDefaultStatementTimeout(300);
-        configuration.setDefaultFetchSize(1000);
-        configuration.setLocalCacheScope(LocalCacheScope.STATEMENT);
-        configuration.setCacheEnabled(false);
-        configuration.setLazyLoadingEnabled(false);
-        configuration.setAggressiveLazyLoading(false);
-        configuration.setMultipleResultSetsEnabled(true);
-        configuration.setUseColumnLabel(true);
-        configuration.setUseGeneratedKeys(false);
-
-        sessionFactoryBean.setConfiguration(configuration);
-
-        return sessionFactoryBean.getObject();
-    }
-
+    // ================== Session 相关 ==================
     @Bean(name = "eccomSqlSessionFactory")
+    @Primary
     public SqlSessionFactory eccomSqlSessionFactory() throws Exception {
         SqlSessionFactoryBean sessionFactoryBean = new SqlSessionFactoryBean();
         sessionFactoryBean.setDataSource(eccomDataSource());
@@ -167,7 +130,6 @@ public class DynamicDataSourceConfig {
         return sessionFactoryBean.getObject();
     }
 
-    // 新增WEBPortal的SqlSessionFactory
     @Bean(name = "webPortalSqlSessionFactory")
     public SqlSessionFactory webPortalSqlSessionFactory() throws Exception {
         SqlSessionFactoryBean sessionFactoryBean = new SqlSessionFactoryBean();
@@ -201,17 +163,12 @@ public class DynamicDataSourceConfig {
         return sessionFactoryBean.getObject();
     }
 
-    @Bean(name = "prepaySqlSessionTemplate")
-    public SqlSessionTemplate prepaySqlSessionTemplate() throws Exception {
-        return new SqlSessionTemplate(prepaySqlSessionFactory());
-    }
-
     @Bean(name = "eccomSqlSessionTemplate")
+    @Primary
     public SqlSessionTemplate eccomSqlSessionTemplate() throws Exception {
         return new SqlSessionTemplate(eccomSqlSessionFactory());
     }
 
-    // 新增WEBPortal的SqlSessionTemplate
     @Bean(name = "webPortalSqlSessionTemplate")
     public SqlSessionTemplate webPortalSqlSessionTemplate() throws Exception {
         return new SqlSessionTemplate(webPortalSqlSessionFactory());

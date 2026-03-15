@@ -2,7 +2,7 @@ package com.texcellsms.sms.service;
 
 import com.texcellsms.sms.config.DynamicDataSourceConfig;
 import com.texcellsms.sms.interceptor.DynamicDataSourceInterceptor;
-import com.texcellsms.sms.mapper.prepay.AnalyzeMapper;
+import com.texcellsms.sms.mapper.eccom.AnalyzeMapper;
 import com.texcellsms.sms.model.DTO.AnalyzeDTO;
 import com.texcellsms.sms.model.DTO.PItemDTO;
 import org.slf4j.Logger;
@@ -27,7 +27,7 @@ public class AnalyzeService {
     // 分表后缀格式化器
     private static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("yyyyMMdd");
     // 数据库需要的日期格式（/分隔）
-    private static final SimpleDateFormat DATETIME_FORMAT_DB = new SimpleDateFormat("yyyy/MM/dd HH:mm:ss");
+    private static final SimpleDateFormat DATETIME_FORMAT_DB = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
 
     // 移除金额格式化相关的NumberFormat定义
     private static final NumberFormat PERCENT_FORMAT;
@@ -46,7 +46,7 @@ public class AnalyzeService {
             String mcc, String mnc,
             Integer pageNum, Integer pageSize
     ) {
-        DynamicDataSourceInterceptor.setCurrentDataSource(DynamicDataSourceConfig.DS_PREPAY);
+        DynamicDataSourceInterceptor.setCurrentDataSource(DynamicDataSourceConfig.DS_ECCOM);
 
         try {
             long now = System.currentTimeMillis();
