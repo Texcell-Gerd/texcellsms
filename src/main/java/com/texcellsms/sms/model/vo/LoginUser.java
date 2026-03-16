@@ -19,4 +19,5 @@ public class LoginUser implements Serializable {
 
     private String UUID;
 
+    private long createTime;
 }

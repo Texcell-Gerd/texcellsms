@@ -13,13 +13,12 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpSession;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.UUID;
 
 @Component
 @Service
 public class TokenService {
 
-    private final static long EXPIRE_TIME = Constants.TOKEN_EXPIRE * 60;
+    private final static long EXPIRE_TIME = Constants.TOKEN_EXPIRE * 60 * 1000L;
     protected static final long MILLIS_SECOND = 1000;
     private static final NCacheDBLink CacheDBLink = NCacheDBLink.getNCacheDBLink();
 
@@ -29,35 +28,40 @@ public class TokenService {
         String token = getToken(ServletUtils.getRequest());
         if (StringUtils.isNotEmpty(token)) {
             Map<String, String> map = (Map<String, String>) ServletUtils.getSession().getServletContext().getAttribute(token);
-            username = map.get("Username");
+            if (map != null) {
+                username = map.get("Username");
+            }
         }
         return username;
     }
 
     // 根据token获取用户名
     public static String getUsername(String Authorization) {
-        String username = null;
-        if (StringUtils.isNotEmpty(Authorization)) {
-            Map<String, String> map = (Map<String, String>) ServletUtils.getSession().getServletContext().getAttribute(Authorization);
-            username = map.get("Username");
-        }
-        return username;
+        if (StringUtils.isEmpty(Authorization)) return null;
+        Map<String, String> map = (Map<String, String>) ServletUtils.getSession().getServletContext().getAttribute(Authorization);
+        return map != null ? map.get("Username") : null;
     }
 
     // 从请求头获取token
     private static String getToken(HttpServletRequest request) {
-        return request.getHeader(Constants.HEADER);
+        String token = request.getHeader(Constants.HEADER);
+        if (token == null || token.trim().isEmpty()) {
+            token = request.getHeader("authorization");
+        }
+        return token;
     }
 
-    // 创建token并保存到servletContext
+    // 创建token并保存到servletContext（安全版）
     public void createToken(LoginUser loginUser) {
         HttpSession session = ServletUtils.getSession();
         Map<String, String> map = new HashMap<>();
         map.put("Username", loginUser.getUsername());
         map.put("IP", loginUser.getIP());
         map.put(Constants.HEADER, loginUser.getToken());
+        map.put("createTime", String.valueOf(System.currentTimeMillis()));
+
         session.getServletContext().setAttribute(loginUser.getToken(), map);
-        session.setMaxInactiveInterval(1000 * 60 * 60);
+        session.setMaxInactiveInterval(8 * 60 * 60);
     }
 
     // 登录验证（CacheDB）
@@ -109,24 +113,22 @@ public class TokenService {
         return ip;
     }
 
-    // 刷新token（核心）
+    // ====================== 【重要】固定Token，永不刷新 ======================
     public static String refreshToken(String Authorization) {
-        if (Authorization == null || Authorization.isEmpty()) {
-            return null;
+        if (StringUtils.isEmpty(Authorization)) return null;
+
+        // 只续期时间，不生成新Token！！！
+        try {
+            Map<String, String> map = (Map<String, String>) ServletUtils.getSession()
+                    .getServletContext().getAttribute(Authorization);
+            if (map != null) {
+                map.put("createTime", String.valueOf(System.currentTimeMillis()));
+                ServletUtils.getSession().getServletContext().setAttribute(Authorization, map);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
         }
-        Map<String, String> map = (Map<String, String>) ServletUtils.getSession().getServletContext().getAttribute(Authorization);
-        String newToken = UUID.randomUUID().toString().replace("-", "") + Authorization.substring(Math.min(Authorization.length(), 32));
-        map.put(Constants.HEADER, newToken);
 
-        HttpSession session = ServletUtils.getSession();
-        new Thread(() -> {
-            try {
-                Thread.sleep(30000);
-            } catch (Exception ignored) {}
-            session.getServletContext().removeAttribute(Authorization);
-        }).start();
-
-        session.getServletContext().setAttribute(newToken, map);
-        return newToken;
+        return Authorization;
     }
 }

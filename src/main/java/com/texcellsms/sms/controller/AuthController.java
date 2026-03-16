@@ -6,10 +6,7 @@ import com.texcellsms.sms.model.vo.LoginUser;
 import com.texcellsms.sms.service.AuthService;
 import com.texcellsms.sms.service.TokenService;
 import com.texcellsms.sms.util.*;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
 import lombok.Data;
-import lombok.NoArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
@@ -77,17 +74,5 @@ public class AuthController {
     public static class LoginRequest {
         private String username;
         private String password;
-    }
-
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class LoginResponse {
-        private int code;
-        private String msg;
-        private boolean needTwoAuth;
-        private String qrCode;
-        private String token;
     }
 }

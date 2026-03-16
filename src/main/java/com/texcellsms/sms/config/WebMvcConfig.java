@@ -27,27 +27,4 @@ public class WebMvcConfig implements WebMvcConfigurer {
                 .addPathPatterns("/**")
                 .excludePathPatterns("/api/auth/login");
     }
-
-    // 时间格式兼容配置（保留）
-    @Override
-    public void addFormatters(FormatterRegistry registry) {
-        registry.addFormatter(new Formatter<Date>() {
-            private final SimpleDateFormat dashFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-            private final SimpleDateFormat slashFormat = new SimpleDateFormat("yyyy/MM/dd HH:mm:ss");
-
-            @Override
-            public Date parse(String text, Locale locale) throws ParseException {
-                try {
-                    return dashFormat.parse(text);
-                } catch (ParseException e) {
-                    return slashFormat.parse(text);
-                }
-            }
-
-            @Override
-            public String print(Date date, Locale locale) {
-                return dashFormat.format(date);
-            }
-        });
-    }
 }

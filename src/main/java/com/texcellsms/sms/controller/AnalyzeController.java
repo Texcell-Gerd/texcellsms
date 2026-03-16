@@ -2,6 +2,7 @@ package com.texcellsms.sms.controller;
 
 import com.texcellsms.sms.constant.RequestHeaderConstants;
 import com.texcellsms.sms.model.DTO.AnalyzeDTO;
+import com.texcellsms.sms.model.DTO.DailyStatDTO;
 import com.texcellsms.sms.service.AnalyzeService;
 import com.texcellsms.sms.service.TokenService;
 import com.texcellsms.sms.util.Constants;
@@ -61,6 +62,22 @@ public class AnalyzeController {
         data.put("pageNum", pageNum);
         data.put("pageSize", pageSize);
 
+        return Result.success(data);
+    }
+
+    @GetMapping("/dailyStat")
+    @Operation(summary = "每日统计（供图表使用）")
+    public Result<List<DailyStatDTO>> dailyStat(
+            @RequestHeader(RequestHeaderConstants.AUTHORIZATION) String authorization,
+            @RequestParam(required = false, defaultValue = "week") String period, // today/week/month/year
+            @RequestParam(required = false) String mcc,
+            HttpServletResponse response) {
+
+        // 刷新TOKEN
+        String newToken = TokenService.refreshToken(authorization);
+        response.setHeader(Constants.HEADER, newToken);
+
+        List<DailyStatDTO> data = analyzeService.getDailyStat(period, mcc);
         return Result.success(data);
     }
 }

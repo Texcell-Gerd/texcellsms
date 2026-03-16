@@ -2,21 +2,22 @@ package com.texcellsms.sms.service;
 
 import com.texcellsms.sms.mapper.eccom.AnalyzeMapper;
 import com.texcellsms.sms.model.DTO.AnalyzeDTO;
+import com.texcellsms.sms.model.DTO.DailyStatDTO;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.Resource;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.text.ParseException;
 import java.text.SimpleDateFormat;
-import java.util.Date;
-import java.util.List;
+import java.util.*;
 
 @Service
 public class AnalyzeService {
 
     @Resource
     private AnalyzeMapper analyzeMapper;
-    private final SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+    private final SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
 
     // 获取当前登录用户的subAccount
     private String SubAccount(){
@@ -55,5 +56,57 @@ public class AnalyzeService {
         if (start == null) start = new Date(System.currentTimeMillis() - 7*86400000L);
         if (end == null) end = new Date();
         return analyzeMapper.countAnalyze(account, sdf.format(start), sdf.format(end), mcc, mnc);
+    }
+
+    public List<DailyStatDTO> getDailyStat(String period, String mcc) {
+        String account = SubAccount();
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
+        Calendar cal = Calendar.getInstance();
+        Date now = new Date();
+
+        // 结束日期 = 今天
+        String endDate = sdf.format(now);
+
+        // 计算开始日期
+        switch (period) {
+            case "today":
+                cal.setTime(now);
+                cal.add(Calendar.DATE, -3);
+                break;
+            case "week":
+                cal.setTime(now);
+                cal.add(Calendar.DATE, -7);
+                break;
+            case "Two-weeks":
+                cal.setTime(now);
+                cal.add(Calendar.DATE, -14);
+                break;
+            default:
+                cal.add(Calendar.DATE, -7);
+        }
+
+        String startDate = sdf.format(cal.getTime());
+
+        // 调用修复后的 Mapper
+        List<AnalyzeDTO> rawList = analyzeMapper.selectAnalyzeList(
+                account, startDate, endDate, mcc, null);
+
+        Map<String, DailyStatDTO> map = new LinkedHashMap<>();
+        for (AnalyzeDTO dto : rawList) {
+            String day = dto.getSubmitTime();
+            DailyStatDTO stat = map.getOrDefault(day, new DailyStatDTO());
+            stat.setDate(day);
+
+            int sc = dto.getSubmitCount() == null ? 0 : dto.getSubmitCount();
+            stat.setSubmitCount((stat.getSubmitCount() == null ? 0 : stat.getSubmitCount()) + sc);
+
+            BigDecimal cost = dto.getTotalCost() == null ? BigDecimal.ZERO : dto.getTotalCost();
+            BigDecimal realCost = cost.divide(new BigDecimal(10000), 4, RoundingMode.HALF_UP);
+            stat.setTotalCost(stat.getTotalCost() == null ? realCost : stat.getTotalCost().add(realCost));
+
+            map.put(day, stat);
+        }
+
+        return new ArrayList<>(map.values());
     }
 }

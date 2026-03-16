@@ -2,13 +2,12 @@ package com.texcellsms.sms.model.DTO;
 
 import lombok.Data;
 import java.math.BigDecimal;
-import java.util.Date;
 
 @Data
 public class AnalyzeDTO {
 
-    // 提交时间（你业务写的是MCC，我按你表字段ReportTime映射）
-    private Date submitTime;
+    // 提交时间（表字段SubmitTime）
+    private String submitTime;
 
     // MCC
     private String mcc;
@@ -31,8 +30,8 @@ public class AnalyzeDTO {
     // 不计费数量
     private Integer nilChargeCount;
 
-    // 更新时间
-    private Date updateTime;
+    // 更新时间(表字段是ReportTime)
+    private String updateTime;
 
     // 消费金额（Java层 ÷10000）
     private BigDecimal totalCost;

@@ -20,7 +20,7 @@ public interface SmsQueueMapper {
             "       SubmitSuccCount, DRSuccCount, DRFailCount, Short_Message, SplitCount ",
             "FROM tbl_APIScheduleSend ",
             "<where>",
-            "  SubAccount = #{subAccount} ", // 权限限制：当前用户的subAccount
+            "  SubAccount = #{subAccount} ", // 权限限制：当前登录用户的subAccount
             "  AND TaskTime >= #{threeDaysAgoTime} ", // 时间限制：最近3天
             "</where>",
             "ORDER BY TaskTime DESC ",

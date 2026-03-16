@@ -11,14 +11,15 @@ import java.util.List;
 @Mapper
 public interface AnalyzeMapper {
 
+    // ====================== 列表分页 ======================
     @Select({
-            "<script>",
-            "SELECT ",
-            "    ReportTime    AS submitTime,",
+            "SELECT",
+            "    SubmitTime    AS submitTime,",
             "    MCC           AS mcc,",
             "    MNC           AS mnc,",
             "    SubmitCount   AS submitCount,",
-            "    ReportAccount     AS succCount,",
+            "    ReportAccount     AS sourAccount,",
+            "    SuccCount     AS succCount,",
             "    FailCount     AS failCount,",
             "    ExpireCount   AS expireCount,",
             "    NilChargeCount AS nilChargeCount,",
@@ -26,12 +27,12 @@ public interface AnalyzeMapper {
             "    TotalCost     AS totalCost ",
             "FROM MngDB.tbl_RefundSum ",
             "WHERE ReportAccount = #{sourAccount} ",
-            "AND ReportTime BETWEEN #{start} AND #{end} ",
-            "<if test='mcc != null and mcc != \"\"'>AND MCC = #{mcc}</if>",
-            "<if test='mnc != null and mnc != \"\"'>AND MNC = #{mnc}</if>",
-            "ORDER BY ReportTime DESC",
-            "LIMIT #{offset}, #{pageSize}",
-            "</script>"
+            "AND SubmitTime >= #{start} ",
+            "AND SubmitTime <= #{end} ",
+            "AND (#{mcc} IS NULL OR #{mcc} = '' OR MCC = #{mcc}) ",
+            "AND (#{mnc} IS NULL OR #{mnc} = '' OR MNC = #{mnc}) ",
+            "ORDER BY ReportTime DESC ",
+            "LIMIT #{offset}, #{pageSize}"
     })
     List<AnalyzeDTO> selectAnalyzePage(
             @Param("sourAccount") String sourAccount,
@@ -43,14 +44,13 @@ public interface AnalyzeMapper {
             @Param("pageSize") int pageSize
     );
 
+    // ====================== 统计总数 ======================
     @Select({
-            "<script>",
             "SELECT COUNT(1) FROM MngDB.tbl_RefundSum ",
             "WHERE ReportAccount = #{sourAccount} ",
-            "AND ReportTime BETWEEN #{start} AND #{end} ",
-            "<if test='mcc != null and mcc != \"\"'>AND MCC = #{mcc}</if>",
-            "<if test='mnc != null and mnc != \"\"'>AND MNC = #{mnc}</if>",
-            "</script>"
+            "AND SubmitTime BETWEEN #{start} AND #{end} ",
+            "AND (#{mcc} IS NULL OR #{mcc} = '' OR MCC = #{mcc}) ",
+            "AND (#{mnc} IS NULL OR #{mnc} = '' OR MNC = #{mnc}) "
     })
     int countAnalyze(
             @Param("sourAccount") String sourAccount,
@@ -59,4 +59,25 @@ public interface AnalyzeMapper {
             @Param("mcc") String mcc,
             @Param("mnc") String mnc
     );
+
+    // ====================== 图表统计======================
+    @Select({
+            "SELECT",
+            "    SubmitTime    AS submitTime,",
+            "    SubmitCount   AS submitCount,",
+            "    TotalCost     AS totalCost ",
+            "FROM MngDB.tbl_RefundSum ",
+            "WHERE ReportAccount = #{sourAccount} ",
+            "AND SubmitTime >= #{start} ",
+            "AND SubmitTime <= #{end} ",
+            "AND (#{mcc} IS NULL OR #{mcc} = '' OR MCC = #{mcc}) "
+    })
+    List<AnalyzeDTO> selectAnalyzeList(
+            @Param("sourAccount") String sourAccount,
+            @Param("start") String start,
+            @Param("end") String end,
+            @Param("mcc") String mcc,
+            @Param("mnc") String mnc
+    );
+
 }
