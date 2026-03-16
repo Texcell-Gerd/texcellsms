@@ -7,6 +7,7 @@ import org.apache.ibatis.annotations.*;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 @Repository
@@ -114,4 +115,20 @@ public interface SmsQueueMapper {
             @Param("threeDaysAgoTime") String threeDaysAgoTime,
             @Param("taskIds") Set<String> taskIds // 用Set避免重复ID
     );
+
+    // ==================== 【新增】DR状态统计 ====================
+    @Select({
+            "<script>",
+            "SELECT APITaskId, RecvDRStatus, COUNT(*) AS count ",
+            "FROM tbl_APITask ",
+            "WHERE APITaskId IN ",
+            "<foreach collection='taskIds' item='taskId' open='(' separator=',' close=')'>",
+            "    #{taskId}",
+            "</foreach>",
+            "GROUP BY APITaskId, RecvDRStatus",
+            "</script>"
+    })
+    @MapKey("APITaskId")
+    List<Map<String, Object>> selectDrStatsByTaskIds(@Param("taskIds") List<String> taskIds);
+
 }

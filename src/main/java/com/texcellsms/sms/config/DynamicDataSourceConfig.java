@@ -70,31 +70,13 @@ public class DynamicDataSourceConfig {
         return ds;
     }
 
-    @Bean(name = "webPortalDataSource")
-    public DataSource webPortalDataSource() {
-        HikariDataSource ds = new HikariDataSource();
-        ds.setDriverClassName("com.mysql.cj.jdbc.Driver");
-        ds.setJdbcUrl("jdbc:mysql://192.168.112.229:14333/WEBPortal?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC&allowPublicKeyRetrieval=true&useSSL=false");
-        ds.setUsername("smsTester");
-        ds.setPassword("smsTester");
-        ds.setMaximumPoolSize(10);
-        ds.setMinimumIdle(2);
-        ds.setConnectionTimeout(30000);
-        ds.setIdleTimeout(600000);
-        ds.setLeakDetectionThreshold(300000);
-        ds.setMaxLifetime(28800000);
-        ds.setValidationTimeout(30000);
-        ds.setConnectionTestQuery("SELECT 1");
-        return ds;
-    }
-
 //    @Bean(name = "webPortalDataSource")
 //    public DataSource webPortalDataSource() {
 //        HikariDataSource ds = new HikariDataSource();
 //        ds.setDriverClassName("com.mysql.cj.jdbc.Driver");
-//        ds.setJdbcUrl("jdbc:mysql://192.168.128.247:14333/WEBPortal?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC&allowPublicKeyRetrieval=true&useSSL=false");
-//        ds.setUsername("root");
-//        ds.setPassword("9c98eCFD84F299F76F6D4252DE111484(*&^%$");
+//        ds.setJdbcUrl("jdbc:mysql://192.168.112.229:14333/WEBPortal?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC&allowPublicKeyRetrieval=true&useSSL=false");
+//        ds.setUsername("smsTester");
+//        ds.setPassword("smsTester");
 //        ds.setMaximumPoolSize(10);
 //        ds.setMinimumIdle(2);
 //        ds.setConnectionTimeout(30000);
@@ -105,6 +87,24 @@ public class DynamicDataSourceConfig {
 //        ds.setConnectionTestQuery("SELECT 1");
 //        return ds;
 //    }
+
+    @Bean(name = "webPortalDataSource")
+    public DataSource webPortalDataSource() {
+        HikariDataSource ds = new HikariDataSource();
+        ds.setDriverClassName("com.mysql.cj.jdbc.Driver");
+        ds.setJdbcUrl("jdbc:mysql://192.168.128.247:14333/WEBPortal?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC&allowPublicKeyRetrieval=true&useSSL=false");
+        ds.setUsername("root");
+        ds.setPassword("9c98eCFD84F299F76F6D4252DE111484(*&^%$");
+        ds.setMaximumPoolSize(10);
+        ds.setMinimumIdle(2);
+        ds.setConnectionTimeout(30000);
+        ds.setIdleTimeout(600000);
+        ds.setLeakDetectionThreshold(300000);
+        ds.setMaxLifetime(28800000);
+        ds.setValidationTimeout(30000);
+        ds.setConnectionTestQuery("SELECT 1");
+        return ds;
+    }
 
     // ================== 路由数据源（核心） ==================
     @Bean(name = "routingDataSource")

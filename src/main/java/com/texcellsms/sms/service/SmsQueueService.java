@@ -38,24 +38,55 @@ public class SmsQueueService {
 
     // ==================== 任务列表（分页） ====================
     public Map<String, Object> getQueueTasks(Integer pageNum, Integer pageSize) {
-        // 1. 切换数据源
         try {
             DataSourceInterceptor.setCurrentDataSource(DynamicDataSourceConfig.DS_WEB_PORTAL);
 
             String subAccount = SubAccount();
-
             String threeDaysAgoTime = TimeRangeUtils.getThreeDaysAgoTime();
-
             int offset = (pageNum - 1) * pageSize;
 
             List<ScheduleTaskVO> list = smsQueueMapper.selectScheduleTaskList(
                     subAccount, threeDaysAgoTime, offset, pageSize
             );
 
+            // ==============================
+            // 🔥 只统计 DELIVRD / UNKNOWN
+            // ==============================
             if (list != null && !list.isEmpty()) {
+                List<String> taskIds = list.stream()
+                        .map(ScheduleTaskVO::getTaskId)
+                        .collect(Collectors.toList());
+
+                List<Map<String, Object>> drStats = smsQueueMapper.selectDrStatsByTaskIds(taskIds);
+
+                Map<String, Map<String, Integer>> statMap = new HashMap<>();
+                for (Map<String, Object> map : drStats) {
+                    String taskId = (String) map.get("APITaskId");
+                    String status = (String) map.get("RecvDRStatus");
+                    Integer count = ((Number) map.get("count")).intValue();
+
+                    Map<String, Integer> statusCount = statMap.getOrDefault(taskId, new HashMap<>());
+
+                    // ✅ 只统计这两个
+                    if ("DELIVRD".equals(status)) {
+                        statusCount.put("DELIVRD", count);
+                    } else if ("UNKNOWN".equals(status)) {
+                        statusCount.put("UNKNOWN", count);
+                    }
+
+                    statMap.put(taskId, statusCount);
+                }
+
+                // 赋值到返回对象
                 for (ScheduleTaskVO vo : list) {
-                    String encryptedMsg = Base64Util.encrypt(vo.getShortMessage());
-                    vo.setShortMessage(encryptedMsg);
+                    Map<String, Integer> statusCount = statMap.getOrDefault(vo.getTaskId(), new HashMap<>());
+
+                    // 赋值两个字段
+                    vo.setDrSuccCount(statusCount.getOrDefault("DELIVRD", 0));
+                    vo.setDrFailCount(statusCount.getOrDefault("UNKNOWN", 0));
+
+                    // 短信加密
+                    vo.setShortMessage(Base64Util.encrypt(vo.getShortMessage()));
                 }
             }
 
@@ -67,10 +98,9 @@ public class SmsQueueService {
             result.put("pageNum", pageNum);
             result.put("pageSize", pageSize);
             return result;
+
         } finally {
-            // 2. 仅清空当前方法设置的数据源，交给拦截器最终清理（避免重复清理）
-            // 注意：这里不再调用clear，改为由拦截器统一清理，防止提前清理导致后续操作失效
-            // DataSourceInterceptor.clearCurrentDataSource();
+            // 不清理，交给拦截器处理
         }
     }
 
@@ -129,7 +159,7 @@ public class SmsQueueService {
             if (taskIds == null || taskIds.isEmpty()) {
                 return 0;
             }
-            String subAccount = getCurrentSubAccount();
+            String subAccount = SubAccount();
             String threeDaysAgo = TimeRangeUtils.getThreeDaysAgoTime();
             return smsQueueMapper.batchUpdateScheduleStatus(subAccount, threeDaysAgo, taskIds);
         } finally {
