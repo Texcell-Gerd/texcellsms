@@ -11,7 +11,7 @@ import java.util.List;
 @Mapper
 public interface ChargeLogMapper {
 
-    // ========== 1. 查询prepay物理数据源的MngDB库=========
+    // ========== 1. 查询eccom物理数据源的MngDB库=========
     @Select({
             "<script>",
             "SELECT CreateTime, Account, Amount, PrevBalance, PostBalance, AgentID ",

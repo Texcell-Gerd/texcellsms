@@ -31,10 +31,8 @@ public class DynamicDataSourceConfig {
     public static final String DS_ECCOM = "eccom";
     public static final String DS_WEB_PORTAL = "webPortal";
 
-    // 线程本地变量：直接放在这里，不需要独立类
     private static final ThreadLocal<String> DATA_SOURCE_CONTEXT = new ThreadLocal<>();
 
-    // ================== 工具方法：直接内置 ==================
     public static String getCurrentDataSource() {
         String key = DATA_SOURCE_CONTEXT.get();
         return key == null ? DS_ECCOM : key;
@@ -50,7 +48,6 @@ public class DynamicDataSourceConfig {
         DATA_SOURCE_CONTEXT.remove();
     }
 
-    // ================== 数据源 ==================
     @Bean(name = "eccomDataSource")
     @Primary
     public DataSource eccomDataSource() {
@@ -61,7 +58,7 @@ public class DynamicDataSourceConfig {
         ds.setPassword("sms");
         ds.setMaximumPoolSize(10);
         ds.setMinimumIdle(2);
-        ds.setConnectionTimeout(30000);
+        ds.setConnectionTimeout(600000);
         ds.setIdleTimeout(600000);
         ds.setLeakDetectionThreshold(300000);
         ds.setMaxLifetime(28800000);
@@ -69,24 +66,6 @@ public class DynamicDataSourceConfig {
         ds.setConnectionTestQuery("SELECT 1");
         return ds;
     }
-
-//    @Bean(name = "webPortalDataSource")
-//    public DataSource webPortalDataSource() {
-//        HikariDataSource ds = new HikariDataSource();
-//        ds.setDriverClassName("com.mysql.cj.jdbc.Driver");
-//        ds.setJdbcUrl("jdbc:mysql://192.168.112.229:14333/WEBPortal?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC&allowPublicKeyRetrieval=true&useSSL=false");
-//        ds.setUsername("smsTester");
-//        ds.setPassword("smsTester");
-//        ds.setMaximumPoolSize(10);
-//        ds.setMinimumIdle(2);
-//        ds.setConnectionTimeout(30000);
-//        ds.setIdleTimeout(600000);
-//        ds.setLeakDetectionThreshold(300000);
-//        ds.setMaxLifetime(28800000);
-//        ds.setValidationTimeout(30000);
-//        ds.setConnectionTestQuery("SELECT 1");
-//        return ds;
-//    }
 
     @Bean(name = "webPortalDataSource")
     public DataSource webPortalDataSource() {
@@ -97,16 +76,32 @@ public class DynamicDataSourceConfig {
         ds.setPassword("9c98eCFD84F299F76F6D4252DE111484(*&^%$");
         ds.setMaximumPoolSize(10);
         ds.setMinimumIdle(2);
-        ds.setConnectionTimeout(30000);
+        ds.setConnectionTimeout(600000);
         ds.setIdleTimeout(600000);
         ds.setLeakDetectionThreshold(300000);
         ds.setMaxLifetime(28800000);
         ds.setValidationTimeout(30000);
         ds.setConnectionTestQuery("SELECT 1");
         return ds;
+
+//    @Bean(name = "webPortalDataSource")
+//    public DataSource webPortalDataSource() {
+//        HikariDataSource ds = new HikariDataSource();
+//        ds.setDriverClassName("com.mysql.cj.jdbc.Driver");
+//        ds.setJdbcUrl("jdbc:mysql://192.168.112.229:14333/WEBPortal?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC&allowPublicKeyRetrieval=true&useSSL=false");
+//        ds.setUsername("sms");
+//        ds.setPassword("sms");
+//        ds.setMaximumPoolSize(10);
+//        ds.setMinimumIdle(2);
+//        ds.setConnectionTimeout(600000);
+//        ds.setIdleTimeout(600000);
+//        ds.setLeakDetectionThreshold(300000);
+//        ds.setMaxLifetime(28800000);
+//        ds.setValidationTimeout(30000);
+//        ds.setConnectionTestQuery("SELECT 1");
+//        return ds;
     }
 
-    // ================== 路由数据源（核心） ==================
     @Bean(name = "routingDataSource")
     public AbstractRoutingDataSource routingDataSource(
             DataSource eccomDataSource,
@@ -114,7 +109,6 @@ public class DynamicDataSourceConfig {
         AbstractRoutingDataSource routingDataSource = new AbstractRoutingDataSource() {
             @Override
             protected Object determineCurrentLookupKey() {
-                // ✅ 现在直接调用本类方法，不依赖任何外部类
                 return getCurrentDataSource();
             }
         };
@@ -130,7 +124,6 @@ public class DynamicDataSourceConfig {
         return routingDataSource;
     }
 
-    // ================== Session 相关 ==================
     @Bean(name = "eccomSqlSessionFactory")
     @Primary
     public SqlSessionFactory eccomSqlSessionFactory() throws Exception {
@@ -140,7 +133,8 @@ public class DynamicDataSourceConfig {
 
         org.apache.ibatis.session.Configuration configuration = new org.apache.ibatis.session.Configuration();
         configuration.setMapUnderscoreToCamelCase(true);
-        configuration.setDefaultStatementTimeout(30);
+        configuration.setDefaultStatementTimeout(120);
+        configuration.setDefaultFetchSize(1000);
         configuration.setLocalCacheScope(LocalCacheScope.STATEMENT);
         configuration.setCacheEnabled(false);
         sessionFactoryBean.setConfiguration(configuration);
@@ -156,7 +150,8 @@ public class DynamicDataSourceConfig {
 
         org.apache.ibatis.session.Configuration configuration = new org.apache.ibatis.session.Configuration();
         configuration.setMapUnderscoreToCamelCase(true);
-        configuration.setDefaultStatementTimeout(30);
+        configuration.setDefaultStatementTimeout(600);
+        configuration.setDefaultFetchSize(1000);
         configuration.setLocalCacheScope(LocalCacheScope.STATEMENT);
         configuration.setCacheEnabled(false);
         sessionFactoryBean.setConfiguration(configuration);
@@ -172,8 +167,8 @@ public class DynamicDataSourceConfig {
 
         org.apache.ibatis.session.Configuration configuration = new org.apache.ibatis.session.Configuration();
         configuration.setMapUnderscoreToCamelCase(true);
-        configuration.setDefaultStatementTimeout(180);
-        configuration.setDefaultFetchSize(500);
+        configuration.setDefaultStatementTimeout(600);
+        configuration.setDefaultFetchSize(1000);
         configuration.setLocalCacheScope(LocalCacheScope.STATEMENT);
         configuration.setCacheEnabled(false);
         sessionFactoryBean.setConfiguration(configuration);

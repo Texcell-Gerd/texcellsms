@@ -17,7 +17,7 @@ import java.util.*;
  * 发送接口：接收所有参数 → 打包JSON → 调用C程序 → 返回结果
  */
 @RestController
-@RequestMapping("/api/prepay/sms")
+@RequestMapping("/api/eccom/sms")
 public class SmsSendController {
 
     @Autowired

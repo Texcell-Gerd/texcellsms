@@ -18,7 +18,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 @RestController
-@RequestMapping("/api/prepay/sms")
+@RequestMapping("/api/eccom/sms")
 public class SmsUploadController {
 
     @Autowired

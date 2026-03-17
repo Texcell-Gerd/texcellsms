@@ -12,6 +12,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.Resource;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.text.NumberFormat;
 import java.text.SimpleDateFormat;
 import java.util.*;
@@ -21,18 +23,13 @@ import java.util.stream.Collectors;
 public class SubmitRecordService {
 
     private static final Logger logger = LoggerFactory.getLogger(SubmitRecordService.class);
-
     @Resource
     private SubmitRecordMapper submitRecordMapper;
-
-    private String SubAccount() {
-        return TokenService.getUsername();
-    }
-
+    private String SubAccount() { return TokenService.getUsername(); }
     private static final SimpleDateFormat DATETIME_FORMAT_DB = new SimpleDateFormat("yyyy/MM/dd HH:mm:ss");
     private static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("yyyyMMdd");
-
     private static final NumberFormat PERCENT_FORMAT;
+
     static {
         PERCENT_FORMAT = NumberFormat.getPercentInstance(Locale.US);
         PERCENT_FORMAT.setMaximumFractionDigits(2);
@@ -50,172 +47,120 @@ public class SubmitRecordService {
         return suffixList;
     }
 
-    private List<SubmitRecordDTO> querySubmitRecordsCommon(
-            Date startTime, Date endTime,
-            String callee, String mcc, String mnc,
-            String innerReportState, String innerReportError,
-            Integer pageNum, Integer pageSize
-    ) {
-        DynamicDataSourceInterceptor.setCurrentDataSource(DynamicDataSourceConfig.DS_ECCOM);
-        try {
-            if (startTime == null) {
-                startTime = new Date(System.currentTimeMillis() - 12 * 3600 * 1000);
-            }
-            if (endTime == null) {
-                endTime = new Date();
-            }
-
-            String subAccount = SubAccount();
-            String startTimeStr = DATETIME_FORMAT_DB.format(startTime);
-            String endTimeStr = DATETIME_FORMAT_DB.format(endTime);
-
-            String state = (innerReportState == null) ? "" : innerReportState.trim();
-            String error = (innerReportError == null) ? "" : innerReportError.trim();
-            String calleeNo = (callee == null) ? "" : callee.trim();
-            String mccCode = (mcc == null) ? "" : mcc.trim();
-            String mncCode = (mnc == null) ? "" : mnc.trim();
-
-            List<String> tableSuffixList = getDateSuffixList(startTime, endTime);
-            List<SubmitRecordDTO> allRecords = new ArrayList<>();
-
-            for (String suffix : tableSuffixList) {
-                List<SubmitRecordDTO> dayData = submitRecordMapper.querySubmitRecordsWithJoin(
-                        suffix, subAccount, startTimeStr, endTimeStr,
-                        calleeNo, mccCode, mncCode, state, error,
-                        9999, 0
-                );
-                allRecords.addAll(dayData);
-            }
-
-            for (SubmitRecordDTO record : allRecords) {
-                if (record.getFbInnerReportState() != null && !record.getFbInnerReportState().isEmpty()) {
-                    record.setInnerReportState(record.getFbInnerReportState());
-                } else {
-                    record.setInnerReportState("处理中");
-                    record.setRecvDRTime(null);
-                }
-
-                String content = SmsContentParserUtil.parseAndEncryptShortMessage(
-                        record.getOriginalShortMessage(), record.getDcs()
-                );
-                record.setShortMessage(content == null ? "" : content.replaceAll("\\n|\\r", " "));
-
-                record.setFbInnerReportState(null);
-                record.setInnerReportError(null);
-                record.setChargeFee(null);
-            }
-
-            int startIndex = (pageNum - 1) * pageSize;
-            if (startIndex >= allRecords.size()) {
-                return new ArrayList<>();
-            }
-            int endIndex = Math.min(startIndex + pageSize, allRecords.size());
-            return allRecords.subList(startIndex, endIndex);
-
-        } finally {
-            DynamicDataSourceInterceptor.clearCurrentDataSource();
-        }
-    }
-
-    // ====================== 【已修复】传入所有筛选条件 ======================
-    private Long countTotal(Date startTime, Date endTime, String subAccount,
-                            String callee, String mcc, String mnc,
-                            String innerReportState, String innerReportError) {
-        List<String> suffixList = getDateSuffixList(startTime, endTime);
-        long total = 0L;
-        String sTime = DATETIME_FORMAT_DB.format(startTime);
-        String eTime = DATETIME_FORMAT_DB.format(endTime);
-
-        for (String suffix : suffixList) {
-            Long count = submitRecordMapper.countSubmitTotal(
-                    suffix, subAccount, sTime, eTime,
-                    callee, mcc, mnc, innerReportState, innerReportError
-            );
-            if (count != null) total += count;
-        }
-        return total;
-    }
-
-    // ====================== 【已修复】传入所有筛选条件 ======================
-    private Map<String, Long> countDeliver(Date startTime, Date endTime, String subAccount,
-                                           String callee, String mcc, String mnc,
-                                           String innerReportState, String innerReportError) {
-        List<String> suffixList = getDateSuffixList(startTime, endTime);
-        Map<String, Long> result = new HashMap<>();
-        result.put("success", 0L);
-        result.put("fail", 0L);
-
-        String sTime = DATETIME_FORMAT_DB.format(startTime);
-        String eTime = DATETIME_FORMAT_DB.format(endTime);
-
-        for (String suffix : suffixList) {
-            List<Map<String, Object>> stats = submitRecordMapper.countDeliverStats(
-                    suffix, subAccount, sTime, eTime,
-                    callee, mcc, mnc, innerReportState, innerReportError
-            );
-            for (Map<String, Object> map : stats) {
-                String state = String.valueOf(map.get("InnerReportState"));
-                long count = Long.parseLong(String.valueOf(map.get("count")));
-
-                if ("DELIVRD".equalsIgnoreCase(state)) {
-                    result.put("success", result.get("success") + count);
-                } else {
-                    result.put("fail", result.get("fail") + count);
-                }
-            }
-        }
-        return result;
-    }
-
     public SubmitRecordWithStatsDTO getSubmitRecordWithStats(
             Date startTime, Date endTime,
             String callee, String mcc, String mnc,
             String innerReportState, String innerReportError,
+            String destAccountStatus,
             Integer pageNum, Integer pageSize
     ) {
         DynamicDataSourceInterceptor.setCurrentDataSource(DynamicDataSourceConfig.DS_ECCOM);
         try {
             String subAccount = SubAccount();
             pageSize = Math.min(pageSize, 50);
+            if (startTime == null) startTime = new Date(System.currentTimeMillis() - 12 * 3600 * 1000);
+            if (endTime == null) endTime = new Date();
+            String startTimeStr = DATETIME_FORMAT_DB.format(startTime);
+            String endTimeStr = DATETIME_FORMAT_DB.format(endTime);
 
-            String state = (innerReportState == null) ? "" : innerReportState.trim();
-            String error = (innerReportError == null) ? "" : innerReportError.trim();
-            String calleeNo = (callee == null) ? "" : callee.trim();
-            String mccCode = (mcc == null) ? "" : mcc.trim();
-            String mncCode = (mnc == null) ? "" : mnc.trim();
+            callee = (callee == null) ? "" : callee.trim();
+            mcc = (mcc == null) ? "" : mcc.trim();
+            mnc = (mnc == null) ? "" : mnc.trim();
+            innerReportState = (innerReportState == null) ? "" : innerReportState.trim();
+            destAccountStatus = (destAccountStatus == null) ? "" : destAccountStatus.trim();
 
-            List<SubmitRecordDTO> records = querySubmitRecordsCommon(
-                    startTime, endTime, callee, mcc, mnc,
-                    innerReportState, innerReportError,
-                    pageNum, pageSize
-            );
+            List<String> suffixList = getDateSuffixList(startTime, endTime);
+            List<SubmitRecordDTO> allSubmitList = new ArrayList<>();
+            Map<String, Map<String, Object>> feeMap = new HashMap<>();
+            long submitSuccess = 0, submitFail = 0;
 
-            // ====================== 【已修复】统计方法带上条件 ======================
-            Long total = countTotal(startTime, endTime, subAccount,
-                    calleeNo, mccCode, mncCode, state, error);
-            Map<String, Long> deliver = countDeliver(startTime, endTime, subAccount,
-                    calleeNo, mccCode, mncCode, state, error);
+            for (String suffix : suffixList) {
+                List<SubmitRecordDTO> subList = submitRecordMapper.querySubmitBill(
+                        suffix, subAccount, startTimeStr, endTimeStr, callee, mcc, mnc, destAccountStatus
+                );
+                allSubmitList.addAll(subList);
+                Map<String, Object> countMap = submitRecordMapper.countSubmitStats(
+                        suffix, subAccount, startTimeStr, endTimeStr, callee, mcc, mnc, destAccountStatus
+                );
+                submitSuccess += ((Number) countMap.get("successCount")).longValue();
+                submitFail += ((Number) countMap.get("failCount")).longValue();
+                List<Map<String, Object>> feeList = submitRecordMapper.queryFeeBill(
+                        suffix, subAccount, startTimeStr, endTimeStr, innerReportState
+                );
+                for (Map<String, Object> fee : feeList) {
+                    String recvMsgId = (String) fee.get("RecvMsgId");
+                    if (recvMsgId != null) feeMap.put(recvMsgId, fee);
+                }
+            }
 
-            Long success = deliver.get("success");
-            Long fail = deliver.get("fail");
+            List<SubmitRecordDTO> mergedList = new ArrayList<>();
+            Map<String, Integer> stateCount = new HashMap<>();
+            stateCount.put("DELIVRD", 0); stateCount.put("UNDELIV", 0); stateCount.put("UNKNOWN", 0);
 
-            String rate = "0.00%";
-            if (total > 0) {
-                rate = PERCENT_FORMAT.format((double) success / total);
+            for (SubmitRecordDTO sub : allSubmitList) {
+                Map<String, Object> fee = feeMap.get(sub.getSubmitMsgId());
+                if (!innerReportState.isEmpty()) {
+                    if (fee == null) continue;
+                    String realState = String.valueOf(fee.get("InnerReportState"));
+                    if (!innerReportState.equals(realState)) continue;
+                }
+                if (fee != null) {
+                    String state = (String) fee.get("InnerReportState");
+                    sub.setInnerReportState(state);
+                    sub.setRecvDRTime((String) fee.get("RecvDRTime"));
+                    if ("DELIVRD".equals(state)) stateCount.put("DELIVRD", stateCount.get("DELIVRD") + 1);
+                    else if ("UNDELIV".equals(state)) stateCount.put("UNDELIV", stateCount.get("UNDELIV") + 1);
+                    else if ("UNKNOWN".equals(state)) stateCount.put("UNKNOWN", stateCount.get("UNKNOWN") + 1);
+                } else {
+                    sub.setInnerReportState("已提交");
+                    sub.setRecvDRTime(null);
+                    if (!innerReportState.isEmpty()) continue;
+                }
+                try {
+                    String content = SmsContentParserUtil.parseAndEncryptShortMessage(sub.getOriginalShortMessage(), sub.getDcs());
+                    sub.setShortMessage(content == null ? "" : content.replaceAll("\\n|\\r", " "));
+                } catch (Exception e) {
+                    sub.setShortMessage("");
+                }
+                String chargeFee = sub.getChargeFee();
+                if (chargeFee == null || "0".equals(chargeFee)) {
+                    sub.setActualChargeFee("0");
+                } else {
+                    try {
+                        BigDecimal feeVal = new BigDecimal(chargeFee);
+                        BigDecimal actual = feeVal.divide(new BigDecimal(10000), 4, RoundingMode.HALF_UP);
+                        sub.setActualChargeFee(actual.stripTrailingZeros().toPlainString());
+                    } catch (Exception e) {
+                        sub.setActualChargeFee("0");
+                    }
+                }
+                mergedList.add(sub);
+            }
+
+            int total = mergedList.size();
+            int startIndex = (pageNum - 1) * pageSize;
+            int endIndex = Math.min(startIndex + pageSize, total);
+            List<SubmitRecordDTO> pageRecords = startIndex >= total ? new ArrayList<>() : mergedList.subList(startIndex, endIndex);
+            long submitTotal = submitSuccess + submitFail;
+            long deliverSuccess = stateCount.get("DELIVRD");
+            long deliverFail = stateCount.get("UNDELIV") + stateCount.get("UNKNOWN");
+            String deliverRate = "0.00%";
+            if (submitSuccess > 0) {
+                double rate = Math.min((double) deliverSuccess / submitSuccess, 1.0);
+                deliverRate = PERCENT_FORMAT.format(rate);
             }
 
             SubmitRecordWithStatsDTO dto = new SubmitRecordWithStatsDTO();
-            dto.setRecords(records);
-            dto.setSubmitTotal(total);
-            dto.setSubmitFailCount(fail);
-            dto.setDeliverSuccessCount(success);
-            dto.setDeliverFailCount(fail);
-            dto.setDeliverSuccessRate(rate);
+            dto.setRecords(pageRecords);
+            dto.setSubmitTotal(submitTotal);
+            dto.setSubmitFailCount(submitFail);
             dto.setSubmitSuccessRate("100.00%");
+            dto.setDeliverSuccessCount(deliverSuccess);
+            dto.setDeliverFailCount(deliverFail);
+            dto.setDeliverSuccessRate(deliverRate);
             dto.setPageCount(total <= 0 ? 0 : (int) Math.ceil((double) total / pageSize));
             dto.setCurrentPage(pageNum);
             dto.setPageSize(pageSize);
-
             return dto;
         } finally {
             DynamicDataSourceInterceptor.clearCurrentDataSource();
@@ -225,53 +170,83 @@ public class SubmitRecordService {
     public List<SubmitRecordExportVO> queryExportDataForEasyExcel(
             Date startTime, Date endTime,
             String callee, String mcc, String mnc,
-            String innerReportState, String innerReportError
+            String innerReportState, String innerReportError,
+            String destAccountStatus
     ) {
         DynamicDataSourceInterceptor.setCurrentDataSource(DynamicDataSourceConfig.DS_ECCOM);
         try {
             String subAccount = SubAccount();
             String startTimeStr = DATETIME_FORMAT_DB.format(startTime);
             String endTimeStr = DATETIME_FORMAT_DB.format(endTime);
+            callee = (callee == null) ? "" : callee.trim();
+            mcc = (mcc == null) ? "" : mcc.trim();
+            mnc = (mnc == null) ? "" : mnc.trim();
+            innerReportState = (innerReportState == null) ? "" : innerReportState.trim();
+            destAccountStatus = (destAccountStatus == null) ? "" : destAccountStatus.trim();
 
-            String state = (innerReportState == null) ? "" : innerReportState.trim();
-            String error = (innerReportError == null) ? "" : innerReportError.trim();
-            String calleeNo = (callee == null) ? "" : callee.trim();
-            String mccCode = (mcc == null) ? "" : mcc.trim();
-            String mncCode = (mnc == null) ? "" : mnc.trim();
-
+            final String finalInner = innerReportState;
             List<String> suffixList = getDateSuffixList(startTime, endTime);
-            List<SubmitRecordDTO> allData = new ArrayList<>();
+            List<SubmitRecordDTO> allSubmitList = new ArrayList<>();
+            Map<String, Map<String, Object>> feeMap = new HashMap<>();
 
             for (String suffix : suffixList) {
-                List<SubmitRecordDTO> dayData = submitRecordMapper.querySubmitRecordsForExportWithJoin(
-                        suffix, subAccount, startTimeStr, endTimeStr,
-                        calleeNo, mccCode, mncCode, state, error
+                List<SubmitRecordDTO> subList = submitRecordMapper.querySubmitBill(
+                        suffix, subAccount, startTimeStr, endTimeStr, callee, mcc, mnc, destAccountStatus
                 );
-                allData.addAll(dayData);
+                allSubmitList.addAll(subList);
+                List<Map<String, Object>> feeList = submitRecordMapper.queryFeeBill(
+                        suffix, subAccount, startTimeStr, endTimeStr, innerReportState
+                );
+                for (Map<String, Object> fee : feeList) {
+                    String recvMsgId = (String) fee.get("RecvMsgId");
+                    if (recvMsgId != null) feeMap.put(recvMsgId, fee);
+                }
             }
 
-            logger.info("导出总数据量: {}", allData.size());
-
-            return allData.stream().map(item -> {
-                SubmitRecordExportVO vo = new SubmitRecordExportVO();
-                vo.setSourAccount(item.getSourAccount());
-                vo.setSubmitMsgId(item.getSubmitMsgId());
-                vo.setSubmitMsgTime(item.getSubmitMsgTime());
-                vo.setCaller(item.getCaller());
-                vo.setCallee(item.getCallee());
-                vo.setSmLength(item.getSmLength());
-                vo.setActualChargeFee(item.getActualChargeFee());
-
-                String content = SmsContentParserUtil.parseShortMessageOnly(item.getOriginalShortMessage(), item.getDcs());
-                vo.setShortMessage(content == null ? "" : content.replaceAll("\\n|\\r", " "));
-
-                vo.setMcc(item.getMcc());
-                vo.setMnc(item.getMnc());
-                vo.setInnerReportState(item.getFbInnerReportState() == null ? "处理中" : item.getFbInnerReportState());
-                vo.setRecvDRTime(item.getRecvDRTime());
-                return vo;
-            }).collect(Collectors.toList());
-
+            return allSubmitList.stream()
+                    .filter(sub -> {
+                        if (finalInner.isEmpty()) return true;
+                        Map<String, Object> fee = feeMap.get(sub.getSubmitMsgId());
+                        return fee != null && finalInner.equals(String.valueOf(fee.get("InnerReportState")));
+                    })
+                    .map(sub -> {
+                        SubmitRecordExportVO vo = new SubmitRecordExportVO();
+                        Map<String, Object> fee = feeMap.get(sub.getSubmitMsgId());
+                        vo.setSourAccount(sub.getSourAccount());
+                        vo.setSubmitMsgId(sub.getSubmitMsgId());
+                        vo.setSubmitMsgTime(sub.getSubmitMsgTime());
+                        vo.setCaller(sub.getCaller());
+                        vo.setCallee(sub.getCallee());
+                        vo.setSmLength(sub.getSmLength());
+                        String chargeFee = sub.getChargeFee();
+                        if (chargeFee == null || "0".equals(chargeFee)) {
+                            vo.setActualChargeFee("0");
+                        } else {
+                            try {
+                                BigDecimal feeVal = new BigDecimal(chargeFee);
+                                BigDecimal actual = feeVal.divide(new BigDecimal(10000), 4, RoundingMode.HALF_UP);
+                                vo.setActualChargeFee(actual.stripTrailingZeros().toPlainString());
+                            } catch (Exception e) {
+                                vo.setActualChargeFee("0");
+                            }
+                        }
+                        try {
+                            String content = SmsContentParserUtil.parseShortMessageOnly(sub.getOriginalShortMessage(), sub.getDcs());
+                            vo.setShortMessage(content == null ? "" : content.replaceAll("\\n|\\r", " "));
+                        } catch (Exception e) {
+                            vo.setShortMessage("");
+                        }
+                        vo.setMcc(sub.getMcc());
+                        vo.setMnc(sub.getMnc());
+                        if (fee != null) {
+                            vo.setInnerReportState((String) fee.get("InnerReportState"));
+                            vo.setRecvDRTime((String) fee.get("RecvDRTime"));
+                        } else {
+                            vo.setInnerReportState("已提交");
+                            vo.setRecvDRTime(null);
+                        }
+                        return vo;
+                    }).collect(Collectors.toList());
         } finally {
             DynamicDataSourceInterceptor.clearCurrentDataSource();
         }

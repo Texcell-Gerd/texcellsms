@@ -13,25 +13,38 @@ import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletResponse;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Tag(name = "充值记录接口")
 @RestController
-@RequestMapping("/api/prepay/charge")
+@RequestMapping("/api/eccom/charge")
 public class ChargeLogController {
 
     @Resource
     private ChargeLogService chargeLogService;
 
-    @Operation(summary = "查询当前用户充值记录")
-    @GetMapping("/my-log")
-    public Result<List<ChargeLog>> getMyChargeLog(
+    @Operation(summary = "查询当前用户充值记录（带分页）")
+    @GetMapping("/recharge-log")
+    public Result<Map<String, Object>> getMyChargeLog(
             @RequestHeader(RequestHeaderConstants.AUTHORIZATION) String authorization,
             @Parameter(description = "开始时间") @RequestParam(required = false) String startTime,
             @Parameter(description = "结束时间") @RequestParam(required = false) String endTime,
+            @RequestParam(defaultValue = "1") Integer pageNum,
+            @RequestParam(defaultValue = "10") Integer pageSize,
             HttpServletResponse response) {
+
         String newToken = TokenService.refreshToken(authorization);
         response.setHeader(Constants.HEADER, newToken);
-        return Result.success(chargeLogService.getChargeLogByUserAccount(startTime, endTime));
+
+        List<ChargeLog> list = chargeLogService.getChargeLogPage(startTime, endTime, pageNum, pageSize);
+        int total = chargeLogService.getChargeLogCount(startTime, endTime);
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("records", list);
+        result.put("total", total);
+
+        return Result.success(result);
     }
 }

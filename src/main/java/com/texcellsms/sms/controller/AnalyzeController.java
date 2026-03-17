@@ -21,7 +21,7 @@ import java.util.List;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api/prepay/analyze")
+@RequestMapping("/api/eccom/analyze")
 @Tag(name = "数据分析接口")
 public class AnalyzeController {
 
@@ -29,7 +29,7 @@ public class AnalyzeController {
     private AnalyzeService analyzeService;
     private final SimpleDateFormat format = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
 
-    @GetMapping("/list")
+    @GetMapping("/analysis-list")
     @Operation(summary = "分析页列表查询（时间/MCC/MNC）")
     public Result<Map<String, Object>> query(
             @RequestHeader(RequestHeaderConstants.AUTHORIZATION) String authorization,

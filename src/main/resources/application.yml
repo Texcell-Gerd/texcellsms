@@ -1,4 +1,3 @@
-# 服务器配置
 server:
   port: 8081
   servlet:
@@ -8,17 +7,16 @@ server:
     threads:
       max: 100
       min-spare: 20
-    connection-timeout: 300000
+    connection-timeout: 600000
     max-connections: 5000
 
-# Spring核心配置
 spring:
   datasource:
     type: com.zaxxer.hikari.HikariDataSource
     hikari:
       maximum-pool-size: 10
       minimum-idle: 2
-      connection-timeout: 300000
+      connection-timeout: 600000
       idle-timeout: 28800000
       leak-detection-threshold: 0
       max-lifetime: 28800000
@@ -29,26 +27,24 @@ spring:
 
   mvc:
     async:
-      request-timeout: 1800000
+      request-timeout: 3600000
 
-# MyBatis核心配置（已打开日志）
 mybatis:
   type-aliases-package: com.texcellsms.sms.model.entity,com.texcellsms.sms.model.DTO
   type-handlers-package: com.texcellsms.sms.config
 
   configuration:
     map-underscore-to-camel-case: true
-    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl  # 这里打开SQL日志
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
     lazy-loading-enabled: false
     aggressive-lazy-loading: false
     auto-mapping-behavior: PARTIAL
-    default-statement-timeout: 180
+    default-statement-timeout: 600
     default-fetch-size: 1000
     local-cache-scope: STATEMENT
     cache-enabled: false
   mapper-locations: classpath:empty.xml
 
-# 日志配置（打开DEBUG）
 logging:
   level:
     com.texcellsms.sms: debug
@@ -62,7 +58,6 @@ logging:
     max-size: 100MB
     max-history: 7
 
-# 自定义业务配置
 texcellsms:
   google-auth:
     issuer: TexcellSMS

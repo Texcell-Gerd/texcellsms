@@ -26,6 +26,7 @@ public class ChargeLogService {
         return TokenService.getUsername();
     }
 
+    // ===================== 原有方法不动，只加一个分页方法 =====================
     public List<ChargeLog> getChargeLogByUserAccount(String startTime, String endTime) {
         // 1. 校验当前登录用户
         String currentAccount = SubAccount();
@@ -80,5 +81,22 @@ public class ChargeLogService {
         }
 
         return allChargeLogs;
+    }
+
+    // ===================== 新增：分页查询（完全不影响原有逻辑） =====================
+    public List<ChargeLog> getChargeLogPage(String startTime, String endTime, Integer pageNum, Integer pageSize) {
+        List<ChargeLog> all = getChargeLogByUserAccount(startTime, endTime);
+        if (all.isEmpty()) return new ArrayList<>();
+
+        int start = (pageNum - 1) * pageSize;
+        int end = Math.min(start + pageSize, all.size());
+
+        if (start >= all.size()) return new ArrayList<>();
+        return all.subList(start, end);
+    }
+
+    // ===================== 新增：获取总数 =====================
+    public int getChargeLogCount(String startTime, String endTime) {
+        return getChargeLogByUserAccount(startTime, endTime).size();
     }
 }
