@@ -23,8 +23,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-import static com.texcellsms.sms.util.UserUtils.getCurrentSubAccount;
-
 @Service
 @RequiredArgsConstructor
 public class SmsQueueService {

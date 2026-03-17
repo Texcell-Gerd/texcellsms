@@ -14,10 +14,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import javax.servlet.http.HttpServletRequest;
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileReader;
-import java.io.FileWriter;
+import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
@@ -27,32 +24,34 @@ import java.util.*;
 @Service
 public class SmsSendService {
 
+    // ✅ 测试服务器路径（对应 /home/ScheduleTask）
+    private static final String REMOTE_PHONE_PATH = "\\\\192.168.128.247\\home\\ScheduleTask\\Phone\\";
+    private static final String REMOTE_TASK_PATH = "\\\\192.168.128.247\\home\\ScheduleTask\\Task\\";
+
     @Autowired
     private SmsScheduleSendMapper scheduleSendMapper;
-
     @Autowired
     private ScheduleNumberTaskMapper scheduleNumberTaskMapper;
 
     public SmsSendResponse doSend(String subAccount, SmsSendRequest request, HttpServletRequest httpRequest) throws Exception {
-
-        // 预任务校验
         if (StringUtils.isNotEmpty(request.getPreTaskId())) {
             int valid = scheduleNumberTaskMapper.checkPreTaskValid(subAccount, request.getPreTaskId());
             if (valid <= 0) {
-                throw new Exception("The number task has expired or does not exist");
+                throw new Exception("预上传任务已过期，请重新上传");
+            }
+
+            File sourceFile = new File(REMOTE_PHONE_PATH + subAccount + "\\" + request.getPreTaskId() + ".txt");
+            if (!sourceFile.exists()) {
+                throw new Exception("预上传号码文件不存在");
             }
         }
 
-        String taskId = StringUtils.isNotEmpty(request.getPreTaskId())
-                ? request.getPreTaskId()
-                : IdGenerator.generatePreTaskId();
-
+        String taskId = IdGenerator.generatePreTaskId();
         int calleeCount = 0;
+
         if (StringUtils.isNotEmpty(request.getPreTaskId())) {
-            String userPath = SmsConstants.PHONE_PATH + subAccount + "\\";
-            File phoneFile = new File(userPath, request.getPreTaskId() + ".txt");
-            if (!phoneFile.exists()) throw new Exception("PreTask file not found");
-            try (BufferedReader br = new BufferedReader(new FileReader(phoneFile))) {
+            File sourceFile = new File(REMOTE_PHONE_PATH + subAccount + "\\" + request.getPreTaskId() + ".txt");
+            try (BufferedReader br = new BufferedReader(new FileReader(sourceFile))) {
                 while (br.readLine() != null) calleeCount++;
             }
         } else {
@@ -65,9 +64,11 @@ public class SmsSendService {
         int totalCount = calleeCount * splitCount;
         int smLength = content.getBytes(StandardCharsets.UTF_8).length;
 
-        String userTaskPath = SmsConstants.TASK_PATH + subAccount + "\\";
-        File taskDir = new File(userTaskPath);
-        if (!taskDir.exists()) taskDir.mkdirs();
+        File taskDir = new File(REMOTE_TASK_PATH + subAccount + "\\");
+        if (!taskDir.exists()) taskDir.mkdirs(); // 自动创建用户目录
+
+        File taskTmp = new File(taskDir, taskId + ".tmp");
+        File taskFinal = new File(taskDir, taskId + ".txt");
 
         Map<String, Object> taskJson = new HashMap<>();
         taskJson.put("TaskId", taskId);
@@ -101,75 +102,57 @@ public class SmsSendService {
         }
         taskJson.put("Msg", msgList);
 
-        File taskFile = new File(taskDir, taskId + ".tmp");
-        try (FileWriter fw = new FileWriter(taskFile)) {
-            new ObjectMapper().writeValue(fw, taskJson);
+        try (FileWriter fw = new FileWriter(taskTmp)) {
+            new ObjectMapper().writeValue(fw, taskJson); // ✅ 已修复 Jackson 写入
         }
-        Files.move(taskFile.toPath(), new File(taskDir, taskId + ".txt").toPath(), StandardCopyOption.REPLACE_EXISTING);
 
-        // ==============================================
-        // ✅ 强制东八区时间 + 无毫秒
-        // ==============================================
-        SmsScheduleSend scheduleSend = new SmsScheduleSend();
-        scheduleSend.setTaskId(taskId);
+        Files.move(taskTmp.toPath(), taskFinal.toPath(), StandardCopyOption.REPLACE_EXISTING);
 
-        // 强制使用北京时间
+        if (StringUtils.isNotEmpty(request.getPreTaskId())) {
+            File source = new File(REMOTE_PHONE_PATH + subAccount + "\\" + request.getPreTaskId() + ".txt");
+            File target = new File(REMOTE_PHONE_PATH + subAccount + "\\" + taskId + ".txt");
+            Files.copy(source.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING);
+        }
+
         SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
         sdf.setTimeZone(TimeZone.getTimeZone("Asia/Shanghai"));
         String nowStr = sdf.format(new Date());
         Date cleanDate = sdf.parse(nowStr);
 
-        // 设置发送时间
-        if (StringUtils.isNotEmpty(request.getScheduleTime())) {
-            scheduleSend.setScheduleSendTime(sdf.parse(request.getScheduleTime()));
-        } else {
-            scheduleSend.setScheduleSendTime(cleanDate);
-        }
+        SmsScheduleSend send = new SmsScheduleSend();
+        send.setTaskId(taskId);
+        send.setScheduleSendTime(StringUtils.isNotEmpty(request.getScheduleTime()) ? sdf.parse(request.getScheduleTime()) : cleanDate);
+        send.setScheduleStatus((byte) 0);
+        send.setCalleeCount(calleeCount);
+        send.setSplitCount(splitCount);
+        send.setTotalCount(totalCount);
+        send.setTaskTime(cleanDate);
+        send.setTaskIp(TokenService.getIpAddress(httpRequest));
+        send.setSubAccount(subAccount);
+        send.setTaskTimeZone(SmsConstants.DEFAULT_TIMEZONE);
+        send.setShortMessage(content);
+        send.setTaskName(StringUtils.isEmpty(request.getTaskName()) ? "Default Task" : request.getTaskName());
+        send.setSubmitSuccCount(0);
+        send.setSubmitFailCount(0);
+        send.setDrSuccCount(0);
+        send.setDrFailCount(0);
 
-        // 强制状态 0
-        scheduleSend.setScheduleStatus((byte) 0);
-
-        scheduleSend.setCalleeCount(calleeCount);
-        scheduleSend.setSplitCount(splitCount);
-        scheduleSend.setTotalCount(totalCount);
-        scheduleSend.setTaskTime(cleanDate);
-        scheduleSend.setTaskIp(TokenService.getIpAddress(httpRequest));
-        scheduleSend.setSubAccount(subAccount);
-        scheduleSend.setTaskTimeZone(SmsConstants.DEFAULT_TIMEZONE);
-        scheduleSend.setShortMessage(content);
-        scheduleSend.setTaskName(StringUtils.isEmpty(request.getTaskName()) ? "Default Task" : request.getTaskName());
-        scheduleSend.setSubmitSuccCount(0);
-        scheduleSend.setSubmitFailCount(0);
-        scheduleSend.setDrSuccCount(0);
-        scheduleSend.setDrFailCount(0);
-
-        // 插入数据库
         scheduleSendMapper.insertAPIScheduleSend(
-                scheduleSend.getTaskId(),
-                scheduleSend.getScheduleSendTime(),
-                scheduleSend.getScheduleStatus(),
-                scheduleSend.getCalleeCount(),
-                scheduleSend.getSplitCount(),
-                scheduleSend.getTotalCount(),
-                scheduleSend.getTaskTime(),
-                scheduleSend.getTaskIp(),
-                scheduleSend.getSubAccount(),
-                scheduleSend.getTaskTimeZone(),
-                scheduleSend.getShortMessage(),
-                scheduleSend.getTaskName(),
-                scheduleSend.getSubmitSuccCount(),
-                scheduleSend.getSubmitFailCount(),
-                scheduleSend.getDrSuccCount(),
-                scheduleSend.getDrFailCount()
+                send.getTaskId(), send.getScheduleSendTime(), send.getScheduleStatus(),
+                send.getCalleeCount(), send.getSplitCount(), send.getTotalCount(),
+                send.getTaskTime(), send.getTaskIp(), send.getSubAccount(),
+                send.getTaskTimeZone(), send.getShortMessage(), send.getTaskName(),
+                send.getSubmitSuccCount(), send.getSubmitFailCount(),
+                send.getDrSuccCount(), send.getDrFailCount()
         );
 
-        SmsSendResponse response = new SmsSendResponse();
-        response.setTaskId(taskId);
-        response.setDcs(dcs);
-        response.setSmLength(smLength);
-        response.setPkTotal(splitCount);
-        response.setSplitCount(splitCount);
-        return response;
+        SmsSendResponse resp = new SmsSendResponse();
+        resp.setTaskId(taskId);
+        resp.setDcs(dcs);
+        resp.setSmLength(smLength);
+        resp.setPkTotal(splitCount);
+        resp.setSplitCount(splitCount);
+        return resp;
     }
 
     private String bytesToHex(byte[] bytes) {
