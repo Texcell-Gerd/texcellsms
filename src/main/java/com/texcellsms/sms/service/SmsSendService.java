@@ -7,7 +7,6 @@ import com.texcellsms.sms.model.DTO.SmsSendRequest;
 import com.texcellsms.sms.model.DTO.SmsSendResponse;
 import com.texcellsms.sms.model.entity.SmsScheduleSend;
 import com.texcellsms.sms.util.IdGenerator;
-import com.texcellsms.sms.util.SmsConstants;
 import com.texcellsms.sms.util.SmsContentUtil;
 import com.texcellsms.sms.util.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,12 +23,16 @@ import java.util.*;
 @Service
 public class SmsSendService {
 
-    // ✅ 测试服务器路径（对应 /home/ScheduleTask）
+    // 测试服务器路径
     private static final String REMOTE_PHONE_PATH = "\\\\192.168.128.247\\home\\ScheduleTask\\Phone\\";
     private static final String REMOTE_TASK_PATH = "\\\\192.168.128.247\\home\\ScheduleTask\\Task\\";
 
+    // 默认常量（仅保留必须的）
+    private static final String DEFAULT_CALLER = "SMSINFO";
+
     @Autowired
     private SmsScheduleSendMapper scheduleSendMapper;
+
     @Autowired
     private ScheduleNumberTaskMapper scheduleNumberTaskMapper;
 
@@ -65,7 +68,7 @@ public class SmsSendService {
         int smLength = content.getBytes(StandardCharsets.UTF_8).length;
 
         File taskDir = new File(REMOTE_TASK_PATH + subAccount + "\\");
-        if (!taskDir.exists()) taskDir.mkdirs(); // 自动创建用户目录
+        if (!taskDir.exists()) taskDir.mkdirs();
 
         File taskTmp = new File(taskDir, taskId + ".tmp");
         File taskFinal = new File(taskDir, taskId + ".txt");
@@ -73,7 +76,7 @@ public class SmsSendService {
         Map<String, Object> taskJson = new HashMap<>();
         taskJson.put("TaskId", taskId);
         taskJson.put("UserName", subAccount);
-        String caller = StringUtils.isNotEmpty(request.getCaller()) ? request.getCaller() : SmsConstants.DEFAULT_CALLER;
+        String caller = StringUtils.isNotEmpty(request.getCaller()) ? request.getCaller() : DEFAULT_CALLER;
         taskJson.put("Caller", caller);
         taskJson.put("CallerTon", caller.matches("^\\d+$") ? "1" : "5");
         taskJson.put("CallerNpi", caller.matches("^\\d+$") ? "1" : "0");
@@ -103,7 +106,7 @@ public class SmsSendService {
         taskJson.put("Msg", msgList);
 
         try (FileWriter fw = new FileWriter(taskTmp)) {
-            new ObjectMapper().writeValue(fw, taskJson); // ✅ 已修复 Jackson 写入
+            new ObjectMapper().writeValue(fw, taskJson);
         }
 
         Files.move(taskTmp.toPath(), taskFinal.toPath(), StandardCopyOption.REPLACE_EXISTING);
@@ -122,14 +125,12 @@ public class SmsSendService {
         SmsScheduleSend send = new SmsScheduleSend();
         send.setTaskId(taskId);
         send.setScheduleSendTime(StringUtils.isNotEmpty(request.getScheduleTime()) ? sdf.parse(request.getScheduleTime()) : cleanDate);
-        send.setScheduleStatus((byte) 0);
         send.setCalleeCount(calleeCount);
         send.setSplitCount(splitCount);
         send.setTotalCount(totalCount);
         send.setTaskTime(cleanDate);
         send.setTaskIp(TokenService.getIpAddress(httpRequest));
         send.setSubAccount(subAccount);
-        send.setTaskTimeZone(SmsConstants.DEFAULT_TIMEZONE);
         send.setShortMessage(content);
         send.setTaskName(StringUtils.isEmpty(request.getTaskName()) ? "Default Task" : request.getTaskName());
         send.setSubmitSuccCount(0);
@@ -138,12 +139,20 @@ public class SmsSendService {
         send.setDrFailCount(0);
 
         scheduleSendMapper.insertAPIScheduleSend(
-                send.getTaskId(), send.getScheduleSendTime(), send.getScheduleStatus(),
-                send.getCalleeCount(), send.getSplitCount(), send.getTotalCount(),
-                send.getTaskTime(), send.getTaskIp(), send.getSubAccount(),
-                send.getTaskTimeZone(), send.getShortMessage(), send.getTaskName(),
-                send.getSubmitSuccCount(), send.getSubmitFailCount(),
-                send.getDrSuccCount(), send.getDrFailCount()
+                send.getTaskId(),
+                send.getScheduleSendTime(),
+                send.getCalleeCount(),
+                send.getSplitCount(),
+                send.getTotalCount(),
+                send.getTaskTime(),
+                send.getTaskIp(),
+                send.getSubAccount(),
+                send.getShortMessage(),
+                send.getTaskName(),
+                send.getSubmitSuccCount(),
+                send.getSubmitFailCount(),
+                send.getDrSuccCount(),
+                send.getDrFailCount()
         );
 
         SmsSendResponse resp = new SmsSendResponse();
