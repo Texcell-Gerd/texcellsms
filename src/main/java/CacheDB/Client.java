@@ -1,7 +1,10 @@
 package CacheDB;
 import CacheDB.CacheDBResult.CADBPROCPARA;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-public class Client {
+public  class Client {
+	private static final Logger logger = LoggerFactory.getLogger(Client.class);
 	private static String TAG = "NCacheDBClient";
     static
     {
@@ -22,8 +25,9 @@ public class Client {
     	}
     	catch(Exception e)
     	{
-    		System.out.println("load dll failed");
-    		System.out.println(e.getMessage().toString());
+//    		System.out.println("load dll failed");
+//    		System.out.println(e.getMessage().toString());
+			logger.error("load dll failed",e.getMessage().toString());
     	}
     }
 
