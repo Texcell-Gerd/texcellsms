@@ -133,7 +133,7 @@ public class DynamicDataSourceConfig {
 
         org.apache.ibatis.session.Configuration configuration = new org.apache.ibatis.session.Configuration();
         configuration.setMapUnderscoreToCamelCase(true);
-        configuration.setDefaultStatementTimeout(120);
+        configuration.setDefaultStatementTimeout(600);
         configuration.setDefaultFetchSize(1000);
         configuration.setLocalCacheScope(LocalCacheScope.STATEMENT);
         configuration.setCacheEnabled(false);

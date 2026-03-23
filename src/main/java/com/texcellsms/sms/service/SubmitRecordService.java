@@ -47,6 +47,7 @@ public class SubmitRecordService {
         return suffixList;
     }
 
+    // ====================== 【终极排序版：最新数据优先】 ======================
     public SubmitRecordWithStatsDTO getSubmitRecordWithStats(
             Date startTime, Date endTime,
             String callee, String mcc, String mnc,
@@ -55,73 +56,149 @@ public class SubmitRecordService {
             Integer pageNum, Integer pageSize
     ) {
         DynamicDataSourceInterceptor.setCurrentDataSource(DynamicDataSourceConfig.DS_ECCOM);
+        final int FIX_PAGE_SIZE = 10;
+        pageNum = (pageNum == null || pageNum < 1) ? 1 : pageNum;
+
+        String subAccount = SubAccount();
+        String startTimeStr = DATETIME_FORMAT_DB.format(startTime);
+        String endTimeStr = DATETIME_FORMAT_DB.format(endTime);
+        callee = callee == null ? "" : callee.trim();
+        mcc = mcc == null ? "" : mcc.trim();
+        mnc = mnc == null ? "" : mnc.trim();
+        innerReportState = innerReportState == null ? "" : innerReportState.trim();
+        destAccountStatus = destAccountStatus == null ? "" : destAccountStatus.trim();
+        List<String> suffixList = getDateSuffixList(startTime, endTime);
+
         try {
-            String subAccount = SubAccount();
-            pageSize = Math.min(pageSize, 50);
-            if (startTime == null) startTime = new Date(System.currentTimeMillis() - 12 * 3600 * 1000);
-            if (endTime == null) endTime = new Date();
-            String startTimeStr = DATETIME_FORMAT_DB.format(startTime);
-            String endTimeStr = DATETIME_FORMAT_DB.format(endTime);
-
-            callee = (callee == null) ? "" : callee.trim();
-            mcc = (mcc == null) ? "" : mcc.trim();
-            mnc = (mnc == null) ? "" : mnc.trim();
-            innerReportState = (innerReportState == null) ? "" : innerReportState.trim();
-            destAccountStatus = (destAccountStatus == null) ? "" : destAccountStatus.trim();
-
-            List<String> suffixList = getDateSuffixList(startTime, endTime);
-            List<SubmitRecordDTO> allSubmitList = new ArrayList<>();
-            Map<String, Map<String, Object>> feeMap = new HashMap<>();
-            long submitSuccess = 0, submitFail = 0;
+            // ==============================================
+            // 1. 查询 ID + 发送时间，缓存映射关系
+            // ==============================================
+            Map<String, String> msgIdToTableSuffix = new HashMap<>();
+            Map<String, String> msgIdToSubmitTime = new HashMap<>();
+            List<Map<String, Object>> allIdWithTime = new ArrayList<>();
 
             for (String suffix : suffixList) {
-                List<SubmitRecordDTO> subList = submitRecordMapper.querySubmitBill(
+                List<Map<String, Object>> idWithTimeList = submitRecordMapper.listSubmitMsgIdsWithTime(
                         suffix, subAccount, startTimeStr, endTimeStr, callee, mcc, mnc, destAccountStatus
                 );
-                allSubmitList.addAll(subList);
-                Map<String, Object> countMap = submitRecordMapper.countSubmitStats(
-                        suffix, subAccount, startTimeStr, endTimeStr, callee, mcc, mnc, destAccountStatus
-                );
-                submitSuccess += ((Number) countMap.get("successCount")).longValue();
-                submitFail += ((Number) countMap.get("failCount")).longValue();
-                List<Map<String, Object>> feeList = submitRecordMapper.queryFeeBill(
-                        suffix, subAccount, startTimeStr, endTimeStr, innerReportState
-                );
-                for (Map<String, Object> fee : feeList) {
-                    String recvMsgId = (String) fee.get("RecvMsgId");
-                    if (recvMsgId != null) feeMap.put(recvMsgId, fee);
+                allIdWithTime.addAll(idWithTimeList);
+                for (Map<String, Object> map : idWithTimeList) {
+                    String msgId = (String) map.get("SubmitMsgId");
+                    String submitTime = (String) map.get("SubmitMsgTime");
+                    msgIdToTableSuffix.put(msgId, suffix);
+                    msgIdToSubmitTime.put(msgId, submitTime);
                 }
             }
 
-            List<SubmitRecordDTO> mergedList = new ArrayList<>();
-            Map<String, Integer> stateCount = new HashMap<>();
-            stateCount.put("DELIVRD", 0); stateCount.put("UNDELIV", 0); stateCount.put("UNKNOWN", 0);
-
-            for (SubmitRecordDTO sub : allSubmitList) {
-                Map<String, Object> fee = feeMap.get(sub.getSubmitMsgId());
-                if (!innerReportState.isEmpty()) {
-                    if (fee == null) continue;
-                    String realState = String.valueOf(fee.get("InnerReportState"));
-                    if (!innerReportState.equals(realState)) continue;
+            // ==============================================
+            // 2. 回执查询
+            // ==============================================
+            Map<String, Map<String, Object>> feeMap = new HashMap<>();
+            for (String suffix : suffixList) {
+                List<Map<String, Object>> feeList = submitRecordMapper.queryFeeBill(
+                        suffix, subAccount, startTimeStr, endTimeStr, innerReportState, callee, mcc, mnc
+                );
+                for (Map<String, Object> fee : feeList) {
+                    String recvMsgId = (String) fee.get("RecvMsgId");
+                    if (recvMsgId != null && msgIdToTableSuffix.containsKey(recvMsgId)) {
+                        feeMap.put(recvMsgId, fee);
+                    }
                 }
-                if (fee != null) {
-                    String state = (String) fee.get("InnerReportState");
-                    sub.setInnerReportState(state);
-                    sub.setRecvDRTime((String) fee.get("RecvDRTime"));
-                    if ("DELIVRD".equals(state)) stateCount.put("DELIVRD", stateCount.get("DELIVRD") + 1);
-                    else if ("UNDELIV".equals(state)) stateCount.put("UNDELIV", stateCount.get("UNDELIV") + 1);
-                    else if ("UNKNOWN".equals(state)) stateCount.put("UNKNOWN", stateCount.get("UNKNOWN") + 1);
+            }
+
+            // ==============================================
+            // 3. 过滤有效ID，并【全局按时间倒序】
+            // ==============================================
+            List<String> validIds = new ArrayList<>();
+            for (Map<String, Object> map : allIdWithTime) {
+                String msgId = (String) map.get("SubmitMsgId");
+                if (!innerReportState.isEmpty() && !feeMap.containsKey(msgId)) {
+                    continue;
+                }
+                validIds.add(msgId);
+            }
+
+            // 核心：全局时间倒序
+            validIds.sort((id1, id2) -> {
+                String t1 = msgIdToSubmitTime.get(id1);
+                String t2 = msgIdToSubmitTime.get(id2);
+                if (t1 == null) return 1;
+                if (t2 == null) return -1;
+                return t2.compareTo(t1);
+            });
+
+            // ==============================================
+            // 4. 统计
+            // ==============================================
+            long total = validIds.size();
+            long deliverSuccess = 0, deliverFail = 0;
+            for (String id : validIds) {
+                Map<String, Object> f = feeMap.get(id);
+                if (f == null) continue;
+                String state = String.valueOf(f.get("InnerReportState"));
+                if ("DELIVRD".equals(state)) {
+                    deliverSuccess++;
+                } else if ("UNDELIV".equals(state) || "UNKNOWN".equals(state)) {
+                    deliverFail++;
+                }
+            }
+
+            long submitSuccess = total;
+            long submitFail = 0;
+            if (innerReportState.isEmpty()) {
+                if ("success".equals(destAccountStatus)) {
+                    submitSuccess = total;
+                    submitFail = 0;
+                } else if ("fail".equals(destAccountStatus)) {
+                    submitFail = total;
+                    submitSuccess = 0;
+                }
+            }
+
+            // ==============================================
+            // 5. 分页 + 查询详情
+            // ==============================================
+            int skip = (pageNum - 1) * FIX_PAGE_SIZE;
+            List<String> pageIds = validIds.stream().skip(skip).limit(FIX_PAGE_SIZE).collect(Collectors.toList());
+            List<SubmitRecordDTO> pageRecords = new ArrayList<>();
+
+            if (!pageIds.isEmpty()) {
+                Map<String, List<String>> tableToIds = new HashMap<>();
+                for (String id : pageIds) {
+                    String suffix = msgIdToTableSuffix.get(id);
+                    if (suffix != null) {
+                        tableToIds.computeIfAbsent(suffix, k -> new ArrayList<>()).add(id);
+                    }
+                }
+                for (Map.Entry<String, List<String>> entry : tableToIds.entrySet()) {
+                    pageRecords.addAll(submitRecordMapper.listByIds(entry.getKey(), entry.getValue()));
+                }
+            }
+
+            // 最终再排序一次，确保绝对正确
+            pageRecords.sort(Comparator.comparing(SubmitRecordDTO::getSubmitMsgTime, Comparator.nullsLast(Comparator.reverseOrder())));
+
+            // ==============================================
+            // 6. 封装返回
+            // ==============================================
+            List<SubmitRecordDTO> merged = new ArrayList<>();
+            for (SubmitRecordDTO sub : pageRecords) {
+                Map<String, Object> f = feeMap.get(sub.getSubmitMsgId());
+                if (f != null) {
+                    sub.setInnerReportState((String) f.get("InnerReportState"));
+                    sub.setRecvDRTime((String) f.get("RecvDRTime"));
                 } else {
                     sub.setInnerReportState("已提交");
                     sub.setRecvDRTime(null);
-                    if (!innerReportState.isEmpty()) continue;
                 }
+
                 try {
                     String content = SmsContentParserUtil.parseAndEncryptShortMessage(sub.getOriginalShortMessage(), sub.getDcs());
                     sub.setShortMessage(content == null ? "" : content.replaceAll("\\n|\\r", " "));
                 } catch (Exception e) {
                     sub.setShortMessage("");
                 }
+
                 String chargeFee = sub.getChargeFee();
                 if (chargeFee == null || "0".equals(chargeFee)) {
                     sub.setActualChargeFee("0");
@@ -134,39 +211,31 @@ public class SubmitRecordService {
                         sub.setActualChargeFee("0");
                     }
                 }
-                mergedList.add(sub);
+                merged.add(sub);
             }
 
-            int total = mergedList.size();
-            int startIndex = (pageNum - 1) * pageSize;
-            int endIndex = Math.min(startIndex + pageSize, total);
-            List<SubmitRecordDTO> pageRecords = startIndex >= total ? new ArrayList<>() : mergedList.subList(startIndex, endIndex);
-            long submitTotal = submitSuccess + submitFail;
-            long deliverSuccess = stateCount.get("DELIVRD");
-            long deliverFail = stateCount.get("UNDELIV") + stateCount.get("UNKNOWN");
-            String deliverRate = "0.00%";
-            if (submitSuccess > 0) {
-                double rate = Math.min((double) deliverSuccess / submitSuccess, 1.0);
-                deliverRate = PERCENT_FORMAT.format(rate);
-            }
+            String submitSuccessRate = total > 0 ? PERCENT_FORMAT.format((double) submitSuccess / total) : "0.00%";
+            String deliverRate = submitSuccess > 0 ? PERCENT_FORMAT.format((double) deliverSuccess / submitSuccess) : "0.00%";
 
             SubmitRecordWithStatsDTO dto = new SubmitRecordWithStatsDTO();
-            dto.setRecords(pageRecords);
-            dto.setSubmitTotal(submitTotal);
+            dto.setRecords(merged);
+            dto.setSubmitTotal(total);
             dto.setSubmitFailCount(submitFail);
-            dto.setSubmitSuccessRate("100.00%");
+            dto.setSubmitSuccessRate(submitSuccessRate);
             dto.setDeliverSuccessCount(deliverSuccess);
             dto.setDeliverFailCount(deliverFail);
             dto.setDeliverSuccessRate(deliverRate);
-            dto.setPageCount(total <= 0 ? 0 : (int) Math.ceil((double) total / pageSize));
+            dto.setPageCount(total <= 0 ? 0 : (int) Math.ceil((double) total / FIX_PAGE_SIZE));
             dto.setCurrentPage(pageNum);
-            dto.setPageSize(pageSize);
+            dto.setPageSize(FIX_PAGE_SIZE);
             return dto;
+
         } finally {
             DynamicDataSourceInterceptor.clearCurrentDataSource();
         }
     }
 
+    // ====================== 导出也按时间倒序 ======================
     public List<SubmitRecordExportVO> queryExportDataForEasyExcel(
             Date startTime, Date endTime,
             String callee, String mcc, String mnc,
@@ -195,11 +264,13 @@ public class SubmitRecordService {
                 );
                 allSubmitList.addAll(subList);
                 List<Map<String, Object>> feeList = submitRecordMapper.queryFeeBill(
-                        suffix, subAccount, startTimeStr, endTimeStr, innerReportState
+                        suffix, subAccount, startTimeStr, endTimeStr, innerReportState, callee, mcc, mnc
                 );
                 for (Map<String, Object> fee : feeList) {
                     String recvMsgId = (String) fee.get("RecvMsgId");
-                    if (recvMsgId != null) feeMap.put(recvMsgId, fee);
+                    if (recvMsgId != null) {
+                        feeMap.put(recvMsgId, fee);
+                    }
                 }
             }
 
@@ -209,6 +280,7 @@ public class SubmitRecordService {
                         Map<String, Object> fee = feeMap.get(sub.getSubmitMsgId());
                         return fee != null && finalInner.equals(String.valueOf(fee.get("InnerReportState")));
                     })
+                    .sorted(Comparator.comparing(SubmitRecordDTO::getSubmitMsgTime, Comparator.nullsLast(Comparator.reverseOrder())))
                     .map(sub -> {
                         SubmitRecordExportVO vo = new SubmitRecordExportVO();
                         Map<String, Object> fee = feeMap.get(sub.getSubmitMsgId());
@@ -246,7 +318,8 @@ public class SubmitRecordService {
                             vo.setRecvDRTime(null);
                         }
                         return vo;
-                    }).collect(Collectors.toList());
+                    })
+                    .collect(Collectors.toList());
         } finally {
             DynamicDataSourceInterceptor.clearCurrentDataSource();
         }

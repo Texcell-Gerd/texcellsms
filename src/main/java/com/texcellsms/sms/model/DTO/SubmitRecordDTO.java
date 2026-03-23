@@ -54,6 +54,9 @@ public class SubmitRecordDTO {
     @Schema(description = "用户账号", example = "根据当前登录账户查询发送记录")
     private String sourAccount;
 
+    @Schema(description = "落地账户", example = "落地账户")
+    private String DestAccount;
+
     @Schema(description = "判断用", hidden = true) // Swagger隐藏
     @JsonIgnore // JSON序列化忽略
     private String fbInnerReportState;

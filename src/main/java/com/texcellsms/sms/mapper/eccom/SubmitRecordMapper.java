@@ -55,19 +55,83 @@ public interface SubmitRecordMapper {
             @Param("destAccountCondition") String destAccountCondition
     );
 
-    // 3. 状态查询
+    // 3. 回执查询
     @Select("SELECT RecvMsgId, InnerReportState, RecvDRTime "
             + "FROM Fee_Bill_${tableSuffix} "
             + "WHERE SourAccount = #{sourAccount} "
             + "AND RecvDRTime >= #{startTimeStr} "
             + "AND RecvDRTime <= #{endTimeStr} "
-            + "AND (#{innerReportState} = '' OR InnerReportState = #{innerReportState})")
+            + "AND (#{innerReportState} = '' OR InnerReportState = #{innerReportState}) "
+            + "AND (#{callee} = '' OR OriginalCallee = #{callee}) "
+            + "AND (#{mcc} = '' OR MCC = #{mcc}) "
+            + "AND (#{mnc} = '' OR MNC = #{mnc})")
     List<Map<String, Object>> queryFeeBill(
             @Param("tableSuffix") String tableSuffix,
             @Param("sourAccount") String sourAccount,
             @Param("startTimeStr") String startTimeStr,
             @Param("endTimeStr") String endTimeStr,
-            @Param("innerReportState") String innerReportState
+            @Param("innerReportState") String innerReportState,
+            @Param("callee") String callee,
+            @Param("mcc") String mcc,
+            @Param("mnc") String mnc
+    );
+
+    // 4. 只查ID
+    @Select("SELECT SubmitMsgId "
+            + "FROM Submit_Bill_${tableSuffix} "
+            + "WHERE SourAccount = #{sourAccount} "
+            + "AND SubmitMsgTime >= #{startTimeStr} "
+            + "AND SubmitMsgTime <= #{endTimeStr} "
+            + "AND (#{callee} = '' OR Callee = #{callee}) "
+            + "AND (#{mcc} = '' OR MCC = #{mcc}) "
+            + "AND (#{mnc} = '' OR MNC = #{mnc}) "
+            + "AND ((#{destAccountCondition} = '') OR ( #{destAccountCondition} = 'success' AND DestAccount != 'hell' ) OR ( #{destAccountCondition} = 'fail' AND DestAccount = 'hell' ))")
+    List<String> listSubmitMsgIds(
+            @Param("tableSuffix") String tableSuffix,
+            @Param("sourAccount") String sourAccount,
+            @Param("startTimeStr") String startTimeStr,
+            @Param("endTimeStr") String endTimeStr,
+            @Param("callee") String callee,
+            @Param("mcc") String mcc,
+            @Param("mnc") String mnc,
+            @Param("destAccountCondition") String destAccountCondition
+    );
+
+    // 5. 查 ID + SubmitMsgTime（排序专用）
+    @Select("SELECT SubmitMsgId, SubmitMsgTime "
+            + "FROM Submit_Bill_${tableSuffix} "
+            + "WHERE SourAccount = #{sourAccount} "
+            + "AND SubmitMsgTime >= #{startTimeStr} "
+            + "AND SubmitMsgTime <= #{endTimeStr} "
+            + "AND (#{callee} = '' OR Callee = #{callee}) "
+            + "AND (#{mcc} = '' OR MCC = #{mcc}) "
+            + "AND (#{mnc} = '' OR MNC = #{mnc}) "
+            + "AND ((#{destAccountCondition} = '') OR ( #{destAccountCondition} = 'success' AND DestAccount != 'hell' ) OR ( #{destAccountCondition} = 'fail' AND DestAccount = 'hell' ))")
+    List<Map<String, Object>> listSubmitMsgIdsWithTime(
+            @Param("tableSuffix") String tableSuffix,
+            @Param("sourAccount") String sourAccount,
+            @Param("startTimeStr") String startTimeStr,
+            @Param("endTimeStr") String endTimeStr,
+            @Param("callee") String callee,
+            @Param("mcc") String mcc,
+            @Param("mnc") String mnc,
+            @Param("destAccountCondition") String destAccountCondition
+    );
+
+    // 6. 根据ID批量查详情
+    @Select({
+            "<script>",
+            "SELECT SubmitMsgId, DestAccount, Caller, ChargeFee, SubmitMsgTime, Callee, "
+                    + "Short_Message as originalShortMessage, SM_Length, MCC, MNC, DCS, SourAccount "
+                    + "FROM Submit_Bill_${tableSuffix} ",
+            "WHERE SubmitMsgId IN ",
+            "<foreach collection='ids' item='id' open='(' separator=',' close=')'>#{id}</foreach>",
+            "ORDER BY SubmitMsgTime DESC",
+            "</script>"
+    })
+    List<SubmitRecordDTO> listByIds(
+            @Param("tableSuffix") String tableSuffix,
+            @Param("ids") List<String> ids
     );
 
 }
