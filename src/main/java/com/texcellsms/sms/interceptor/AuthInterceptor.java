@@ -22,6 +22,7 @@ public class AuthInterceptor implements HandlerInterceptor {
     // 过期时间从常量读取，你随时改
     private static final long EXPIRE_TIME = Constants.TOKEN_EXPIRE * 60 * 1000L;
 
+
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
         if (request.getRequestURI().equals(Constants.LOGIN)) {

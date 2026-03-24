@@ -281,7 +281,7 @@ public class NCacheDBLink {
 			{
 				logger.info("DataSet: {} Rows:{} ColumnCount is:{}",pItem.get(j).getDataSetNumber(),pItem.get(j).getnRowCount(),pItem.get(j).getnColumnCount());
 				//System.out.println("DataSet:" + pItem.get(j).getDataSetNumber() + ",Rows:" + pItem.get(j).getnRowCount() + ",ColumnCount is:" + pItem.get(j).getnColumnCount());
-				list.add(GetDataSetItem(pItem.get(j).getnRowCount(),pItem.get(j).getDataSetNumber()));
+				list = GetDataSetItem(pItem.get(j).getnRowCount(),pItem.get(j).getDataSetNumber());
 			}
 //			System.out.println("---------------ExecProc_InAndOutAndRecordSet_WithUnicode GetSummary end------");
 		}
@@ -702,16 +702,17 @@ public class NCacheDBLink {
 		System.out.println("---------------JNIDemo3  End----------");
 	}
 
-	private Map<String, String> GetDataSetItem(int nTotalRow, int nDataSetNumber)
+	private List<Map<String,String>> GetDataSetItem(int nTotalRow, int nDataSetNumber)
 	{
+		List<Map<String,String>> list =new ArrayList<>();
 		String strRet = "";
 		DataTables pTable = null;
 		String decodeErr = "";
 		Gson parser = new Gson();
-		Map<String,String> map =new HashMap<>();
+
 		for( int i = 0; i < nTotalRow ; i++ )
 		{
-
+			Map<String,String> map =new HashMap<>();
 			//System.out.println("---------------GetDataTable In DataSet "+ nDataSetNumber +"  Row:"+ i +"-----");
 			logger.info("费率数据采集 GetDataTable In DataSet {} Row: {}",nDataSetNumber,i);
 
@@ -736,8 +737,9 @@ public class NCacheDBLink {
 				map.put(p.get(j).getFieldName(),strVal);
 				if( (j + 1 ) < p.size())logger.info("费率数据采集| next");
 			}
+			list.add(map);
 		}
-		return map;
+		return list;
 	}
 
 	public void ExecProc_InAndOutAndRecordSet_WithUnicode()

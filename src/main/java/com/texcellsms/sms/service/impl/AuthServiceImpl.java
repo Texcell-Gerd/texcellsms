@@ -34,7 +34,6 @@ public class AuthServiceImpl implements AuthService {
         String safeToken = UUID.randomUUID().toString().replace("-", "");
         loginUser.setToken(safeToken);
         loginUser.setCreateTime(System.currentTimeMillis());
-
         tokenService.createToken(loginUser);
 
         if (cacheDBLonginResult == null) return AjaxResult.error();
