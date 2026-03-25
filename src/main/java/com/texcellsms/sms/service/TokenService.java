@@ -83,6 +83,11 @@ public class TokenService {
         return result;
     }
 
+    public static void deleteToken(String Authorization){
+        if (StringUtils.isEmpty(Authorization)) return;
+        ServletUtils.getSession().getServletContext().removeAttribute(Authorization);
+    }
+
     // 获取真实IP
     public static String getIpAddress(HttpServletRequest request) {
         String ip = request.getHeader("x-forwarded-for");
