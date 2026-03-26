@@ -32,6 +32,42 @@ public enum SMSResponseMessage {
     IPAUTHORIZATIONERROR("Bound IP does not match", 101),
     IPLOCKEDERROR("The IP has been locked due to excessive failed attempts.", 480),
 
+    // ==================== 新增：查询相关错误（以下为新增，不改动原有） ====================
+    /**
+     * 查询时间范围超限
+     */
+    QUERY_TIME_RANGE_EXCEEDED("Query time range cannot exceed 3 days", 410),
+
+    /**
+     * 查询数据量过大
+     */
+    QUERY_DATA_TOO_LARGE("Query data is too large, please narrow the query scope", 411),
+
+    /**
+     * 导出数据量过大
+     */
+    EXPORT_DATA_TOO_LARGE("Export data is too large, please narrow the export scope (max 50000 records)", 412),
+
+    /**
+     * 查询超时
+     */
+    QUERY_TIMEOUT("Query timeout, please try again later or narrow the query scope", 413),
+
+    /**
+     * 开始时间不能大于结束时间
+     */
+    START_TIME_AFTER_END_TIME("Start time cannot be greater than end time", 414),
+
+    /**
+     * 时间参数无效
+     */
+    INVALID_TIME_PARAMETER("Invalid time parameter", 415),
+
+    /**
+     * 查询结果为空
+     */
+    QUERY_RESULT_EMPTY("No data found for the query criteria", 416),
+
     ;
 
     /**

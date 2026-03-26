@@ -9,8 +9,19 @@ server:
       min-spare: 20
     connection-timeout: 600000
     max-connections: 5000
+    max-http-form-post-size: 10485760
+    accesslog:
+      enabled: true
+      directory: logs
+      pattern: '%t %a "%r" %s %b %D'
+      rename-on-rotate: true
 
 spring:
+  servlet:
+    multipart:
+      max-file-size: 100MB
+      max-request-size: 100MB
+
   datasource:
     type: com.zaxxer.hikari.HikariDataSource
     hikari:
@@ -24,10 +35,22 @@ spring:
       connection-test-query: "SELECT 1"
       test-while-idle: false
       test-on-borrow: false
+      pool-name: TexcellSMS-HikariPool
 
   mvc:
     async:
       request-timeout: 3600000
+    static-path-pattern: /static/**
+    format:
+      date: yyyy/MM/dd
+      date-time: yyyy/MM/dd HH:mm:ss
+
+  jackson:
+    date-format: yyyy/MM/dd HH:mm:ss
+    time-zone: GMT+8
+    default-property-inclusion: non_null
+    serialization:
+      write-dates-as-timestamps: false
 
 mybatis:
   type-aliases-package: com.texcellsms.sms.model.entity,com.texcellsms.sms.model.DTO
@@ -43,13 +66,19 @@ mybatis:
     default-fetch-size: 1000
     local-cache-scope: STATEMENT
     cache-enabled: false
+    log-slow-sql: true
+    slow-sql-time: 5000
+
   mapper-locations: classpath:empty.xml
 
 logging:
   level:
     com.texcellsms.sms: debug
+    com.texcellsms.sms.mapper: debug
     org.apache.ibatis: debug
     org.springframework: warn
+    org.springframework.web: info
+    com.zaxxer.hikari: info
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{50} - %msg%n"
     file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{50} - %msg%n"
@@ -57,6 +86,9 @@ logging:
     name: logs/texcell-sms.log
     max-size: 100MB
     max-history: 7
+  group:
+    sql: com.texcellsms.sms.mapper
+    web: org.springframework.web
 
 texcellsms:
   google-auth:
@@ -69,3 +101,21 @@ texcellsms:
   encoding:
     default-charset: UTF-8
     gsm7-charset: GSM0338
+
+  query:
+    max-query-days: 3
+    max-export-days: 3
+    max-page-size: 50
+    max-export-records: 50000
+    default-page-size: 20
+    query-timeout: 600
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+      base-path: /actuator
+  endpoint:
+    health:
+      show-details: always

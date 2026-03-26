@@ -57,11 +57,11 @@ public class SubmitRecordDTO {
     @Schema(description = "落地账户", example = "落地账户")
     private String DestAccount;
 
-    @Schema(description = "判断用", hidden = true) // Swagger隐藏
+    @Schema(description = "判断用", hidden = true)
     @JsonIgnore // JSON序列化忽略
     private String fbInnerReportState;
 
-    @Schema(description = "DCS编码类型", example = "8") // 放开Swagger注释，返回给前端
+    @Schema(description = "DCS编码类型", example = "8") //
     private String dcs;
 
     @Schema(description = "原始加密短信内容（解析用，不返回）", hidden = true)

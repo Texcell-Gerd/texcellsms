@@ -11,7 +11,6 @@ import java.util.Date;
 public interface SmsScheduleSendMapper {
 
     // 插入发送任务到 tbl_APIScheduleSend
-    // 已移除：ScheduleStatus、TaskTimeZone（使用数据库默认值）
     @Insert({
             "INSERT INTO tbl_APIScheduleSend (",
             "    TaskID, ",
