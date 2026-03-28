@@ -75,7 +75,8 @@ public class SmsUploadService {
             throw new Exception("号码数量超过限制，单次最多允许上传 200000 个号码");
         }
 
-        String userDir = SmsSendService.PRE_PHONE_ROOT + subAccount + "\\";
+        // ====================== 这里修复成 / ======================
+        String userDir = SmsSendService.PRE_PHONE_ROOT + subAccount + "/";
         File dir = new File(userDir);
         if (!dir.exists()) dir.mkdirs();
 
