@@ -71,7 +71,7 @@ public class DynamicDataSourceConfig {
     public DataSource webPortalDataSource() {
         HikariDataSource ds = new HikariDataSource();
         ds.setDriverClassName("com.mysql.cj.jdbc.Driver");
-        ds.setJdbcUrl("jdbc:mysql://192.168.128.247:14333/WEBPortal?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC&allowPublicKeyRetrieval=true&useSSL=false");
+        ds.setJdbcUrl("jdbc:mysql://192.168.128.247:14333/WEBPortal?useUnicode=true&characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=false&serverTimezone=Asia/Shanghai");
         ds.setUsername("root");
         ds.setPassword("9c98eCFD84F299F76F6D4252DE111484(*&^%$");
         ds.setMaximumPoolSize(10);

@@ -13,9 +13,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import javax.servlet.http.HttpServletRequest;
+import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileReader;
 import java.io.FileWriter;
-import java.io.LineNumberReader;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.text.SimpleDateFormat;
@@ -39,16 +40,15 @@ public class SmsSendService {
     public SmsSendResponse doSend(String subAccount, SmsSendRequest req, HttpServletRequest r) throws Exception {
         if (StringUtils.isNotEmpty(req.getPreTaskId())) {
             int valid = scheduleNumberTaskMapper.checkPreTaskValid(subAccount, req.getPreTaskId());
-            if (valid <= 0) throw new Exception("预任务已过期，请重新上传");
+            if (valid <= 0) throw new Exception("任务已过期，请重新上传");
         }
 
         String taskId = IdGenerator.generatePreTaskId();
         int calleeCount = 0;
 
-        // ====================== 预上传文件路径 ======================
         if (StringUtils.isNotEmpty(req.getPreTaskId())) {
             File preFile = new File(PRE_PHONE_ROOT + subAccount + "/" + req.getPreTaskId() + ".txt");
-            if (!preFile.exists()) throw new Exception("预上传号码文件不存在");
+            if (!preFile.exists()) throw new Exception("上传的号码文件不存在");
             calleeCount = countLine(preFile);
             if (calleeCount > MAX_PHONE_LIMIT) {
                 throw new Exception("号码数量超过限制，单次最多允许发送 200000 个号码");
@@ -67,7 +67,6 @@ public class SmsSendService {
         int splitCount = SmsContentUtil.calcSplitCount(content);
         int totalCount = calleeCount * splitCount;
 
-        // ====================== 任务目录路径 ======================
         File taskUserDir = new File(TASK_ROOT + subAccount + "/");
         if (!taskUserDir.exists()) taskUserDir.mkdirs();
         File tmp = new File(taskUserDir, taskId + ".tmp");
@@ -94,7 +93,6 @@ public class SmsSendService {
         }
         Files.move(tmp.toPath(), dst.toPath(), StandardCopyOption.REPLACE_EXISTING);
 
-        // ====================== 正式文件路径 ======================
         if (StringUtils.isNotEmpty(req.getPreTaskId())) {
             File preFile = new File(PRE_PHONE_ROOT + subAccount + "/" + req.getPreTaskId() + ".txt");
             File realDir = new File(REAL_PHONE_ROOT + subAccount + "/");
@@ -167,11 +165,15 @@ public class SmsSendService {
         return list;
     }
 
+    // ====================== 统计行数 ======================
     private int countLine(File file) throws Exception {
-        try (LineNumberReader lnr = new LineNumberReader(new java.io.FileReader(file))) {
-            lnr.skip(Long.MAX_VALUE);
-            return lnr.getLineNumber();
+        int lines = 0;
+        try (BufferedReader br = new BufferedReader(new FileReader(file))) {
+            while (br.readLine() != null) {
+                lines++;
+            }
         }
+        return lines;
     }
 
     private String bytesToHex(byte[] bytes) {
