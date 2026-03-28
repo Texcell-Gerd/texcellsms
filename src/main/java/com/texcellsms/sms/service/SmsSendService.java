@@ -11,6 +11,7 @@ import com.texcellsms.sms.util.StringUtils;
 import com.texcellsms.sms.util.Utf8ToGsm7;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+
 import javax.servlet.http.HttpServletRequest;
 import java.io.File;
 import java.io.FileWriter;
@@ -23,9 +24,9 @@ import java.util.*;
 @Service
 public class SmsSendService {
 
-    public static final String PRE_PHONE_ROOT = "D:/sms_test/PhonePre/";
-    public static final String REAL_PHONE_ROOT = "D:/sms_test/Phone/";
-    public static final String TASK_ROOT = "D:/sms_test/Task/";
+    public static final String PRE_PHONE_ROOT = "/home/ScheduleTask/PhonePre/";
+    public static final String REAL_PHONE_ROOT = "/home/ScheduleTask/Phone/";
+    public static final String TASK_ROOT = "/home/ScheduleTask/Task/";
 
     private static final String DEFAULT_CALLER = "SMSINFO";
     private static final int MAX_PHONE_LIMIT = 200000;
@@ -44,8 +45,9 @@ public class SmsSendService {
         String taskId = IdGenerator.generatePreTaskId();
         int calleeCount = 0;
 
+        // ====================== 预上传文件路径 ======================
         if (StringUtils.isNotEmpty(req.getPreTaskId())) {
-            File preFile = new File(PRE_PHONE_ROOT + subAccount + "\\" + req.getPreTaskId() + ".txt");
+            File preFile = new File(PRE_PHONE_ROOT + subAccount + "/" + req.getPreTaskId() + ".txt");
             if (!preFile.exists()) throw new Exception("预上传号码文件不存在");
             calleeCount = countLine(preFile);
             if (calleeCount > MAX_PHONE_LIMIT) {
@@ -65,16 +67,15 @@ public class SmsSendService {
         int splitCount = SmsContentUtil.calcSplitCount(content);
         int totalCount = calleeCount * splitCount;
 
-        File taskUserDir = new File(TASK_ROOT + subAccount + "\\");
+        // ====================== 任务目录路径 ======================
+        File taskUserDir = new File(TASK_ROOT + subAccount + "/");
         if (!taskUserDir.exists()) taskUserDir.mkdirs();
         File tmp = new File(taskUserDir, taskId + ".tmp");
         File dst = new File(taskUserDir, taskId + ".txt");
 
-
         String caller = StringUtils.isEmpty(req.getCaller()) ? DEFAULT_CALLER : req.getCaller();
 
         List<Map<String, String>> msgList = buildMsgParts(content, dcs, splitCount);
-
 
         Map<String, Object> map = new LinkedHashMap<>();
         map.put("TaskId", taskId);
@@ -93,9 +94,10 @@ public class SmsSendService {
         }
         Files.move(tmp.toPath(), dst.toPath(), StandardCopyOption.REPLACE_EXISTING);
 
+        // ====================== 正式文件路径 ======================
         if (StringUtils.isNotEmpty(req.getPreTaskId())) {
-            File preFile = new File(PRE_PHONE_ROOT + subAccount + "\\" + req.getPreTaskId() + ".txt");
-            File realDir = new File(REAL_PHONE_ROOT + subAccount + "\\");
+            File preFile = new File(PRE_PHONE_ROOT + subAccount + "/" + req.getPreTaskId() + ".txt");
+            File realDir = new File(REAL_PHONE_ROOT + subAccount + "/");
             if (!realDir.exists()) realDir.mkdirs();
             File realFile = new File(realDir, taskId + ".txt");
 
