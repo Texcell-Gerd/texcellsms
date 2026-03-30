@@ -8,12 +8,12 @@ import com.texcellsms.sms.model.DTO.SmsSendResponse;
 import com.texcellsms.sms.util.IdGenerator;
 import com.texcellsms.sms.util.SmsContentUtil;
 import com.texcellsms.sms.util.StringUtils;
-import com.texcellsms.sms.util.Utf8ToGsm7;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import javax.servlet.http.HttpServletRequest;
 import java.io.BufferedReader;
+import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
@@ -34,6 +34,7 @@ public class SmsSendService {
 
     @Autowired
     private SmsScheduleSendMapper scheduleSendMapper;
+
     @Autowired
     private ScheduleNumberTaskMapper scheduleNumberTaskMapper;
 
@@ -41,6 +42,36 @@ public class SmsSendService {
         if (StringUtils.isNotEmpty(req.getPreTaskId())) {
             int valid = scheduleNumberTaskMapper.checkPreTaskValid(subAccount, req.getPreTaskId());
             if (valid <= 0) throw new Exception("任务已过期，请重新上传");
+        }
+
+        // 手动输入号码 → 自动生成预上传文件
+        if (StringUtils.isEmpty(req.getPreTaskId()) && req.getNumbers() != null && !req.getNumbers().isEmpty()) {
+            String preId = IdGenerator.generatePreTaskId();
+            File userDir = new File(PRE_PHONE_ROOT + subAccount + "/");
+            if (!userDir.exists()) userDir.mkdirs();
+
+            File preFile = new File(userDir, preId + ".txt");
+            try (BufferedWriter bw = new BufferedWriter(new FileWriter(preFile))) {
+                List<String> numbers = req.getNumbers();
+                for (int i = 0; i < numbers.size(); i++) {
+                    bw.write(numbers.get(i).trim());
+                    if (i < numbers.size() - 1) bw.newLine();
+                }
+            }
+
+            if (!preFile.exists() || preFile.length() == 0) {
+                throw new Exception("手动号码文件生成失败");
+            }
+
+            long nowSec = System.currentTimeMillis() / 1000;
+            long validTill = nowSec + 15 * 60;
+            scheduleNumberTaskMapper.insertScheduleNumberTask(
+                    subAccount,
+                    String.valueOf(nowSec),
+                    preId,
+                    String.valueOf(validTill)
+            );
+            req.setPreTaskId(preId);
         }
 
         String taskId = IdGenerator.generatePreTaskId();
@@ -54,10 +85,7 @@ public class SmsSendService {
                 throw new Exception("号码数量超过限制，单次最多允许发送 200000 个号码");
             }
         } else {
-            calleeCount = req.getNumbers() == null ? 0 : req.getNumbers().size();
-            if (calleeCount > MAX_PHONE_LIMIT) {
-                throw new Exception("号码数量超过限制，单次最多允许发送 200000 个号码");
-            }
+            calleeCount = 0;
         }
 
         if (calleeCount <= 0) throw new Exception("号码不能为空");
@@ -73,7 +101,6 @@ public class SmsSendService {
         File dst = new File(taskUserDir, taskId + ".txt");
 
         String caller = StringUtils.isEmpty(req.getCaller()) ? DEFAULT_CALLER : req.getCaller();
-
         List<Map<String, String>> msgList = buildMsgParts(content, dcs, splitCount);
 
         Map<String, Object> map = new LinkedHashMap<>();
@@ -128,12 +155,13 @@ public class SmsSendService {
         return resp;
     }
 
+    // 修复英文乱码：使用 ISO-8859-1 发送 ASCII
     private List<Map<String, String>> buildMsgParts(String content, int dcs, int splitCount) throws Exception {
         List<Map<String, String>> list = new ArrayList<>();
         if (dcs == 0) {
             List<String> parts = splitContent(content, splitCount);
             for (int i = 0; i < parts.size(); i++) {
-                byte[] bytes = Utf8ToGsm7.encode(parts.get(i));
+                byte[] bytes = parts.get(i).getBytes("ISO-8859-1");
                 Map<String, String> m = new HashMap<>();
                 m.put("PKNO", String.valueOf(i + 1));
                 m.put("MessageText", bytesToHex(bytes));
@@ -165,7 +193,6 @@ public class SmsSendService {
         return list;
     }
 
-    // ====================== 统计行数 ======================
     private int countLine(File file) throws Exception {
         int lines = 0;
         try (BufferedReader br = new BufferedReader(new FileReader(file))) {

@@ -17,12 +17,15 @@ public interface SmsQueueMapper {
     // ==================== 任务列表（分页） ====================
     @Select({
             "<script>",
-            "SELECT TaskName,taskId,TaskTime, ScheduleSendTime, TaskTimeZone, ScheduleStatus, TotalCount, CalleeCount, ",
+            "SELECT TaskName,taskId,",
+            "       DATE_FORMAT(TaskTime, '%Y-%m-%d %H:%i:%s') AS TaskTime, ",
+            "       DATE_FORMAT(ScheduleSendTime, '%Y-%m-%d %H:%i:%s') AS ScheduleSendTime, ",
+            "       TaskTimeZone, ScheduleStatus, TotalCount, CalleeCount, ",
             "       SubmitSuccCount, DRSuccCount, DRFailCount, Short_Message, SplitCount ",
             "FROM tbl_APIScheduleSend ",
             "<where>",
-            "  SubAccount = #{subAccount} ", // 权限限制：当前登录用户的subAccount
-            "  AND TaskTime >= #{threeDaysAgoTime} ", // 时间限制：最近3天
+            "  SubAccount = #{subAccount} ",
+            "  AND TaskTime >= #{threeDaysAgoTime} ",
             "</where>",
             "ORDER BY TaskTime DESC ",
             "LIMIT #{offset}, #{pageSize}",
@@ -53,11 +56,13 @@ public interface SmsQueueMapper {
     // ==================== 任务详情（分页） ====================
     @Select({
             "<script>",
-            "SELECT SubmitMsgId, Caller, Callee, RecvDRTime, RecvDRStatus, RecvDRError, PKNumber, PKTotal ",
+            "SELECT SubmitMsgId, Caller, Callee, ",
+            "       DATE_FORMAT(RecvDRTime, '%Y-%m-%d %H:%i:%s') AS RecvDRTime, ",
+            "       RecvDRStatus, RecvDRError, PKNumber, PKTotal ",
             "FROM tbl_APITask",
             "WHERE APITaskId = #{taskId} ",
             "  <if test='callee != null and callee != \"\"'>",
-            "    AND Callee LIKE CONCAT('%', #{callee}, '%')", // 移除错误的t1.前缀
+            "    AND Callee LIKE CONCAT('%', #{callee}, '%')",
             "  </if>",
             "ORDER BY RecvDRTime DESC ",
             "LIMIT #{offset}, #{pageSize}",
@@ -87,7 +92,9 @@ public interface SmsQueueMapper {
 
     // ==================== 导出全部详情 ====================
     @Select({
-            "SELECT SubmitMsgId, Caller, Callee, RecvDRTime, RecvDRStatus, RecvDRError, PKNumber, PKTotal ",
+            "SELECT SubmitMsgId, Caller, Callee, ",
+            "       DATE_FORMAT(RecvDRTime, '%Y-%m-%d %H:%i:%s') AS RecvDRTime, ",
+            "       RecvDRStatus, RecvDRError, PKNumber, PKTotal ",
             "FROM tbl_APITask",
             "WHERE APITaskId = #{taskId} ",
             "ORDER BY RecvDRTime DESC"
