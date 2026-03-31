@@ -15,7 +15,6 @@ import javax.servlet.http.HttpServletRequest;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
-import java.io.FileReader;
 import java.io.FileWriter;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
@@ -30,7 +29,7 @@ public class SmsSendService {
     public static final String TASK_ROOT = "/home/ScheduleTask/Task/";
 
     private static final String DEFAULT_CALLER = "SMSINFO";
-    private static final int MAX_PHONE_LIMIT = 200000;
+    private static final long MAX_FILE_SIZE = 3 * 1024 * 1024; // 3MB
 
     @Autowired
     private SmsScheduleSendMapper scheduleSendMapper;
@@ -38,63 +37,72 @@ public class SmsSendService {
     @Autowired
     private ScheduleNumberTaskMapper scheduleNumberTaskMapper;
 
+    /**
+     * 执行短信发送：预处理号码文件 → 生成任务 → 写入调度文件
+     */
     public SmsSendResponse doSend(String subAccount, SmsSendRequest req, HttpServletRequest r) throws Exception {
+        // 预上传任务校验
         if (StringUtils.isNotEmpty(req.getPreTaskId())) {
             int valid = scheduleNumberTaskMapper.checkPreTaskValid(subAccount, req.getPreTaskId());
-            if (valid <= 0) throw new Exception("任务已过期，请重新上传");
-        }
-
-        // 手动输入号码 → 自动生成预上传文件
-        if (StringUtils.isEmpty(req.getPreTaskId()) && req.getNumbers() != null && !req.getNumbers().isEmpty()) {
-            String preId = IdGenerator.generatePreTaskId();
-            File userDir = new File(PRE_PHONE_ROOT + subAccount + "/");
-            if (!userDir.exists()) userDir.mkdirs();
-
-            File preFile = new File(userDir, preId + ".txt");
-            try (BufferedWriter bw = new BufferedWriter(new FileWriter(preFile))) {
-                List<String> numbers = req.getNumbers();
-                for (int i = 0; i < numbers.size(); i++) {
-                    bw.write(numbers.get(i).trim());
-                    if (i < numbers.size() - 1) bw.newLine();
-                }
-            }
-
-            if (!preFile.exists() || preFile.length() == 0) {
-                throw new Exception("手动号码文件生成失败");
-            }
-
-            long nowSec = System.currentTimeMillis() / 1000;
-            long validTill = nowSec + 15 * 60;
-            scheduleNumberTaskMapper.insertScheduleNumberTask(
-                    subAccount,
-                    String.valueOf(nowSec),
-                    preId,
-                    String.valueOf(validTill)
-            );
-            req.setPreTaskId(preId);
+            if (valid <= 0)
+                throw new Exception("Task has expired, please upload the file again");
         }
 
         String taskId = IdGenerator.generatePreTaskId();
         int calleeCount = 0;
 
-        if (StringUtils.isNotEmpty(req.getPreTaskId())) {
-            File preFile = new File(PRE_PHONE_ROOT + subAccount + "/" + req.getPreTaskId() + ".txt");
-            if (!preFile.exists()) throw new Exception("上传的号码文件不存在");
-            calleeCount = countLine(preFile);
-            if (calleeCount > MAX_PHONE_LIMIT) {
-                throw new Exception("号码数量超过限制，单次最多允许发送 200000 个号码");
+        // ====================== 手动输入号码 ======================
+        if (StringUtils.isEmpty(req.getPreTaskId()) && req.getNumbers() != null && !req.getNumbers().isEmpty()) {
+            calleeCount = req.getNumbers().size();
+
+            File realUserDir = new File(REAL_PHONE_ROOT + subAccount + "/");
+            if (!realUserDir.exists()) realUserDir.mkdirs();
+            File realFile = new File(realUserDir, taskId + ".txt");
+
+            try (BufferedWriter bw = new BufferedWriter(new FileWriter(realFile))) {
+                for (int i = 0; i < req.getNumbers().size(); i++) {
+                    bw.write(req.getNumbers().get(i).trim());
+                    if (i < req.getNumbers().size() - 1) bw.newLine();
+                }
             }
-        } else {
-            calleeCount = 0;
+
+            if (!realFile.exists() || realFile.length() == 0) {
+                throw new Exception("Failed to generate manual number file");
+            }
         }
 
-        if (calleeCount <= 0) throw new Exception("号码不能为空");
+        // ====================== 使用已上传文件 ======================
+        else if (StringUtils.isNotEmpty(req.getPreTaskId())) {
+            File preFile = new File(PRE_PHONE_ROOT + subAccount + "/" + req.getPreTaskId() + ".txt");
+            if (!preFile.exists())
+                throw new Exception("Uploaded number file does not exist");
 
+            if (preFile.length() > MAX_FILE_SIZE) {
+                throw new Exception("File size cannot exceed 3MB");
+            }
+
+            calleeCount = countLine(preFile);
+
+            File realDir = new File(REAL_PHONE_ROOT + subAccount + "/");
+            if (!realDir.exists()) realDir.mkdirs();
+            File realFile = new File(realDir, taskId + ".txt");
+            Files.copy(preFile.toPath(), realFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+
+            preFile.delete();
+            scheduleNumberTaskMapper.deletePreTask(subAccount, req.getPreTaskId());
+        }
+
+        if (calleeCount <= 0) {
+            throw new Exception("Recipient numbers cannot be empty");
+        }
+
+        // ====================== 短信内容拆分 ======================
         String content = req.getContent();
         int dcs = SmsContentUtil.calculateDCS(content);
         int splitCount = SmsContentUtil.calcSplitCount(content);
         int totalCount = calleeCount * splitCount;
 
+        // 生成调度JSON文件
         File taskUserDir = new File(TASK_ROOT + subAccount + "/");
         if (!taskUserDir.exists()) taskUserDir.mkdirs();
         File tmp = new File(taskUserDir, taskId + ".tmp");
@@ -120,26 +128,13 @@ public class SmsSendService {
         }
         Files.move(tmp.toPath(), dst.toPath(), StandardCopyOption.REPLACE_EXISTING);
 
-        if (StringUtils.isNotEmpty(req.getPreTaskId())) {
-            File preFile = new File(PRE_PHONE_ROOT + subAccount + "/" + req.getPreTaskId() + ".txt");
-            File realDir = new File(REAL_PHONE_ROOT + subAccount + "/");
-            if (!realDir.exists()) realDir.mkdirs();
-            File realFile = new File(realDir, taskId + ".txt");
-
-            Files.copy(preFile.toPath(), realFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
-            if (!realFile.exists() || realFile.length() == 0) {
-                throw new Exception("正式号码文件生成失败");
-            }
-
-            preFile.delete();
-            scheduleNumberTaskMapper.deletePreTask(subAccount, req.getPreTaskId());
-        }
-
+        // 时间处理（线程安全替换）
         SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
         sdf.setTimeZone(TimeZone.getTimeZone("Asia/Shanghai"));
         Date now = new Date();
         Date scheduleTime = StringUtils.isEmpty(req.getScheduleTime()) ? now : sdf.parse(req.getScheduleTime());
 
+        // 插入任务记录
         scheduleSendMapper.insertAPIScheduleSend(
                 taskId, scheduleTime, calleeCount, splitCount, totalCount,
                 now, TokenService.getIpAddress(r), subAccount, content,
@@ -155,11 +150,14 @@ public class SmsSendService {
         return resp;
     }
 
-    // 修复英文乱码：使用 ISO-8859-1 发送 ASCII
+    /**
+     * 构建短信拆分内容（根据编码生成HEX）
+     */
     private List<Map<String, String>> buildMsgParts(String content, int dcs, int splitCount) throws Exception {
         List<Map<String, String>> list = new ArrayList<>();
+        List<String> parts = splitContent(content, splitCount);
+
         if (dcs == 0) {
-            List<String> parts = splitContent(content, splitCount);
             for (int i = 0; i < parts.size(); i++) {
                 byte[] bytes = parts.get(i).getBytes("ISO-8859-1");
                 Map<String, String> m = new HashMap<>();
@@ -168,7 +166,6 @@ public class SmsSendService {
                 list.add(m);
             }
         } else {
-            List<String> parts = splitContent(content, splitCount);
             for (int i = 0; i < parts.size(); i++) {
                 byte[] bytes = parts.get(i).getBytes("UTF-16BE");
                 Map<String, String> m = new HashMap<>();
@@ -180,6 +177,9 @@ public class SmsSendService {
         return list;
     }
 
+    /**
+     * 按短信长度拆分内容
+     */
     private List<String> splitContent(String content, int splitCount) {
         List<String> list = new ArrayList<>();
         int dcs = SmsContentUtil.calculateDCS(content);
@@ -193,16 +193,20 @@ public class SmsSendService {
         return list;
     }
 
+    /**
+     * 统计号码文件行数
+     */
     private int countLine(File file) throws Exception {
         int lines = 0;
-        try (BufferedReader br = new BufferedReader(new FileReader(file))) {
-            while (br.readLine() != null) {
-                lines++;
-            }
+        try (BufferedReader br = new BufferedReader(new java.io.FileReader(file))) {
+            while (br.readLine() != null) lines++;
         }
         return lines;
     }
 
+    /**
+     * 字节转16进制字符串
+     */
     private String bytesToHex(byte[] bytes) {
         StringBuilder sb = new StringBuilder();
         for (byte b : bytes) sb.append(String.format("%02X", b));

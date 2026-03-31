@@ -8,8 +8,6 @@ import com.texcellsms.sms.service.SubmitRecordService;
 import com.texcellsms.sms.service.TokenService;
 import com.texcellsms.sms.util.Constants;
 import com.texcellsms.sms.util.Result;
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.tags.Tag;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.annotation.*;
@@ -24,7 +22,6 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/eccom/submit-record")
-@Tag(name = "短信发送记录查询")
 public class SubmitRecordController {
 
     @Resource
@@ -33,8 +30,10 @@ public class SubmitRecordController {
 
     private static final Logger logger = LoggerFactory.getLogger(SubmitRecordController.class);
 
+    /**
+     * 分页查询短信发送记录并返回统计信息
+     */
     @GetMapping("/Send-records")
-    @Operation(summary = "发送记录查询（带统计）")
     public Result<SubmitRecordWithStatsDTO> queryLoginUserWithStats(
             @RequestHeader(RequestHeaderConstants.AUTHORIZATION) String authorization,
             @RequestParam(required = false) String startTime,
@@ -44,7 +43,7 @@ public class SubmitRecordController {
             @RequestParam(required = false) String mnc,
             @RequestParam(required = false) String innerReportState,
             @RequestParam(required = false) String innerReportError,
-            @RequestParam(required = false) String destAccountStatus, // 加这个
+            @RequestParam(required = false) String destAccountStatus,
             @RequestParam(defaultValue = "1") Integer pageNum,
             @RequestParam(defaultValue = "20") Integer pageSize,
             HttpServletResponse response) throws ParseException {
@@ -61,8 +60,10 @@ public class SubmitRecordController {
         ));
     }
 
+    /**
+     * 导出短信发送记录Excel
+     */
     @GetMapping("/export/easyexcel")
-    @Operation(summary = "EasyExcel批量导出")
     public void easyExcelExport(
             @RequestHeader(RequestHeaderConstants.AUTHORIZATION) String authorization,
             @RequestParam String startTime,
@@ -72,7 +73,7 @@ public class SubmitRecordController {
             @RequestParam(required = false) String mnc,
             @RequestParam(required = false) String innerReportState,
             @RequestParam(required = false) String innerReportError,
-            @RequestParam(required = false) String destAccountStatus, // 发送结果
+            @RequestParam(required = false) String destAccountStatus,
             HttpServletResponse response) {
 
         String newToken = TokenService.refreshToken(authorization);
@@ -88,19 +89,19 @@ public class SubmitRecordController {
                     innerReportState, innerReportError, destAccountStatus
             );
 
-            String fileName = URLEncoder.encode("短信发送记录", "UTF-8").replace("+", "%20");
+            String fileName = URLEncoder.encode("SMS Send Records", "UTF-8").replace("+", "%20");
             response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
             response.setCharacterEncoding("UTF-8");
             response.setHeader("Content-Disposition", "attachment;filename*=UTF-8''" + fileName + ".xlsx");
 
             EasyExcel.write(response.getOutputStream(), SubmitRecordExportVO.class)
-                    .sheet("短信发送记录")
+                    .sheet("SMS Send Records")
                     .doWrite(data);
 
         } catch (Exception e) {
             try {
                 response.setContentType("application/json;charset=UTF-8");
-                response.getWriter().write("{\"code\":500,\"msg\":\"导出失败\"}");
+                response.getWriter().write("{\"code\":500,\"msg\":\"Export failed\"}");
             } catch (Exception ex) {}
         }
     }

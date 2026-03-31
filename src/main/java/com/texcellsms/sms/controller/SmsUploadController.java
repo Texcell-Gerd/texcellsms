@@ -23,6 +23,9 @@ public class SmsUploadController {
     @Autowired
     private SmsUploadService smsUploadService;
 
+    /**
+     * 上传接收号码，支持文件上传或手动输入号码
+     */
     @PostMapping("/uploadCallee")
     public AjaxResult uploadCallee(
             @RequestParam(value = "file", required = false) MultipartFile file,
@@ -31,12 +34,11 @@ public class SmsUploadController {
 
         String subAccount = TokenService.getUsername();
         if (StringUtils.isEmpty(subAccount)) {
-            return AjaxResult.error("未登录或登录已过期");
+            return AjaxResult.error("Not logged in or session expired");
         }
 
         List<String> phoneList = new ArrayList<>();
         if (file != null && !file.isEmpty()) {
-            // ✅ 修复
             phoneList = smsUploadService.parsePhone(file);
         } else if (StringUtils.isNotEmpty(numbers)) {
             phoneList = Arrays.stream(numbers.split("[,\\n]"))
@@ -46,12 +48,8 @@ public class SmsUploadController {
                     .collect(Collectors.toList());
         }
 
-        // ✅ 统一使用 20W 上限
-        if (phoneList.size() > 200000) {
-            return AjaxResult.error("号码数量超过上限：200000");
-        }
         if (phoneList.isEmpty()) {
-            return AjaxResult.error("未检测到有效号码");
+            return AjaxResult.error("No valid numbers detected");
         }
 
         String preTaskId = IdGenerator.generatePreTaskId();

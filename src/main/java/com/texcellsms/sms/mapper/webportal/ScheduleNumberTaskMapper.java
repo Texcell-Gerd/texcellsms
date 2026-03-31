@@ -9,6 +9,9 @@ import org.springframework.stereotype.Repository;
 @Repository
 public interface ScheduleNumberTaskMapper {
 
+    /**
+     * 插入预上传任务
+     */
     @Insert({
             "INSERT INTO tbl_ScheduleSend_NumberTask (",
             "SubAccount, SubmitTime, PreTaskId, ValidTill)",
@@ -21,6 +24,9 @@ public interface ScheduleNumberTaskMapper {
             @Param("validTill") String validTill
     );
 
+    /**
+     * 检查预上传任务是否有效
+     */
     @Select({
             "SELECT COUNT(*) FROM tbl_ScheduleSend_NumberTask ",
             "WHERE SubAccount = #{userName} AND PreTaskId = #{preTaskId} ",
@@ -31,6 +37,9 @@ public interface ScheduleNumberTaskMapper {
             @Param("preTaskId") String preTaskId
     );
 
+    /**
+     * 删除预上传任务
+     */
     @Delete("DELETE FROM tbl_ScheduleSend_NumberTask WHERE SubAccount=#{userName} AND PreTaskId=#{preTaskId}")
     int deletePreTask(
             @Param("userName") String userName,

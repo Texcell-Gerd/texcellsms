@@ -6,9 +6,6 @@ import com.texcellsms.sms.service.ChargeLogService;
 import com.texcellsms.sms.service.TokenService;
 import com.texcellsms.sms.util.Constants;
 import com.texcellsms.sms.util.Result;
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.Parameter;
-import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
@@ -17,7 +14,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-@Tag(name = "充值记录接口")
 @RestController
 @RequestMapping("/api/eccom/charge")
 public class ChargeLogController {
@@ -25,12 +21,14 @@ public class ChargeLogController {
     @Resource
     private ChargeLogService chargeLogService;
 
-    @Operation(summary = "查询当前用户充值记录（带分页）")
+    /**
+     * 分页查询当前用户的充值记录
+     */
     @GetMapping("/recharge-log")
     public Result<Map<String, Object>> getMyChargeLog(
             @RequestHeader(RequestHeaderConstants.AUTHORIZATION) String authorization,
-            @Parameter(description = "开始时间") @RequestParam(required = false) String startTime,
-            @Parameter(description = "结束时间") @RequestParam(required = false) String endTime,
+            @RequestParam(required = false) String startTime,
+            @RequestParam(required = false) String endTime,
             @RequestParam(defaultValue = "1") Integer pageNum,
             @RequestParam(defaultValue = "10") Integer pageSize,
             HttpServletResponse response) {

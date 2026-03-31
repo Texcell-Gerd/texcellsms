@@ -9,6 +9,7 @@ import org.apache.poi.ss.usermodel.WorkbookFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
+
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
@@ -27,23 +28,27 @@ public class SmsUploadService {
     private static final String[] ALLOW = {"txt", "csv", "xlsx", "xls"};
     private static final int MIN_LEN = 7;
     private static final int MAX_LEN = 22;
-    private static final int MAX_PHONE_LIMIT = 200000;
+    private static final long MAX_FILE_SIZE = 3 * 1024 * 1024; // 3MB
 
+    /**
+     * 解析上传文件中的手机号（支持 TXT/CSV/Excel）
+     */
     public List<String> parsePhone(MultipartFile file) throws Exception {
+        if (file.getSize() > MAX_FILE_SIZE) {
+            throw new Exception("File size cannot exceed 3MB");
+        }
+
         List<String> list = new ArrayList<>();
         String name = file.getOriginalFilename();
-        if (name == null) throw new Exception("文件名无效");
+        if (name == null) throw new Exception("Invalid file name");
         String ext = getExt(name).toLowerCase();
 
-        if (!isAllowed(ext)) throw new Exception("仅支持 txt/csv/xlsx/xls");
+        if (!isAllowed(ext)) throw new Exception("Only txt/csv/xlsx/xls files are supported");
 
         if (ext.equals("txt") || ext.equals("csv")) {
             try (BufferedReader br = new BufferedReader(new InputStreamReader(file.getInputStream(), "UTF-8"))) {
                 String line;
                 while ((line = br.readLine()) != null) {
-                    if (list.size() >= MAX_PHONE_LIMIT) {
-                        throw new Exception("号码数量超过限制，单次最多允许上传 200000 个号码");
-                    }
                     String phone = line.trim().replaceAll("[^0-9]", "");
                     if (isValid(phone)) list.add(phone);
                 }
@@ -52,9 +57,6 @@ public class SmsUploadService {
             try (Workbook wb = WorkbookFactory.create(file.getInputStream())) {
                 Sheet sheet = wb.getSheetAt(0);
                 for (Row row : sheet) {
-                    if (list.size() >= MAX_PHONE_LIMIT) {
-                        throw new Exception("号码数量超过限制，单次最多允许上传 200000 个号码");
-                    }
                     Cell c = row.getCell(0);
                     if (c == null) continue;
                     String phone = c.toString().trim().replaceAll("[^0-9]", "");
@@ -63,19 +65,15 @@ public class SmsUploadService {
             }
         }
 
-        if (list.size() > MAX_PHONE_LIMIT) {
-            throw new Exception("号码数量超过限制，单次最多允许上传 200000 个号码");
-        }
         return list.stream().distinct().collect(Collectors.toList());
     }
 
+    /**
+     * 保存预上传任务（15分钟有效期）
+     */
     public void savePreTask(String subAccount, String preId, List<String> phones) throws Exception {
-        if (phones == null || phones.isEmpty()) throw new Exception("号码不能为空");
-        if (phones.size() > MAX_PHONE_LIMIT) {
-            throw new Exception("号码数量超过限制，单次最多允许上传 200000 个号码");
-        }
+        if (phones == null || phones.isEmpty()) throw new Exception("Recipient numbers cannot be empty");
 
-        // ====================== 文件上传路径 ======================
         String userDir = SmsSendService.PRE_PHONE_ROOT + subAccount + "/";
         File dir = new File(userDir);
         if (!dir.exists()) dir.mkdirs();
@@ -89,7 +87,7 @@ public class SmsUploadService {
         }
 
         if (!file.exists() || file.length() == 0) {
-            throw new Exception("预上传文件生成失败");
+            throw new Exception("Failed to generate temporary upload file");
         }
 
         long nowSec = System.currentTimeMillis() / 1000;
@@ -102,15 +100,24 @@ public class SmsUploadService {
         );
     }
 
+    /**
+     * 校验文件格式是否允许
+     */
     private boolean isAllowed(String ext) {
         for (String s : ALLOW) if (s.equals(ext)) return true;
         return false;
     }
 
+    /**
+     * 号码格式校验
+     */
     private boolean isValid(String phone) {
         return phone != null && phone.length() >= MIN_LEN && phone.length() <= MAX_LEN && phone.matches("\\d+");
     }
 
+    /**
+     * 获取文件后缀
+     */
     private String getExt(String name) {
         int dot = name.lastIndexOf(".");
         return dot == -1 ? "" : name.substring(dot + 1);

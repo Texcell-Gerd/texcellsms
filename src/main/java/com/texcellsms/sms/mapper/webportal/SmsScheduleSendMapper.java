@@ -10,7 +10,9 @@ import java.util.Date;
 @Mapper
 public interface SmsScheduleSendMapper {
 
-    // 插入发送任务到 tbl_APIScheduleSend
+    /**
+     * 插入短信调度任务主记录
+     */
     @Insert({
             "INSERT INTO tbl_APIScheduleSend (",
             "    TaskID, ",

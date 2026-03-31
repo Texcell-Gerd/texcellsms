@@ -19,6 +19,9 @@ public class AuthController {
     @Autowired
     private AuthService authService;
 
+    /**
+     * 获取当前账户余额
+     */
     @PostMapping("/api/auth/getBalance")
     public AjaxResult getBalance(
             @RequestHeader(RequestHeaderConstants.AUTHORIZATION) String authorization,
@@ -29,6 +32,9 @@ public class AuthController {
         return ajaxResult;
     }
 
+    /**
+     * 修改子账户密码
+     */
     @PostMapping("/api/auth/ChangeSwitchAccountPWD")
     public AjaxResult ChangeSwitchAccountPWD(
             @RequestHeader(RequestHeaderConstants.AUTHORIZATION) String authorization,
@@ -40,6 +46,9 @@ public class AuthController {
         return ajaxResult;
     }
 
+    /**
+     * 根据MCC+MNC查询费率
+     */
     @GetMapping("/api/auth/getRate")
     public AjaxResult getRate(
             @RequestHeader(RequestHeaderConstants.AUTHORIZATION) String authorization,
@@ -52,6 +61,9 @@ public class AuthController {
         return ajaxResult;
     }
 
+    /**
+     * 账户登录接口
+     */
     @PostMapping("/api/auth/login")
     public AjaxResult login(
             @RequestHeader(RequestHeaderConstants.X_REQUEST) String xRequest,

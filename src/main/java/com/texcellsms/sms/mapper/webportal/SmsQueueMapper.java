@@ -14,7 +14,9 @@ import java.util.Set;
 @Mapper
 public interface SmsQueueMapper {
 
-    // ==================== 任务列表（分页） ====================
+    /**
+     * 分页查询任务列表
+     */
     @Select({
             "<script>",
             "SELECT TaskName,taskId,",
@@ -33,12 +35,15 @@ public interface SmsQueueMapper {
     })
     @ResultType(ScheduleTaskVO.class)
     List<ScheduleTaskVO> selectScheduleTaskList(
-            @Param("subAccount") String subAccount, // 当前登录用户subAccount
-            @Param("threeDaysAgoTime") String threeDaysAgoTime, // 3天前时间
+            @Param("subAccount") String subAccount,
+            @Param("threeDaysAgoTime") String threeDaysAgoTime,
             @Param("offset") Integer offset,
             @Param("pageSize") Integer pageSize
     );
 
+    /**
+     * 统计任务总数
+     */
     @Select({
             "<script>",
             "SELECT COUNT(*) FROM tbl_APIScheduleSend ",
@@ -53,7 +58,9 @@ public interface SmsQueueMapper {
             @Param("threeDaysAgoTime") String threeDaysAgoTime
     );
 
-    // ==================== 任务详情（分页） ====================
+    /**
+     * 分页查询任务详情
+     */
     @Select({
             "<script>",
             "SELECT SubmitMsgId, Caller, Callee, ",
@@ -76,12 +83,15 @@ public interface SmsQueueMapper {
             @Param("pageSize") Integer pageSize
     );
 
+    /**
+     * 统计任务详情数量
+     */
     @Select({
             "<script>",
             "SELECT COUNT(*) FROM tbl_APITask",
             "WHERE APITaskId = #{taskId} ",
             "  <if test='callee != null and callee != \"\"'>",
-            "    AND Callee LIKE CONCAT('%', #{callee}, '%')", // 移除错误的t1.前缀
+            "    AND Callee LIKE CONCAT('%', #{callee}, '%')",
             "  </if>",
             "</script>"
     })
@@ -90,7 +100,9 @@ public interface SmsQueueMapper {
             @Param("callee") String callee
     );
 
-    // ==================== 导出全部详情 ====================
+    /**
+     * 查询全部任务详情（导出用）
+     */
     @Select({
             "SELECT SubmitMsgId, Caller, Callee, ",
             "       DATE_FORMAT(RecvDRTime, '%Y-%m-%d %H:%i:%s') AS RecvDRTime, ",
@@ -104,13 +116,15 @@ public interface SmsQueueMapper {
             @Param("taskId") String taskId
     );
 
-    // ========== 新增：批量修改状态（伪删除） ==========
+    /**
+     * 批量更新任务状态（伪删除）
+     */
     @Update({
             "<script>",
             "UPDATE tbl_APIScheduleSend ",
-            "SET ScheduleStatus = 4 ", // 改为删除状态4
-            "WHERE SubAccount = #{subAccount} ", // 仅当前用户
-            "  AND TaskTime >= #{threeDaysAgoTime} ", // 仅最近3天
+            "SET ScheduleStatus = 4 ",
+            "WHERE SubAccount = #{subAccount} ",
+            "  AND TaskTime >= #{threeDaysAgoTime} ",
             "  AND TaskID IN ",
             "<foreach collection='taskIds' item='taskId' open='(' separator=',' close=')'>",
             "  #{taskId}",
@@ -120,10 +134,12 @@ public interface SmsQueueMapper {
     int batchUpdateScheduleStatus(
             @Param("subAccount") String subAccount,
             @Param("threeDaysAgoTime") String threeDaysAgoTime,
-            @Param("taskIds") Set<String> taskIds // 用Set避免重复ID
+            @Param("taskIds") Set<String> taskIds
     );
 
-    // ==================== 【新增】DR状态统计 ====================
+    /**
+     * 按任务ID分组统计DR状态
+     */
     @Select({
             "<script>",
             "SELECT APITaskId, RecvDRStatus, COUNT(*) AS count ",

@@ -15,7 +15,6 @@ import javax.annotation.Resource;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.text.NumberFormat;
-import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -23,31 +22,44 @@ import java.util.stream.Collectors;
 public class SubmitRecordService {
 
     private static final Logger logger = LoggerFactory.getLogger(SubmitRecordService.class);
+
     @Resource
     private SubmitRecordMapper submitRecordMapper;
-    private String SubAccount() { return TokenService.getUsername(); }
-    private static final SimpleDateFormat DATETIME_FORMAT_DB = new SimpleDateFormat("yyyy/MM/dd HH:mm:ss");
-    private static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("yyyyMMdd");
-    private static final NumberFormat PERCENT_FORMAT;
 
+    /**
+     * 获取当前登录用户
+     */
+    private String SubAccount() {
+        return TokenService.getUsername();
+    }
+
+    /**
+     * 百分比格式（线程安全）
+     */
+    private static final NumberFormat PERCENT_FORMAT;
     static {
         PERCENT_FORMAT = NumberFormat.getPercentInstance(Locale.US);
         PERCENT_FORMAT.setMaximumFractionDigits(2);
         PERCENT_FORMAT.setGroupingUsed(false);
     }
 
+    /**
+     * 获取日期表后缀列表（按天分表）
+     */
     private List<String> getDateSuffixList(Date start, Date end) {
         List<String> suffixList = new ArrayList<>();
         Calendar cal = Calendar.getInstance();
         cal.setTime(start);
         while (!cal.getTime().after(end)) {
-            suffixList.add(DATE_FORMAT.format(cal.getTime()));
+            suffixList.add(String.format("%tY%<tm%<td", cal.getTime()));
             cal.add(Calendar.DATE, 1);
         }
         return suffixList;
     }
 
-    // ====================== 【终极排序版：最新数据优先】 ======================
+    /**
+     * 分页查询短信发送记录 + 统计（最新数据优先）
+     */
     public SubmitRecordWithStatsDTO getSubmitRecordWithStats(
             Date startTime, Date endTime,
             String callee, String mcc, String mnc,
@@ -60,19 +72,19 @@ public class SubmitRecordService {
         pageNum = (pageNum == null || pageNum < 1) ? 1 : pageNum;
 
         String subAccount = SubAccount();
-        String startTimeStr = DATETIME_FORMAT_DB.format(startTime);
-        String endTimeStr = DATETIME_FORMAT_DB.format(endTime);
-        callee = callee == null ? "" : callee.trim();
-        mcc = mcc == null ? "" : mcc.trim();
-        mnc = mnc == null ? "" : mnc.trim();
-        innerReportState = innerReportState == null ? "" : innerReportState.trim();
-        destAccountStatus = destAccountStatus == null ? "" : destAccountStatus.trim();
+        String startTimeStr = String.format("%tY/%<tm/%<td %<tH:%<tM:%<tS", startTime);
+        String endTimeStr = String.format("%tY/%<tm/%<td %<tH:%<tM:%<tS", endTime);
+
+        callee = Objects.toString(callee, "").trim();
+        mcc = Objects.toString(mcc, "").trim();
+        mnc = Objects.toString(mnc, "").trim();
+        final String finalInnerReportState = Objects.toString(innerReportState, "").trim();
+        destAccountStatus = Objects.toString(destAccountStatus, "").trim();
+
         List<String> suffixList = getDateSuffixList(startTime, endTime);
 
         try {
-            // ==============================================
-            // 1. 查询 ID + 发送时间，缓存映射关系
-            // ==============================================
+            // 1. 批量查询 msgId + 时间 + 分表后缀
             Map<String, String> msgIdToTableSuffix = new HashMap<>();
             Map<String, String> msgIdToSubmitTime = new HashMap<>();
             List<Map<String, Object>> allIdWithTime = new ArrayList<>();
@@ -90,13 +102,11 @@ public class SubmitRecordService {
                 }
             }
 
-            // ==============================================
-            // 2. 回执查询
-            // ==============================================
+            // 2. 查询回执状态
             Map<String, Map<String, Object>> feeMap = new HashMap<>();
             for (String suffix : suffixList) {
                 List<Map<String, Object>> feeList = submitRecordMapper.queryFeeBill(
-                        suffix, subAccount, startTimeStr, endTimeStr, innerReportState, callee, mcc, mnc
+                        suffix, subAccount, startTimeStr, endTimeStr, finalInnerReportState, callee, mcc, mnc
                 );
                 for (Map<String, Object> fee : feeList) {
                     String recvMsgId = (String) fee.get("RecvMsgId");
@@ -106,19 +116,16 @@ public class SubmitRecordService {
                 }
             }
 
-            // ==============================================
-            // 3. 过滤有效ID，并【全局按时间倒序】
-            // ==============================================
+            // 3. 过滤有效ID（全局倒序）
             List<String> validIds = new ArrayList<>();
             for (Map<String, Object> map : allIdWithTime) {
                 String msgId = (String) map.get("SubmitMsgId");
-                if (!innerReportState.isEmpty() && !feeMap.containsKey(msgId)) {
+                if (!finalInnerReportState.isEmpty() && !feeMap.containsKey(msgId)) {
                     continue;
                 }
                 validIds.add(msgId);
             }
 
-            // 核心：全局时间倒序
             validIds.sort((id1, id2) -> {
                 String t1 = msgIdToSubmitTime.get(id1);
                 String t2 = msgIdToSubmitTime.get(id2);
@@ -127,9 +134,7 @@ public class SubmitRecordService {
                 return t2.compareTo(t1);
             });
 
-            // ==============================================
             // 4. 统计
-            // ==============================================
             long total = validIds.size();
             long deliverSuccess = 0, deliverFail = 0;
             for (String id : validIds) {
@@ -145,7 +150,7 @@ public class SubmitRecordService {
 
             long submitSuccess = total;
             long submitFail = 0;
-            if (innerReportState.isEmpty()) {
+            if (finalInnerReportState.isEmpty()) {
                 if ("success".equals(destAccountStatus)) {
                     submitSuccess = total;
                     submitFail = 0;
@@ -155,9 +160,7 @@ public class SubmitRecordService {
                 }
             }
 
-            // ==============================================
-            // 5. 分页 + 查询详情
-            // ==============================================
+            // 5. 分页查询
             int skip = (pageNum - 1) * FIX_PAGE_SIZE;
             List<String> pageIds = validIds.stream().skip(skip).limit(FIX_PAGE_SIZE).collect(Collectors.toList());
             List<SubmitRecordDTO> pageRecords = new ArrayList<>();
@@ -175,12 +178,9 @@ public class SubmitRecordService {
                 }
             }
 
-            // 最终再排序一次，确保绝对正确
             pageRecords.sort(Comparator.comparing(SubmitRecordDTO::getSubmitMsgTime, Comparator.nullsLast(Comparator.reverseOrder())));
 
-            // ==============================================
             // 6. 封装返回
-            // ==============================================
             List<SubmitRecordDTO> merged = new ArrayList<>();
             for (SubmitRecordDTO sub : pageRecords) {
                 Map<String, Object> f = feeMap.get(sub.getSubmitMsgId());
@@ -235,7 +235,9 @@ public class SubmitRecordService {
         }
     }
 
-    // ====================== 导出也按时间倒序 ======================
+    /**
+     * 导出全部记录（Excel）
+     */
     public List<SubmitRecordExportVO> queryExportDataForEasyExcel(
             Date startTime, Date endTime,
             String callee, String mcc, String mnc,
@@ -245,15 +247,15 @@ public class SubmitRecordService {
         DynamicDataSourceInterceptor.setCurrentDataSource(DynamicDataSourceConfig.DS_ECCOM);
         try {
             String subAccount = SubAccount();
-            String startTimeStr = DATETIME_FORMAT_DB.format(startTime);
-            String endTimeStr = DATETIME_FORMAT_DB.format(endTime);
-            callee = (callee == null) ? "" : callee.trim();
-            mcc = (mcc == null) ? "" : mcc.trim();
-            mnc = (mnc == null) ? "" : mnc.trim();
-            innerReportState = (innerReportState == null) ? "" : innerReportState.trim();
-            destAccountStatus = (destAccountStatus == null) ? "" : destAccountStatus.trim();
+            String startTimeStr = String.format("%tY/%<tm/%<td %<tH:%<tM:%<tS", startTime);
+            String endTimeStr = String.format("%tY/%<tm/%<td %<tH:%<tM:%<tS", endTime);
 
-            final String finalInner = innerReportState;
+            callee = Objects.toString(callee, "").trim();
+            mcc = Objects.toString(mcc, "").trim();
+            mnc = Objects.toString(mnc, "").trim();
+            final String finalInnerReportState = Objects.toString(innerReportState, "").trim();
+            destAccountStatus = Objects.toString(destAccountStatus, "").trim();
+
             List<String> suffixList = getDateSuffixList(startTime, endTime);
             List<SubmitRecordDTO> allSubmitList = new ArrayList<>();
             Map<String, Map<String, Object>> feeMap = new HashMap<>();
@@ -263,8 +265,9 @@ public class SubmitRecordService {
                         suffix, subAccount, startTimeStr, endTimeStr, callee, mcc, mnc, destAccountStatus
                 );
                 allSubmitList.addAll(subList);
+
                 List<Map<String, Object>> feeList = submitRecordMapper.queryFeeBill(
-                        suffix, subAccount, startTimeStr, endTimeStr, innerReportState, callee, mcc, mnc
+                        suffix, subAccount, startTimeStr, endTimeStr, finalInnerReportState, callee, mcc, mnc
                 );
                 for (Map<String, Object> fee : feeList) {
                     String recvMsgId = (String) fee.get("RecvMsgId");
@@ -276,20 +279,22 @@ public class SubmitRecordService {
 
             return allSubmitList.stream()
                     .filter(sub -> {
-                        if (finalInner.isEmpty()) return true;
+                        if (finalInnerReportState.isEmpty()) return true;
                         Map<String, Object> fee = feeMap.get(sub.getSubmitMsgId());
-                        return fee != null && finalInner.equals(String.valueOf(fee.get("InnerReportState")));
+                        return fee != null && finalInnerReportState.equals(String.valueOf(fee.get("InnerReportState")));
                     })
                     .sorted(Comparator.comparing(SubmitRecordDTO::getSubmitMsgTime, Comparator.nullsLast(Comparator.reverseOrder())))
                     .map(sub -> {
                         SubmitRecordExportVO vo = new SubmitRecordExportVO();
                         Map<String, Object> fee = feeMap.get(sub.getSubmitMsgId());
+
                         vo.setSourAccount(sub.getSourAccount());
                         vo.setSubmitMsgId(sub.getSubmitMsgId());
                         vo.setSubmitMsgTime(sub.getSubmitMsgTime());
                         vo.setCaller(sub.getCaller());
                         vo.setCallee(sub.getCallee());
                         vo.setSmLength(sub.getSmLength());
+
                         String chargeFee = sub.getChargeFee();
                         if (chargeFee == null || "0".equals(chargeFee)) {
                             vo.setActualChargeFee("0");
@@ -302,14 +307,17 @@ public class SubmitRecordService {
                                 vo.setActualChargeFee("0");
                             }
                         }
+
                         try {
                             String content = SmsContentParserUtil.parseShortMessageOnly(sub.getOriginalShortMessage(), sub.getDcs());
                             vo.setShortMessage(content == null ? "" : content.replaceAll("\\n|\\r", " "));
                         } catch (Exception e) {
                             vo.setShortMessage("");
                         }
+
                         vo.setMcc(sub.getMcc());
                         vo.setMnc(sub.getMnc());
+
                         if (fee != null) {
                             vo.setInnerReportState((String) fee.get("InnerReportState"));
                             vo.setRecvDRTime((String) fee.get("RecvDRTime"));
@@ -320,6 +328,7 @@ public class SubmitRecordService {
                         return vo;
                     })
                     .collect(Collectors.toList());
+
         } finally {
             DynamicDataSourceInterceptor.clearCurrentDataSource();
         }

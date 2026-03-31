@@ -10,7 +10,9 @@ import java.util.Map;
 @Repository
 public interface SubmitRecordMapper {
 
-    // 1. 主查询
+    /**
+     * 查询提交记录
+     */
     @Select("SELECT SubmitMsgId, DestAccount, Caller, ChargeFee, SubmitMsgTime, Callee, "
             + "Short_Message as originalShortMessage, SM_Length, MCC, MNC, DCS, SourAccount "
             + "FROM Submit_Bill_${tableSuffix} "
@@ -32,7 +34,9 @@ public interface SubmitRecordMapper {
             @Param("destAccountCondition") String destAccountCondition
     );
 
-    // 2. 统计
+    /**
+     * 统计提交成功/失败
+     */
     @Select("SELECT "
             + "COUNT(CASE WHEN DestAccount != 'hell' THEN 1 END) AS successCount, "
             + "COUNT(CASE WHEN DestAccount = 'hell' THEN 1 END) AS failCount "
@@ -55,7 +59,9 @@ public interface SubmitRecordMapper {
             @Param("destAccountCondition") String destAccountCondition
     );
 
-    // 3. 回执查询
+    /**
+     * 查询回执状态
+     */
     @Select("SELECT RecvMsgId, InnerReportState, RecvDRTime "
             + "FROM Fee_Bill_${tableSuffix} "
             + "WHERE SourAccount = #{sourAccount} "
@@ -76,7 +82,9 @@ public interface SubmitRecordMapper {
             @Param("mnc") String mnc
     );
 
-    // 4. 只查ID
+    /**
+     * 只查询SubmitMsgId
+     */
     @Select("SELECT SubmitMsgId "
             + "FROM Submit_Bill_${tableSuffix} "
             + "WHERE SourAccount = #{sourAccount} "
@@ -97,7 +105,9 @@ public interface SubmitRecordMapper {
             @Param("destAccountCondition") String destAccountCondition
     );
 
-    // 5. 查 ID + SubmitMsgTime（排序专用）
+    /**
+     * 查询SubmitMsgId + SubmitMsgTime（用于排序）
+     */
     @Select("SELECT SubmitMsgId, SubmitMsgTime "
             + "FROM Submit_Bill_${tableSuffix} "
             + "WHERE SourAccount = #{sourAccount} "
@@ -118,7 +128,9 @@ public interface SubmitRecordMapper {
             @Param("destAccountCondition") String destAccountCondition
     );
 
-    // 6. 根据ID批量查详情
+    /**
+     * 根据ID批量查询
+     */
     @Select({
             "<script>",
             "SELECT SubmitMsgId, DestAccount, Caller, ChargeFee, SubmitMsgTime, Callee, "

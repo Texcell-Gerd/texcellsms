@@ -7,10 +7,7 @@ import com.texcellsms.sms.util.ChargeLogUtils;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.Resource;
-import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.List;
+import java.util.*;
 
 /**
  * 充值日志服务类
@@ -21,53 +18,60 @@ public class ChargeLogService {
     @Resource
     private ChargeLogMapper chargeLogMapper;
 
-    // 获取当前登录用户的subAccount
+    /**
+     * 获取当前登录用户账号
+     */
     private String SubAccount(){
         return TokenService.getUsername();
     }
 
-    // ===================== 原有方法不动，只加一个分页方法 =====================
+    /**
+     * 根据用户账号查询充值记录（内部通用方法）
+     */
     public List<ChargeLog> getChargeLogByUserAccount(String startTime, String endTime) {
         // 1. 校验当前登录用户
         String currentAccount = SubAccount();
         if (currentAccount == null || currentAccount.trim().isEmpty()) {
-            throw new RuntimeException("获取登录用户信息失败，请重新登录");
+            return Collections.emptyList();
         }
 
-        // 2. 处理默认时间：如果没传，就查最近3天
+        // 2. 处理默认时间（线程安全）
         if (startTime == null || startTime.trim().isEmpty()) {
-            startTime = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
-                    .format(new Date(System.currentTimeMillis() - 3L * 24 * 60 * 60 * 1000));
+            startTime = String.format("%tF %<tT", new Date(System.currentTimeMillis() - 3L * 24 * 60 * 60 * 1000));
         }
         if (endTime == null || endTime.trim().isEmpty()) {
-            endTime = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date());
+            endTime = String.format("%tF %<tT", new Date());
         }
 
         // 3. 查询客户账号
-        List<CustomerAccount> customerAccounts = chargeLogMapper.QueryUserParentAccount(currentAccount);
+        List<CustomerAccount> customerAccounts;
+        try {
+            customerAccounts = chargeLogMapper.QueryUserParentAccount(currentAccount);
+        } catch (Exception e) {
+            return Collections.emptyList();
+        }
         if (customerAccounts == null || customerAccounts.isEmpty()) {
-            return new ArrayList<>();
+            return Collections.emptyList();
         }
 
         List<ChargeLog> allChargeLogs = new ArrayList<>();
 
-        // 4. 遍历查询（全非空校验）
+        // 4. 遍历查询
         for (CustomerAccount customerAccount : customerAccounts) {
-            if (customerAccount == null) {
-                continue;
-            }
+            if (customerAccount == null) continue;
+
             String companyId = customerAccount.getCompanyID();
-            if (companyId == null || companyId.trim().isEmpty()) {
+            if (companyId == null || companyId.trim().isEmpty()) continue;
+
+            List<ChargeLog> chargeLogs;
+            try {
+                chargeLogs = chargeLogMapper.selectFromMngDB(companyId, startTime, endTime);
+            } catch (Exception e) {
                 continue;
             }
+            if (chargeLogs == null || chargeLogs.isEmpty()) continue;
 
-            // 查询单条数据
-            List<ChargeLog> chargeLogs = chargeLogMapper.selectFromMngDB(companyId, startTime, endTime);
-            if (chargeLogs == null || chargeLogs.isEmpty()) {
-                continue;
-            }
-
-            // 处理数据
+            // 封装字段
             for (ChargeLog log : chargeLogs) {
                 if (log == null) continue;
 
@@ -83,19 +87,23 @@ public class ChargeLogService {
         return allChargeLogs;
     }
 
-    // ===================== 新增：分页查询（完全不影响原有逻辑） =====================
+    /**
+     * 分页查询充值记录
+     */
     public List<ChargeLog> getChargeLogPage(String startTime, String endTime, Integer pageNum, Integer pageSize) {
         List<ChargeLog> all = getChargeLogByUserAccount(startTime, endTime);
-        if (all.isEmpty()) return new ArrayList<>();
+        if (all.isEmpty()) return Collections.emptyList();
 
         int start = (pageNum - 1) * pageSize;
         int end = Math.min(start + pageSize, all.size());
 
-        if (start >= all.size()) return new ArrayList<>();
+        if (start >= all.size()) return Collections.emptyList();
         return all.subList(start, end);
     }
 
-    // ===================== 新增：获取总数 =====================
+    /**
+     * 获取充值记录总数
+     */
     public int getChargeLogCount(String startTime, String endTime) {
         return getChargeLogByUserAccount(startTime, endTime).size();
     }

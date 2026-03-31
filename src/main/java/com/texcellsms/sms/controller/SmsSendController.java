@@ -21,22 +21,24 @@ public class SmsSendController {
     @Autowired
     private SmsSendService smsSendService;
 
+    /**
+     * 发送短信接口
+     */
     @PostMapping("/sendMessage")
     public AjaxResult sendMessage(@RequestBody SmsSendRequest request, HttpServletRequest httpRequest) throws Exception {
         String subAccount = TokenService.getUsername();
         if (StringUtils.isEmpty(subAccount)) {
-            return AjaxResult.error("未登录或登录已过期");
+            return AjaxResult.error("Not logged in or session expired");
         }
         if (StringUtils.isEmpty(request.getContent())) {
-            return AjaxResult.error("短信内容不能为空");
+            return AjaxResult.error("SMS content cannot be empty");
         }
         if (StringUtils.isEmpty(request.getPreTaskId()) && CollectionUtils.isEmpty(request.getNumbers())) {
-            return AjaxResult.error("接收号码不能为空");
+            return AjaxResult.error("Recipient number cannot be empty");
         }
 
         SmsSendResponse response = smsSendService.doSend(subAccount, request, httpRequest);
 
-        // ✅ 修复
         int smLength = request.getContent().getBytes("UTF-8").length;
 
         Map<String, Object> result = new HashMap<>();
