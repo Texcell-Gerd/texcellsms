@@ -13,7 +13,7 @@ class TexcellSmsApplicationTests {
     void contextLoads() {
         System.out.println("test submit xunxun");
         pLink = NCacheDBLink.getNCacheDBLink();
-        pLink.InitEnv("192.168.112.250",18801,"auth","auth","auth","utf-8","utf-8");
+        pLink.InitEnv("192.168.128.250",18801,"auth","auth","auth","utf-8","utf-8");
         pLink.ConnectToCacheDB();
 //		pLink.ExecProc_NoneOutputAndDataSet();
 //		pLink.ExecProc();
