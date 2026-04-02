@@ -1,3 +1,5 @@
+package com.texcellsms.sms.util;
+
 import java.util.*;
 import java.util.stream.IntStream;
 
@@ -155,7 +157,6 @@ public class Gsm7BitConverter {
             }
         }
 
-        // 步骤2: 将7-bit值序列打包为8-bit字节数组
         return listIntegerToByteArrayStream2(septets);
     }
 
