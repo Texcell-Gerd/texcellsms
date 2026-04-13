@@ -48,9 +48,20 @@ public class SubmitRecordService {
      */
     private List<String> getDateSuffixList(Date start, Date end) {
         List<String> suffixList = new ArrayList<>();
+        if (start == null || end == null) {
+            return suffixList;
+        }
+
         Calendar cal = Calendar.getInstance();
         cal.setTime(start);
-        while (!cal.getTime().after(end)) {
+        Date endDate = end;
+
+        // 关键修复：保证包含结束日期当天
+        Calendar endCal = Calendar.getInstance();
+        endCal.setTime(end);
+        endCal.add(Calendar.DATE, 1); // 结束日期+1天，确保循环包含当天
+
+        while (cal.before(endCal)) {
             suffixList.add(String.format("%tY%<tm%<td", cal.getTime()));
             cal.add(Calendar.DATE, 1);
         }
