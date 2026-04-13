@@ -48,14 +48,34 @@ public class DynamicDataSourceConfig {
         DATA_SOURCE_CONTEXT.remove();
     }
 
+//    @Bean(name = "eccomDataSource")
+//    @Primary
+//    public DataSource eccomDataSource() {
+//        HikariDataSource ds = new HikariDataSource();
+//        ds.setDriverClassName("com.mysql.cj.jdbc.Driver");
+//        ds.setJdbcUrl("jdbc:mysql://192.168.112.248:14333/CDR_DB?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC&allowPublicKeyRetrieval=true&useSSL=false");
+//        ds.setUsername("sms");
+//        ds.setPassword("sms");
+//        ds.setMaximumPoolSize(10);
+//        ds.setMinimumIdle(2);
+//        ds.setConnectionTimeout(600000);
+//        ds.setIdleTimeout(600000);
+//        ds.setLeakDetectionThreshold(300000);
+//        ds.setMaxLifetime(28800000);
+//        ds.setValidationTimeout(30000);
+//        ds.setConnectionTestQuery("SELECT 1");
+//        return ds;
+//    }
+
+    //测试环境数据源
     @Bean(name = "eccomDataSource")
     @Primary
     public DataSource eccomDataSource() {
         HikariDataSource ds = new HikariDataSource();
         ds.setDriverClassName("com.mysql.cj.jdbc.Driver");
-        ds.setJdbcUrl("jdbc:mysql://192.168.112.248:14333/CDR_DB?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC&allowPublicKeyRetrieval=true&useSSL=false");
-        ds.setUsername("sms");
-        ds.setPassword("sms");
+        ds.setJdbcUrl("jdbc:mysql://192.168.128.248:14333/CDR_DB?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC&allowPublicKeyRetrieval=true&useSSL=false");
+        ds.setUsername("root");
+        ds.setPassword("9c98eCFD84F299F76F6D4252DE111484(*&^%$");
         ds.setMaximumPoolSize(10);
         ds.setMinimumIdle(2);
         ds.setConnectionTimeout(600000);
@@ -67,6 +87,8 @@ public class DynamicDataSourceConfig {
         return ds;
     }
 
+
+    //测试环境数据源
     @Bean(name = "webPortalDataSource")
     public DataSource webPortalDataSource() {
         HikariDataSource ds = new HikariDataSource();

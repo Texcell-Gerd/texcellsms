@@ -6,7 +6,7 @@ import com.texcellsms.sms.mapper.eccom.SubmitRecordMapper;
 import com.texcellsms.sms.model.DTO.SubmitRecordDTO;
 import com.texcellsms.sms.model.DTO.SubmitRecordWithStatsDTO;
 import com.texcellsms.sms.model.vo.SubmitRecordExportVO;
-import com.texcellsms.sms.util.SmsContentParserUtil;
+import com.texcellsms.sms.util.Utf8ToGsm7;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -26,16 +26,10 @@ public class SubmitRecordService {
     @Resource
     private SubmitRecordMapper submitRecordMapper;
 
-    /**
-     * 获取当前登录用户
-     */
     private String SubAccount() {
         return TokenService.getUsername();
     }
 
-    /**
-     * 百分比格式（线程安全）
-     */
     private static final NumberFormat PERCENT_FORMAT;
     static {
         PERCENT_FORMAT = NumberFormat.getPercentInstance(Locale.US);
@@ -43,34 +37,31 @@ public class SubmitRecordService {
         PERCENT_FORMAT.setGroupingUsed(false);
     }
 
-    /**
-     * 获取日期表后缀列表（按天分表）
-     */
     private List<String> getDateSuffixList(Date start, Date end) {
         List<String> suffixList = new ArrayList<>();
-        if (start == null || end == null) {
-            return suffixList;
-        }
+        if (start == null || end == null) return suffixList;
 
         Calendar cal = Calendar.getInstance();
         cal.setTime(start);
-        Date endDate = end;
+        cal.set(Calendar.HOUR_OF_DAY, 0);
+        cal.set(Calendar.MINUTE, 0);
+        cal.set(Calendar.SECOND, 0);
+        cal.set(Calendar.MILLISECOND, 0);
 
-        // 关键修复：保证包含结束日期当天
         Calendar endCal = Calendar.getInstance();
         endCal.setTime(end);
-        endCal.add(Calendar.DATE, 1); // 结束日期+1天，确保循环包含当天
+        endCal.set(Calendar.HOUR_OF_DAY, 23);
+        endCal.set(Calendar.MINUTE, 59);
+        endCal.set(Calendar.SECOND, 59);
+        endCal.set(Calendar.MILLISECOND, 999);
 
-        while (cal.before(endCal)) {
+        while (!cal.after(endCal)) {
             suffixList.add(String.format("%tY%<tm%<td", cal.getTime()));
             cal.add(Calendar.DATE, 1);
         }
         return suffixList;
     }
 
-    /**
-     * 分页查询短信发送记录 + 统计（最新数据优先）
-     */
     public SubmitRecordWithStatsDTO getSubmitRecordWithStats(
             Date startTime, Date endTime,
             String callee, String mcc, String mnc,
@@ -95,7 +86,6 @@ public class SubmitRecordService {
         List<String> suffixList = getDateSuffixList(startTime, endTime);
 
         try {
-            // 1. 批量查询 msgId + 时间 + 分表后缀
             Map<String, String> msgIdToTableSuffix = new HashMap<>();
             Map<String, String> msgIdToSubmitTime = new HashMap<>();
             List<Map<String, Object>> allIdWithTime = new ArrayList<>();
@@ -113,7 +103,6 @@ public class SubmitRecordService {
                 }
             }
 
-            // 2. 查询回执状态
             Map<String, Map<String, Object>> feeMap = new HashMap<>();
             for (String suffix : suffixList) {
                 List<Map<String, Object>> feeList = submitRecordMapper.queryFeeBill(
@@ -121,13 +110,12 @@ public class SubmitRecordService {
                 );
                 for (Map<String, Object> fee : feeList) {
                     String recvMsgId = (String) fee.get("RecvMsgId");
-                    if (recvMsgId != null && msgIdToTableSuffix.containsKey(recvMsgId)) {
+                    if (recvMsgId != null) {
                         feeMap.put(recvMsgId, fee);
                     }
                 }
             }
 
-            // 3. 过滤有效ID（全局倒序）
             List<String> validIds = new ArrayList<>();
             for (Map<String, Object> map : allIdWithTime) {
                 String msgId = (String) map.get("SubmitMsgId");
@@ -145,7 +133,6 @@ public class SubmitRecordService {
                 return t2.compareTo(t1);
             });
 
-            // 4. 统计
             long total = validIds.size();
             long deliverSuccess = 0, deliverFail = 0;
             for (String id : validIds) {
@@ -171,7 +158,6 @@ public class SubmitRecordService {
                 }
             }
 
-            // 5. 分页查询
             int skip = (pageNum - 1) * FIX_PAGE_SIZE;
             List<String> pageIds = validIds.stream().skip(skip).limit(FIX_PAGE_SIZE).collect(Collectors.toList());
             List<SubmitRecordDTO> pageRecords = new ArrayList<>();
@@ -191,7 +177,6 @@ public class SubmitRecordService {
 
             pageRecords.sort(Comparator.comparing(SubmitRecordDTO::getSubmitMsgTime, Comparator.nullsLast(Comparator.reverseOrder())));
 
-            // 6. 封装返回
             List<SubmitRecordDTO> merged = new ArrayList<>();
             for (SubmitRecordDTO sub : pageRecords) {
                 Map<String, Object> f = feeMap.get(sub.getSubmitMsgId());
@@ -204,7 +189,7 @@ public class SubmitRecordService {
                 }
 
                 try {
-                    String content = SmsContentParserUtil.parseAndEncryptShortMessage(sub.getOriginalShortMessage(), sub.getDcs());
+                    String content = decodeLongSmsForFrontend(sub.getOriginalShortMessage(), sub.getDcs());
                     sub.setShortMessage(content == null ? "" : content.replaceAll("\\n|\\r", " "));
                 } catch (Exception e) {
                     sub.setShortMessage("");
@@ -246,9 +231,6 @@ public class SubmitRecordService {
         }
     }
 
-    /**
-     * 导出全部记录（Excel）
-     */
     public List<SubmitRecordExportVO> queryExportDataForEasyExcel(
             Date startTime, Date endTime,
             String callee, String mcc, String mnc,
@@ -320,7 +302,7 @@ public class SubmitRecordService {
                         }
 
                         try {
-                            String content = SmsContentParserUtil.parseShortMessageOnly(sub.getOriginalShortMessage(), sub.getDcs());
+                            String content = decodeLongSmsForExport(sub.getOriginalShortMessage(), sub.getDcs());
                             vo.setShortMessage(content == null ? "" : content.replaceAll("\\n|\\r", " "));
                         } catch (Exception e) {
                             vo.setShortMessage("");
@@ -343,5 +325,78 @@ public class SubmitRecordService {
         } finally {
             DynamicDataSourceInterceptor.clearCurrentDataSource();
         }
+    }
+
+    /**
+     * 【前端解析】
+     */
+    private String decodeLongSmsForFrontend(String hexMessage, String dcsStr) {
+        if (hexMessage == null || hexMessage.isEmpty()) {
+            return "";
+        }
+
+        try {
+            int dcs = Integer.parseInt(dcsStr);
+            String contentHex = hexMessage;
+
+            // 去掉长短信UDH头
+            if (contentHex.length() >= 12 && contentHex.startsWith("050003")) {
+                contentHex = contentHex.substring(12);
+            }
+
+            byte[] bytes = hexStringToBytes(contentHex);
+            String content;
+
+            if (dcs == 8) {
+                // 中文/UCS2，直接UTF-16BE解码
+                content = new String(bytes, "UTF-16BE");
+            } else {
+                content = Utf8ToGsm7.decode(bytes);
+            }
+
+            return java.util.Base64.getEncoder().encodeToString(content.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        } catch (Exception e) {
+            logger.error("短信解析异常: HEX={}, DCS={}", hexMessage, dcsStr, e);
+            return hexMessage;
+        }
+    }
+
+    /**
+     * 【导出解析】
+     */
+    private String decodeLongSmsForExport(String hexMessage, String dcsStr) {
+        if (hexMessage == null || hexMessage.isEmpty()) {
+            return "";
+        }
+
+        try {
+            int dcs = Integer.parseInt(dcsStr);
+            String contentHex = hexMessage;
+
+            if (contentHex.length() >= 12 && contentHex.startsWith("050003")) {
+                contentHex = contentHex.substring(12);
+            }
+
+            byte[] bytes = hexStringToBytes(contentHex);
+
+            if (dcs == 8) {
+                return new String(bytes, "UTF-16BE");
+            } else {
+                return Utf8ToGsm7.decode(bytes);
+            }
+        } catch (Exception e) {
+            logger.error("短信解析异常: HEX={}, DCS={}", hexMessage, dcsStr, e);
+            return hexMessage;
+        }
+    }
+
+    private byte[] hexStringToBytes(String s) {
+        int len = s.length();
+        byte[] data = new byte[len / 2];
+        for (int i = 0; i < len; i += 2) {
+            data[i / 2] = (byte) ((Character.digit(s.charAt(i), 16) << 4)
+                    + Character.digit(s.charAt(i+1), 16));
+        }
+        return data;
     }
 }
