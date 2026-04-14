@@ -11,8 +11,11 @@ import java.util.Map;
 public interface SubmitRecordMapper {
 
     /**
-     * 查询提交记录
+     * 检查表是否存在
      */
+    @Select("SELECT COUNT(*) FROM information_schema.TABLES WHERE table_schema = DATABASE() AND table_name = #{tableName}")
+    int checkTableExist(@Param("tableName") String tableName);
+
     @Select("SELECT SubmitMsgId, DestAccount, Caller, ChargeFee, SubmitMsgTime, Callee, "
             + "Short_Message as originalShortMessage, SM_Length, MCC, MNC, DCS, SourAccount "
             + "FROM Submit_Bill_${tableSuffix} "
@@ -34,9 +37,6 @@ public interface SubmitRecordMapper {
             @Param("destAccountCondition") String destAccountCondition
     );
 
-    /**
-     * 统计提交成功/失败
-     */
     @Select("SELECT "
             + "COUNT(CASE WHEN DestAccount != 'hell' THEN 1 END) AS successCount, "
             + "COUNT(CASE WHEN DestAccount = 'hell' THEN 1 END) AS failCount "
@@ -60,13 +60,11 @@ public interface SubmitRecordMapper {
     );
 
     /**
-     * 查询回执状态
+     * 【优化】去掉 RecvDRTime 时间条件，解决跨天查不到回执
      */
     @Select("SELECT RecvMsgId, InnerReportState, RecvDRTime "
             + "FROM Fee_Bill_${tableSuffix} "
             + "WHERE SourAccount = #{sourAccount} "
-            + "AND RecvDRTime >= #{startTimeStr} "
-            + "AND RecvDRTime <= #{endTimeStr} "
             + "AND (#{innerReportState} = '' OR InnerReportState = #{innerReportState}) "
             + "AND (#{callee} = '' OR OriginalCallee = #{callee}) "
             + "AND (#{mcc} = '' OR MCC = #{mcc}) "
@@ -74,17 +72,12 @@ public interface SubmitRecordMapper {
     List<Map<String, Object>> queryFeeBill(
             @Param("tableSuffix") String tableSuffix,
             @Param("sourAccount") String sourAccount,
-            @Param("startTimeStr") String startTimeStr,
-            @Param("endTimeStr") String endTimeStr,
             @Param("innerReportState") String innerReportState,
             @Param("callee") String callee,
             @Param("mcc") String mcc,
             @Param("mnc") String mnc
     );
 
-    /**
-     * 只查询SubmitMsgId
-     */
     @Select("SELECT SubmitMsgId "
             + "FROM Submit_Bill_${tableSuffix} "
             + "WHERE SourAccount = #{sourAccount} "
@@ -105,9 +98,6 @@ public interface SubmitRecordMapper {
             @Param("destAccountCondition") String destAccountCondition
     );
 
-    /**
-     * 查询SubmitMsgId + SubmitMsgTime（用于排序）
-     */
     @Select("SELECT SubmitMsgId, SubmitMsgTime "
             + "FROM Submit_Bill_${tableSuffix} "
             + "WHERE SourAccount = #{sourAccount} "
@@ -128,9 +118,6 @@ public interface SubmitRecordMapper {
             @Param("destAccountCondition") String destAccountCondition
     );
 
-    /**
-     * 根据ID批量查询
-     */
     @Select({
             "<script>",
             "SELECT SubmitMsgId, DestAccount, Caller, ChargeFee, SubmitMsgTime, Callee, "

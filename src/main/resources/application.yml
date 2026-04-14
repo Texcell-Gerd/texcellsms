@@ -58,7 +58,7 @@ mybatis:
 
   configuration:
     map-underscore-to-camel-case: true
-    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+    log-impl: org.apache.ibatis.logging.nologging.NoLoggingImpl
     lazy-loading-enabled: false
     aggressive-lazy-loading: false
     auto-mapping-behavior: PARTIAL
@@ -74,8 +74,8 @@ mybatis:
 logging:
   level:
     com.texcellsms.sms: debug
-    com.texcellsms.sms.mapper: debug
-    org.apache.ibatis: debug
+    com.texcellsms.sms.mapper: info
+    org.apache.ibatis: info
     org.springframework: warn
     org.springframework.web: info
     com.zaxxer.hikari: info
