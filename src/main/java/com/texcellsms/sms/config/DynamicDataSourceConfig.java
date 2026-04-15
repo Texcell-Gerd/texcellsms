@@ -88,7 +88,7 @@ public class DynamicDataSourceConfig {
     }
 
 
-    //测试环境数据源
+    //测试环境数据源查当天的
     @Bean(name = "webPortalDataSource")
     public DataSource webPortalDataSource() {
         HikariDataSource ds = new HikariDataSource();
@@ -101,12 +101,15 @@ public class DynamicDataSourceConfig {
         ds.setConnectionTimeout(600000);
         ds.setIdleTimeout(600000);
         ds.setLeakDetectionThreshold(300000);
-        ds.setMaxLifetime(28800000);
+        ds.setMaxLifetime(28800000 );
         ds.setValidationTimeout(30000);
         ds.setConnectionTestQuery("SELECT 1");
         return ds;
 
-//    @Bean(name = "webPortalDataSource")
+
+
+//        //正式环境数据源查近两天的
+//    @Bean(name = "ECwebPortalDataSource")
 //    public DataSource webPortalDataSource() {
 //        HikariDataSource ds = new HikariDataSource();
 //        ds.setDriverClassName("com.mysql.cj.jdbc.Driver");
@@ -177,6 +180,7 @@ public class DynamicDataSourceConfig {
         configuration.setLocalCacheScope(LocalCacheScope.STATEMENT);
         configuration.setCacheEnabled(false);
         sessionFactoryBean.setConfiguration(configuration);
+
 
         return sessionFactoryBean.getObject();
     }

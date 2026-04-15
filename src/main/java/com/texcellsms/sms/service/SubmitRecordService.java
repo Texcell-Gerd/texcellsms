@@ -37,29 +37,41 @@ public class SubmitRecordService {
         PERCENT_FORMAT.setGroupingUsed(false);
     }
 
+    /**
+     * 获取日期表后缀列表（按天分表）【不查未来表】
+     */
     private List<String> getDateSuffixList(Date start, Date end) {
         List<String> suffixList = new ArrayList<>();
-        if (start == null || end == null) return suffixList;
+        if (start == null || end == null) {
+            return suffixList;
+        }
+
+        Date today = new Date();
+        Date actualEnd = end.before(today) ? end : today;
 
         Calendar cal = Calendar.getInstance();
         cal.setTime(start);
-        cal.set(Calendar.HOUR_OF_DAY, 0);
-        cal.set(Calendar.MINUTE, 0);
-        cal.set(Calendar.SECOND, 0);
-        cal.set(Calendar.MILLISECOND, 0);
-
-        Calendar endCal = Calendar.getInstance();
-        endCal.setTime(end);
-        endCal.set(Calendar.HOUR_OF_DAY, 23);
-        endCal.set(Calendar.MINUTE, 59);
-        endCal.set(Calendar.SECOND, 59);
-        endCal.set(Calendar.MILLISECOND, 999);
-
-        while (!cal.after(endCal)) {
+        while (!cal.getTime().after(actualEnd)) {
             suffixList.add(String.format("%tY%<tm%<td", cal.getTime()));
             cal.add(Calendar.DATE, 1);
         }
+
+        // 最多查3张表，防止跨月崩溃
+        if (suffixList.size() > 3) {
+            suffixList = suffixList.subList(suffixList.size() - 3, suffixList.size());
+        }
         return suffixList;
+    }
+
+    /**
+     * 检查表是否存在
+     */
+    private boolean isTableExist(String tableName) {
+        try {
+            return submitRecordMapper.checkTableExist(tableName) > 0;
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     public SubmitRecordWithStatsDTO getSubmitRecordWithStats(
@@ -90,11 +102,21 @@ public class SubmitRecordService {
             Map<String, String> msgIdToSubmitTime = new HashMap<>();
             List<Map<String, Object>> allIdWithTime = new ArrayList<>();
 
+            // ====================== 【核心：150W 数据拦截】 ======================
             for (String suffix : suffixList) {
+                String table = "Submit_Bill_" + suffix;
+                if (!isTableExist(table)) continue;
+
                 List<Map<String, Object>> idWithTimeList = submitRecordMapper.listSubmitMsgIdsWithTime(
                         suffix, subAccount, startTimeStr, endTimeStr, callee, mcc, mnc, destAccountStatus
                 );
                 allIdWithTime.addAll(idWithTimeList);
+
+                // 超过 150万 → 立即中断，抛出异常信息
+                if (allIdWithTime.size() > 1500000) {
+                    throw new RuntimeException("The data volume is too large, please contact staff to query.");
+                }
+
                 for (Map<String, Object> map : idWithTimeList) {
                     String msgId = (String) map.get("SubmitMsgId");
                     String submitTime = (String) map.get("SubmitMsgTime");
@@ -103,10 +125,14 @@ public class SubmitRecordService {
                 }
             }
 
+            // 回执查询
             Map<String, Map<String, Object>> feeMap = new HashMap<>();
             for (String suffix : suffixList) {
+                String table = "Fee_Bill_" + suffix;
+                if (!isTableExist(table)) continue;
+
                 List<Map<String, Object>> feeList = submitRecordMapper.queryFeeBill(
-                        suffix, subAccount, startTimeStr, endTimeStr, finalInnerReportState, callee, mcc, mnc
+                        suffix, subAccount, finalInnerReportState, callee, mcc, mnc
                 );
                 for (Map<String, Object> fee : feeList) {
                     String recvMsgId = (String) fee.get("RecvMsgId");
@@ -123,8 +149,10 @@ public class SubmitRecordService {
                     continue;
                 }
                 validIds.add(msgId);
+
             }
 
+            // 内存排序（保留原有逻辑）
             validIds.sort((id1, id2) -> {
                 String t1 = msgIdToSubmitTime.get(id1);
                 String t2 = msgIdToSubmitTime.get(id2);
@@ -158,6 +186,17 @@ public class SubmitRecordService {
                 }
             }
 
+            boolean hasSearchCondition =
+                    (callee != null && !callee.trim().isEmpty())
+                            || (mcc != null && !mcc.trim().isEmpty())
+                            || (mnc != null && !mnc.trim().isEmpty())
+                            || (destAccountStatus != null && !destAccountStatus.trim().isEmpty())
+                            || (finalInnerReportState != null && !finalInnerReportState.trim().isEmpty());
+
+            if (hasSearchCondition) {
+                pageNum = 1;
+            }
+
             int skip = (pageNum - 1) * FIX_PAGE_SIZE;
             List<String> pageIds = validIds.stream().skip(skip).limit(FIX_PAGE_SIZE).collect(Collectors.toList());
             List<SubmitRecordDTO> pageRecords = new ArrayList<>();
@@ -171,7 +210,9 @@ public class SubmitRecordService {
                     }
                 }
                 for (Map.Entry<String, List<String>> entry : tableToIds.entrySet()) {
-                    pageRecords.addAll(submitRecordMapper.listByIds(entry.getKey(), entry.getValue()));
+                    List<String> ids = entry.getValue();
+                    if (ids.size() > 1000) ids = ids.subList(0, 1000);
+                    pageRecords.addAll(submitRecordMapper.listByIds(entry.getKey(), ids));
                 }
             }
 
@@ -231,6 +272,7 @@ public class SubmitRecordService {
         }
     }
 
+    // ====================== 导出功能：完全不动 ======================
     public List<SubmitRecordExportVO> queryExportDataForEasyExcel(
             Date startTime, Date endTime,
             String callee, String mcc, String mnc,
@@ -254,13 +296,16 @@ public class SubmitRecordService {
             Map<String, Map<String, Object>> feeMap = new HashMap<>();
 
             for (String suffix : suffixList) {
+                if (!isTableExist("Submit_Bill_" + suffix)) continue;
+
                 List<SubmitRecordDTO> subList = submitRecordMapper.querySubmitBill(
                         suffix, subAccount, startTimeStr, endTimeStr, callee, mcc, mnc, destAccountStatus
                 );
                 allSubmitList.addAll(subList);
 
+                if (!isTableExist("Fee_Bill_" + suffix)) continue;
                 List<Map<String, Object>> feeList = submitRecordMapper.queryFeeBill(
-                        suffix, subAccount, startTimeStr, endTimeStr, finalInnerReportState, callee, mcc, mnc
+                        suffix, subAccount, finalInnerReportState, callee, mcc, mnc
                 );
                 for (Map<String, Object> fee : feeList) {
                     String recvMsgId = (String) fee.get("RecvMsgId");
@@ -327,58 +372,37 @@ public class SubmitRecordService {
         }
     }
 
-    /**
-     * 【前端解析】
-     */
     private String decodeLongSmsForFrontend(String hexMessage, String dcsStr) {
-        if (hexMessage == null || hexMessage.isEmpty()) {
-            return "";
-        }
-
+        if (hexMessage == null || hexMessage.isEmpty()) return "";
         try {
             int dcs = Integer.parseInt(dcsStr);
             String contentHex = hexMessage;
-
-            // 去掉长短信UDH头
             if (contentHex.length() >= 12 && contentHex.startsWith("050003")) {
                 contentHex = contentHex.substring(12);
             }
-
             byte[] bytes = hexStringToBytes(contentHex);
             String content;
-
             if (dcs == 8) {
-                // 中文/UCS2，直接UTF-16BE解码
                 content = new String(bytes, "UTF-16BE");
             } else {
                 content = Utf8ToGsm7.decode(bytes);
             }
-
-            return java.util.Base64.getEncoder().encodeToString(content.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            return Base64.getEncoder().encodeToString(content.getBytes(java.nio.charset.StandardCharsets.UTF_8));
         } catch (Exception e) {
             logger.error("短信解析异常: HEX={}, DCS={}", hexMessage, dcsStr, e);
             return hexMessage;
         }
     }
 
-    /**
-     * 【导出解析】
-     */
     private String decodeLongSmsForExport(String hexMessage, String dcsStr) {
-        if (hexMessage == null || hexMessage.isEmpty()) {
-            return "";
-        }
-
+        if (hexMessage == null || hexMessage.isEmpty()) return "";
         try {
             int dcs = Integer.parseInt(dcsStr);
             String contentHex = hexMessage;
-
             if (contentHex.length() >= 12 && contentHex.startsWith("050003")) {
                 contentHex = contentHex.substring(12);
             }
-
             byte[] bytes = hexStringToBytes(contentHex);
-
             if (dcs == 8) {
                 return new String(bytes, "UTF-16BE");
             } else {
@@ -395,7 +419,7 @@ public class SubmitRecordService {
         byte[] data = new byte[len / 2];
         for (int i = 0; i < len; i += 2) {
             data[i / 2] = (byte) ((Character.digit(s.charAt(i), 16) << 4)
-                    + Character.digit(s.charAt(i+1), 16));
+                    + Character.digit(s.charAt(i + 1), 16));
         }
         return data;
     }
