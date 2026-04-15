@@ -12,6 +12,7 @@ import com.texcellsms.sms.util.StringUtils;
 import com.texcellsms.sms.util.Utf8ToGsm7;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import javax.servlet.http.HttpServletRequest;
 import java.io.BufferedReader;
@@ -20,18 +21,21 @@ import java.io.File;
 import java.io.FileWriter;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
+import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.*;
 
 @Service
 public class SmsSendService {
 
-    public static final String PRE_PHONE_ROOT = "/home/ScheduleTask/PhonePre/";
-    public static final String REAL_PHONE_ROOT = "/home/ScheduleTask/Phone/";
-    public static final String TASK_ROOT = "/home/ScheduleTask/Task/";
+    public static final String PRE_PHONE_ROOT = "D:\\ScheduleTask\\PhonePre\\";
+    public static final String REAL_PHONE_ROOT = "D:\\ScheduleTask\\Phone\\";
+    public static final String TASK_ROOT = "D:\\ScheduleTask\\Task\\";
 
     private static final String DEFAULT_CALLER = "SMSINFO";
     private static final long MAX_FILE_SIZE = 3 * 1024 * 1024;
+    // 修复：同时支持前端传的横杠格式和原斜杠格式，兼容所有场景
+    private static final String[] DATE_FORMATS = {"yyyy-MM-dd HH:mm:ss", "yyyy/MM/dd HH:mm:ss"};
 
     @Autowired
     private SmsScheduleSendMapper scheduleSendMapper;
@@ -39,6 +43,8 @@ public class SmsSendService {
     @Autowired
     private ScheduleNumberTaskMapper scheduleNumberTaskMapper;
 
+    // 加事务：异常时自动回滚，避免文件删了任务没创建
+    @Transactional(rollbackFor = Exception.class)
     public SmsSendResponse doSend(String subAccount, SmsSendRequest req, HttpServletRequest r) throws Exception {
         if (StringUtils.isNotEmpty(req.getPreTaskId())) {
             int valid = scheduleNumberTaskMapper.checkPreTaskValid(subAccount, req.getPreTaskId());
@@ -48,10 +54,11 @@ public class SmsSendService {
 
         String taskId = IdGenerator.generatePreTaskId();
         int calleeCount = 0;
+        File preFile = null; // 记录预上传文件，异常时恢复
 
         if (StringUtils.isEmpty(req.getPreTaskId()) && req.getNumbers() != null && !req.getNumbers().isEmpty()) {
             calleeCount = req.getNumbers().size();
-            File realUserDir = new File(REAL_PHONE_ROOT + subAccount + "/");
+            File realUserDir = new File(REAL_PHONE_ROOT + subAccount + "\\");
             if (!realUserDir.exists()) realUserDir.mkdirs();
             File realFile = new File(realUserDir, taskId + ".txt");
 
@@ -66,7 +73,7 @@ public class SmsSendService {
                 throw new Exception("Failed to generate manual number file");
             }
         } else if (StringUtils.isNotEmpty(req.getPreTaskId())) {
-            File preFile = new File(PRE_PHONE_ROOT + subAccount + "/" + req.getPreTaskId() + ".txt");
+            preFile = new File(PRE_PHONE_ROOT + subAccount + "\\" + req.getPreTaskId() + ".txt");
             if (!preFile.exists())
                 throw new Exception("Uploaded number file does not exist");
 
@@ -75,13 +82,14 @@ public class SmsSendService {
             }
 
             calleeCount = countLine(preFile);
-            File realDir = new File(REAL_PHONE_ROOT + subAccount + "/");
+            File realDir = new File(REAL_PHONE_ROOT + subAccount + "\\");
             if (!realDir.exists()) realDir.mkdirs();
             File realFile = new File(realDir, taskId + ".txt");
             Files.copy(preFile.toPath(), realFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
 
-            preFile.delete();
-            scheduleNumberTaskMapper.deletePreTask(subAccount, req.getPreTaskId());
+            // 延迟删除：只在事务成功时删除，异常时不删
+            // preFile.delete();
+            // scheduleNumberTaskMapper.deletePreTask(subAccount, req.getPreTaskId());
         }
 
         if (calleeCount <= 0) {
@@ -93,7 +101,7 @@ public class SmsSendService {
         int splitCount = SmsContentUtil.calcSplitCount(content);
         int totalCount = calleeCount * splitCount;
 
-        File taskUserDir = new File(TASK_ROOT + subAccount + "/");
+        File taskUserDir = new File(TASK_ROOT + subAccount + "\\");
         if (!taskUserDir.exists()) taskUserDir.mkdirs();
         File tmp = new File(taskUserDir, taskId + ".tmp");
         File dst = new File(taskUserDir, taskId + ".txt");
@@ -120,10 +128,16 @@ public class SmsSendService {
         }
         Files.move(tmp.toPath(), dst.toPath(), StandardCopyOption.REPLACE_EXISTING);
 
-        SimpleDateFormat sdf = new SimpleDateFormat("yyyy/MM/dd HH:mm:ss");
+        // 修复：多格式日期解析，兼容前端传的 yyyy-MM-dd HH:mm:ss
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
         sdf.setTimeZone(TimeZone.getTimeZone("Asia/Shanghai"));
         Date now = new Date();
-        Date scheduleTime = StringUtils.isEmpty(req.getScheduleTime()) ? now : sdf.parse(req.getScheduleTime());
+        Date scheduleTime;
+        if (StringUtils.isEmpty(req.getScheduleTime())) {
+            scheduleTime = now;
+        } else {
+            scheduleTime = parseDate(req.getScheduleTime());
+        }
 
         scheduleSendMapper.insertAPIScheduleSend(
                 taskId, scheduleTime, calleeCount, splitCount, totalCount,
@@ -132,12 +146,32 @@ public class SmsSendService {
                 0, 0, 0, 0
         );
 
+        // 事务成功后，再删除预上传文件和任务
+        if (StringUtils.isNotEmpty(req.getPreTaskId()) && preFile != null && preFile.exists()) {
+            preFile.delete();
+            scheduleNumberTaskMapper.deletePreTask(subAccount, req.getPreTaskId());
+        }
+
         SmsSendResponse resp = new SmsSendResponse();
         resp.setTaskId(taskId);
         resp.setDcs(dcs);
         resp.setPkTotal(splitCount);
         resp.setSplitCount(splitCount);
         return resp;
+    }
+
+    // 多格式日期解析方法
+    private Date parseDate(String dateStr) throws ParseException {
+        for (String format : DATE_FORMATS) {
+            try {
+                SimpleDateFormat sdf = new SimpleDateFormat(format);
+                sdf.setTimeZone(TimeZone.getTimeZone("Asia/Shanghai"));
+                return sdf.parse(dateStr);
+            } catch (ParseException e) {
+                // 格式不匹配，尝试下一个
+            }
+        }
+        throw new ParseException("Unparseable date: " + dateStr, 0);
     }
 
     private List<Map<String, String>> buildMsgParts(String content, int dcs, int splitCount) throws Exception {

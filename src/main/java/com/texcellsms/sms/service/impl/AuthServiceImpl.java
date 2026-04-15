@@ -101,7 +101,7 @@ public class AuthServiceImpl implements AuthService {
         NCacheDBLink nCacheDBLink = null;
         try {
             nCacheDBLink = NCacheDBLink.getNCacheDBLink();
-            nCacheDBLink.InitEnv("192.168.128.250", 18801, "auth", "auth", "auth", "utf-8", "utf-8");
+            nCacheDBLink.InitEnv("192.168.120.250", 18801, "auth", "auth", "auth", "utf-8", "utf-8");
             nCacheDBLink.ConnectToCacheDB();
             List<Map<String, String>> list = nCacheDBLink.web_QueryUserRate(Username, MCC, MNC);
             return AjaxResult.success(list);
