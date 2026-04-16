@@ -58,7 +58,8 @@ mybatis:
 
   configuration:
     map-underscore-to-camel-case: true
-    log-impl: org.apache.ibatis.logging.nologging.NoLoggingImpl
+    # ========== 打开 SQL 日志 ==========
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
     lazy-loading-enabled: false
     aggressive-lazy-loading: false
     auto-mapping-behavior: PARTIAL
@@ -71,24 +72,36 @@ mybatis:
 
   mapper-locations: classpath:empty.xml
 
+# ====================== 【日志核心优化】 ======================
 logging:
   level:
+    root: info
     com.texcellsms.sms: debug
-    com.texcellsms.sms.mapper: info
-    org.apache.ibatis: info
-    org.springframework: warn
+    com.texcellsms.sms.mapper: debug    # 打印 mapper SQL
+    org.apache.ibatis: debug           # 打印 MyBatis 日志
+    org.springframework: info
     org.springframework.web: info
     com.zaxxer.hikari: info
+
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{50} - %msg%n"
     file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{50} - %msg%n"
+
+  # 按天切割 + 保留7天 + 自动清理
   file:
     name: logs/texcell-sms.log
-    max-size: 100MB
-    max-history: 7
+  logback:
+    rollingpolicy:
+      file-name-pattern: logs/texcell-sms.%d{yyyy-MM-dd}.log
+      max-file-size: 100MB
+      max-history: 7
+      total-size-cap: 1GB
+
   group:
     sql: com.texcellsms.sms.mapper
     web: org.springframework.web
+
+# =================================================================
 
 texcellsms:
   google-auth:
