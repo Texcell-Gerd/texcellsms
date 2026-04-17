@@ -55,11 +55,8 @@ spring:
 mybatis:
   type-aliases-package: com.texcellsms.sms.model.entity,com.texcellsms.sms.model.DTO
   type-handlers-package: com.texcellsms.sms.config
-
   configuration:
     map-underscore-to-camel-case: true
-    # ========== 打开 SQL 日志 ==========
-    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
     lazy-loading-enabled: false
     aggressive-lazy-loading: false
     auto-mapping-behavior: PARTIAL
@@ -69,37 +66,7 @@ mybatis:
     cache-enabled: false
     log-slow-sql: true
     slow-sql-time: 5000
-
   mapper-locations: classpath:empty.xml
-
-# ====================== 【日志核心优化】 ======================
-logging:
-  level:
-    root: info
-    com.texcellsms.sms: debug
-    com.texcellsms.sms.mapper: debug    # 打印 mapper SQL
-    org.apache.ibatis: debug           # 打印 MyBatis 日志
-    org.springframework: info
-    org.springframework.web: info
-    com.zaxxer.hikari: info
-
-  pattern:
-    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{50} - %msg%n"
-    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{50} - %msg%n"
-
-  # 按天切割 + 保留7天 + 自动清理
-  file:
-    name: logs/texcell-sms.log
-  logback:
-    rollingpolicy:
-      file-name-pattern: logs/texcell-sms.%d{yyyy-MM-dd}.log
-      max-file-size: 100MB
-      max-history: 7
-      total-size-cap: 1GB
-
-  group:
-    sql: com.texcellsms.sms.mapper
-    web: org.springframework.web
 
 # =================================================================
 
@@ -124,10 +91,15 @@ texcellsms:
     query-timeout: 600
 
 management:
+  health:
+    redis:
+      enabled: false   # 关闭 Redis 检查
+    db:
+      enabled: false   # 关闭数据库检查
   endpoints:
     web:
       exposure:
-        include: health,info,metrics
+        include: health,info
       base-path: /actuator
   endpoint:
     health:
