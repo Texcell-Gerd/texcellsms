@@ -20,6 +20,7 @@ public class LogMonitorController {
             return result;
         }
         result.put("serviceStatus", "UP");
+        result.put("runDuration", LogMonitorTask.getRunDuration());
         result.put("recentErrors", LogMonitorTask.recentErrors);
         result.put("recentGcLogs", LogMonitorTask.recentGcLogs);
         return result;
@@ -42,6 +43,7 @@ public class LogMonitorController {
                 + ".container{max-width:1400px;margin:0 auto;background:#fff;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,0.06);padding:28px;}"
                 + "h1{font-size:24px;color:#111;margin-bottom:20px;font-weight:600;}"
                 + ".status-box{padding:18px 20px;border-radius:10px;background:#e6ffeb;color:#065f46;margin-bottom:28px;display:flex;align-items:center;gap:12px;font-size:15px;}"
+                + ".run-time{margin-left: auto; font-weight: 600; color: #111;}"
                 + ".log-section{margin-bottom:36px;}"
                 + ".log-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;}"
                 + ".log-header h2{font-size:17px;color:#222;font-weight:600;}"
@@ -65,6 +67,7 @@ public class LogMonitorController {
                 + "<div class=\"status-box\">"
                 + "<span>✅</span>"
                 + "<span>Java 服务状态：正常运行中</span>"
+                + "<span class=\"run-time\" id=\"runTime\">加载中...</span>"
                 + "</div>"
 
                 + "<div class=\"log-section\">"
@@ -161,6 +164,7 @@ public class LogMonitorController {
                 + "    .then(res => res.json())"
                 + "    .then(data => {"
                 + "      if(data.code === 401) return;"
+                + "      document.getElementById('runTime').innerText = '已运行：' + data.runDuration;"
                 + "      errorList = data.recentErrors || [];"
                 + "      gcList = data.recentGcLogs || [];"
                 + "      renderErrorTable();"

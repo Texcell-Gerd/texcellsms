@@ -3,6 +3,7 @@ package com.texcellsms.sms.monitor;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
+import javax.annotation.PostConstruct;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedList;
@@ -13,6 +14,9 @@ import java.util.regex.Pattern;
 @Component
 public class LogMonitorTask {
 
+    // ====================== 新增：服务启动时间 ======================
+    public static long START_TIME = System.currentTimeMillis();
+
     private static final String BUSINESS_LOG_PATH = "logs/texcell-sms.log";
     private static final String GC_LOG_PATH = "logs/gc.log";
 
@@ -22,6 +26,27 @@ public class LogMonitorTask {
     // 登录日志正则
     private static final Pattern LOGIN_USER_PATTERN = Pattern.compile("用户: (\\w+)");
     private static final Pattern LOGIN_RESULT_PATTERN = Pattern.compile("KEY:Result Val:(\\d+)");
+
+    // 项目启动时初始化启动时间
+    @PostConstruct
+    public void init() {
+        START_TIME = System.currentTimeMillis();
+    }
+
+    // ====================== 新增：获取运行时间 ======================
+    public static String getRunDuration() {
+        long ms = System.currentTimeMillis() - START_TIME;
+        long sec = ms / 1000;
+        long min = sec / 60;
+        long hour = min / 60;
+        long day = hour / 24;
+
+        sec %= 60;
+        min %= 60;
+        hour %= 24;
+
+        return day + "天 " + hour + "时 " + min + "分 " + sec + "秒";
+    }
 
     @Scheduled(fixedRate = 10000)
     public void scanBusinessLog() {
@@ -41,12 +66,10 @@ public class LogMonitorTask {
                 int start = Math.max(0, allLines.size() - 500);
                 List<String> lastLines = allLines.subList(start, allLines.size());
 
-                // 登录上下文临时变量
                 String currentLoginUser = null;
                 String currentLoginResult = null;
 
                 for (String rawLine : lastLines) {
-                    // ====================== 捕获登录失败（核心新增） ======================
                     if (rawLine.contains("QueryGWUserPass_With2FA调用开始")) {
                         Matcher m = LOGIN_USER_PATTERN.matcher(rawLine);
                         if (m.find()) currentLoginUser = m.group(1);
@@ -55,7 +78,6 @@ public class LogMonitorTask {
                         Matcher m = LOGIN_RESULT_PATTERN.matcher(rawLine);
                         if (m.find()) currentLoginResult = m.group(1);
 
-                        // 只有 !=0 才捕获
                         if (currentLoginUser != null && currentLoginResult != null && !"0".equals(currentLoginResult)) {
                             String errMsg = getLoginErrorMsg(currentLoginResult);
                             String log = String.format("[登录失败] 用户=%s | 错误码=%s | %s",
@@ -66,12 +88,10 @@ public class LogMonitorTask {
                                 recentErrors.add(log);
                             }
                         }
-                        // 重置
                         currentLoginUser = null;
                         currentLoginResult = null;
                     }
 
-                    // ====================== 原有异常捕获（保留不动） ======================
                     if ((rawLine.contains("ERROR") || rawLine.contains("Exception") || rawLine.contains("Failed")) && !rawLine.contains("INFO"))  {
                         String parsed = parseAndClassifyLog(rawLine);
                         if (!recentErrors.contains(parsed)) {
@@ -81,12 +101,9 @@ public class LogMonitorTask {
                     }
                 }
             }
-        } catch (Exception e) {
-            // 不影响主业务
-        }
+        } catch (Exception e) { }
     }
 
-    // ====================== 登录错误码映射（对应系统枚举） ======================
     private String getLoginErrorMsg(String code) {
         if ("402".equals(code)) {
             return "账号或密码错误";
@@ -116,13 +133,8 @@ public class LogMonitorTask {
 
                 String line;
                 while ((line = br.readLine()) != null) {
+                    if (line.contains("CommandLine flags")) continue;
 
-                    // 1. 先排除掉 JVM 启动参数行
-                    if (line.contains("CommandLine flags")) {
-                        continue;
-                    }
-
-                    // 2. 再判断是否为异常 GC 日志
                     boolean isAbnormal =
                             line.contains("Full GC")
                                     || line.contains("OutOfMemory")
@@ -133,20 +145,15 @@ public class LogMonitorTask {
 
                     if (isAbnormal) {
                         if (!recentGcLogs.contains(line)) {
-                            if (recentGcLogs.size() >= 20) {
-                                recentGcLogs.remove(0);
-                            }
+                            if (recentGcLogs.size() >= 20) recentGcLogs.remove(0);
                             recentGcLogs.add(line);
                         }
                     }
                 }
             }
-        } catch (Exception e) {
-            // 不影响主业务
-        }
+        } catch (Exception e) { }
     }
 
-    // ====================== 原有异常解析 ======================
     private String parseAndClassifyLog(String rawLine) {
         String time = "";
         Pattern p1 = Pattern.compile("^(\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2})");
