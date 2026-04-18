@@ -116,7 +116,22 @@ public class LogMonitorTask {
 
                 String line;
                 while ((line = br.readLine()) != null) {
-                    if (line.contains("Full GC") || line.contains("GC pause") || line.contains("OutOfMemory")) {
+
+                    // 1. 先排除掉 JVM 启动参数行
+                    if (line.contains("CommandLine flags")) {
+                        continue;
+                    }
+
+                    // 2. 再判断是否为异常 GC 日志
+                    boolean isAbnormal =
+                            line.contains("Full GC")
+                                    || line.contains("OutOfMemory")
+                                    || line.contains("promotion failed")
+                                    || line.contains("concurrent mode failure")
+                                    || line.contains("Allocation Failure")
+                                    || line.contains("Metaspace OOM");
+
+                    if (isAbnormal) {
                         if (!recentGcLogs.contains(line)) {
                             if (recentGcLogs.size() >= 20) {
                                 recentGcLogs.remove(0);
@@ -127,7 +142,7 @@ public class LogMonitorTask {
                 }
             }
         } catch (Exception e) {
-            // 日志读取异常，不影响主业务
+            // 不影响主业务
         }
     }
 
