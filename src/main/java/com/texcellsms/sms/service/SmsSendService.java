@@ -34,7 +34,7 @@ public class SmsSendService {
 
     private static final String DEFAULT_CALLER = "SMSINFO";
     private static final long MAX_FILE_SIZE = 3 * 1024 * 1024;
-    // 修复：同时支持前端传的横杠格式和原斜杠格式，兼容所有场景
+    // 同时支持前端传的横杠格式和原斜杠格式，兼容所有场景
     private static final String[] DATE_FORMATS = {"yyyy-MM-dd HH:mm:ss", "yyyy/MM/dd HH:mm:ss"};
 
     @Autowired
@@ -43,9 +43,21 @@ public class SmsSendService {
     @Autowired
     private ScheduleNumberTaskMapper scheduleNumberTaskMapper;
 
-    // 加事务：异常时自动回滚，避免文件删了任务没创建
     @Transactional(rollbackFor = Exception.class)
     public SmsSendResponse doSend(String subAccount, SmsSendRequest req, HttpServletRequest r) throws Exception {
+
+        String originalContent = req.getContent();
+        String filteredContent = filterEmoji(originalContent);
+
+        // 检查过滤后是否为空
+        if (StringUtils.isEmpty(filteredContent)) {
+            throw new Exception("短信内容不能为空（表情符号已被过滤）");
+        }
+
+        // 使用过滤后的内容
+        req.setContent(filteredContent);
+
+
         if (StringUtils.isNotEmpty(req.getPreTaskId())) {
             int valid = scheduleNumberTaskMapper.checkPreTaskValid(subAccount, req.getPreTaskId());
             if (valid <= 0)
@@ -54,7 +66,7 @@ public class SmsSendService {
 
         String taskId = IdGenerator.generatePreTaskId();
         int calleeCount = 0;
-        File preFile = null; // 记录预上传文件，异常时恢复
+        File preFile = null;
 
         if (StringUtils.isEmpty(req.getPreTaskId()) && req.getNumbers() != null && !req.getNumbers().isEmpty()) {
             calleeCount = req.getNumbers().size();
@@ -86,10 +98,6 @@ public class SmsSendService {
             if (!realDir.exists()) realDir.mkdirs();
             File realFile = new File(realDir, taskId + ".txt");
             Files.copy(preFile.toPath(), realFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
-
-            // 延迟删除：只在事务成功时删除，异常时不删
-            // preFile.delete();
-            // scheduleNumberTaskMapper.deletePreTask(subAccount, req.getPreTaskId());
         }
 
         if (calleeCount <= 0) {
@@ -98,8 +106,11 @@ public class SmsSendService {
 
         String content = req.getContent();
         int dcs = SmsContentUtil.calculateDCS(content);
-        int splitCount = SmsContentUtil.calcSplitCount(content);
+
+        // 使用正确的分片数计算方法
+        int splitCount = SmsContentUtil.calcSplitCountCorrect(content);  // ✅ 改用新方法
         int totalCount = calleeCount * splitCount;
+
 
         File taskUserDir = new File(TASK_ROOT + subAccount + "\\");
         if (!taskUserDir.exists()) taskUserDir.mkdirs();
@@ -123,12 +134,13 @@ public class SmsSendService {
 
         ObjectMapper mapper = new ObjectMapper();
         mapper.enable(SerializationFeature.INDENT_OUTPUT);
+        String finalJson = mapper.writeValueAsString(map);
+
         try (FileWriter fw = new FileWriter(tmp)) {
-            mapper.writeValue(fw, map);
+            fw.write(finalJson); // 同步写入
         }
         Files.move(tmp.toPath(), dst.toPath(), StandardCopyOption.REPLACE_EXISTING);
 
-        // 修复：多格式日期解析，兼容前端传的 yyyy-MM-dd HH:mm:ss
         SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
         sdf.setTimeZone(TimeZone.getTimeZone("Asia/Shanghai"));
         Date now = new Date();
@@ -146,7 +158,6 @@ public class SmsSendService {
                 0, 0, 0, 0
         );
 
-        // 事务成功后，再删除预上传文件和任务
         if (StringUtils.isNotEmpty(req.getPreTaskId()) && preFile != null && preFile.exists()) {
             preFile.delete();
             scheduleNumberTaskMapper.deletePreTask(subAccount, req.getPreTaskId());
@@ -157,10 +168,25 @@ public class SmsSendService {
         resp.setDcs(dcs);
         resp.setPkTotal(splitCount);
         resp.setSplitCount(splitCount);
+
+
+        // 【长短信监控 - 自动记录】
+        if (splitCount > 1) {
+            String monitorLog = String.format(
+                    "[长短信发送] | 账号=%s | 任务ID=%s | 长短信条数=%d | 总计费条数=%d | 号码数=%d | 内容=%s",
+                    subAccount,
+                    taskId,
+                    splitCount,
+                    totalCount,
+                    calleeCount,
+                    content
+            );
+            // 输出到日志，供监控扫描
+            org.slf4j.LoggerFactory.getLogger(this.getClass()).warn(monitorLog);
+        }
         return resp;
     }
 
-    // 多格式日期解析方法
     private Date parseDate(String dateStr) throws ParseException {
         for (String format : DATE_FORMATS) {
             try {
@@ -168,7 +194,6 @@ public class SmsSendService {
                 sdf.setTimeZone(TimeZone.getTimeZone("Asia/Shanghai"));
                 return sdf.parse(dateStr);
             } catch (ParseException e) {
-                // 格式不匹配，尝试下一个
             }
         }
         throw new ParseException("Unparseable date: " + dateStr, 0);
@@ -177,6 +202,7 @@ public class SmsSendService {
     private List<Map<String, String>> buildMsgParts(String content, int dcs, int splitCount) throws Exception {
         List<Map<String, String>> list = new ArrayList<>();
         List<String> parts = splitContent(content, splitCount);
+
 
         String pksn = "01";
         String totalParts = String.format("%02X", splitCount);
@@ -205,16 +231,31 @@ public class SmsSendService {
         return list;
     }
 
-    private List<String> splitContent(String content, int splitCount) {
+    private List<String> splitContent(String content, int splitCount) throws Exception {
         List<String> list = new ArrayList<>();
         int dcs = SmsContentUtil.calculateDCS(content);
-        int per = SmsContentUtil.getSplitPerSms(dcs);
-        int idx = 0;
-        for (int i = 0; i < splitCount; i++) {
-            int end = Math.min(idx + per, content.length());
-            list.add(content.substring(idx, end));
-            idx = end;
+
+
+        if (splitCount == 1) {
+            // ✅ 不分片，直接返回原内容
+            list.add(content);
+            return list;
         }
+
+        if (dcs == 8) {
+            // UCS-2: 按字符数切分
+            int per = SmsContentUtil.getSplitPerSms(dcs); // 67
+            int idx = 0;
+            for (int i = 0; i < splitCount; i++) {
+                int end = Math.min(idx + per, content.length());
+                list.add(content.substring(idx, end));
+                idx = end;
+            }
+        } else {
+            // GSM7: 按编码后的字节长度切分（只有超过160字节才需要）
+            list = splitGsm7ContentByBytes(content, splitCount);
+        }
+
         return list;
     }
 
@@ -229,6 +270,61 @@ public class SmsSendService {
     private String bytesToHex(byte[] bytes) {
         StringBuilder sb = new StringBuilder();
         for (byte b : bytes) sb.append(String.format("%02X", b));
+        return sb.toString();
+    }
+
+    private List<String> splitGsm7ContentByBytes(String content, int expectedParts) {
+        List<String> parts = new ArrayList<>();
+        int maxBytesPerPart = 153; // 长短信每段最大字节数
+
+        int start = 0;
+        while (start < content.length() && parts.size() < expectedParts) {
+            int currentBytes = 0;
+            int end = start;
+
+            // 找到合适的切分点
+            while (end < content.length()) {
+                char c = content.charAt(end);
+                int charBytes = SmsContentUtil.isExtendedGsmChar(c) ? 2 : 1;
+
+                if (currentBytes + charBytes > maxBytesPerPart) {
+                    break;
+                }
+                currentBytes += charBytes;
+                end++;
+            }
+
+            if (end == start) {
+                end = start + 1;
+            }
+
+            parts.add(content.substring(start, end));
+            start = end;
+
+        }
+
+        return parts;
+    }
+
+    /**
+     * 过滤 Emoji 和 4字节 Unicode 字符
+     */
+    private String filterEmoji(String text) {
+        if (text == null || text.isEmpty()) {
+            return text;
+        }
+
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < text.length(); i++) {
+            int codePoint = text.codePointAt(i);
+            // 只保留基本多语言平面（BMP）的字符，过滤 Emoji
+            if (codePoint <= 0xFFFF) {
+                sb.append((char) codePoint);
+            } else {
+                // 跳过 Emoji（4字节字符）
+                i++; // 跳过代理对
+            }
+        }
         return sb.toString();
     }
 }

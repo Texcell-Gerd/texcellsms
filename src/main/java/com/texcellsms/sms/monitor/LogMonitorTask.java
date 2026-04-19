@@ -22,6 +22,7 @@ public class LogMonitorTask {
 
     public static final List<String> recentErrors = new LinkedList<>();
     public static final List<String> recentGcLogs = new LinkedList<>();
+    public static final List<String> recentLongSms = new LinkedList<>(); // 长短信监控
 
     // 登录日志正则
     private static final Pattern LOGIN_USER_PATTERN = Pattern.compile("用户: (\\w+)");
@@ -70,6 +71,16 @@ public class LogMonitorTask {
                 String currentLoginResult = null;
 
                 for (String rawLine : lastLines) {
+
+                    // ====================== 【长短信监控】 ======================
+                    if (rawLine.contains("[长短信发送]")) {
+                        if (!recentLongSms.contains(rawLine)) {
+                            if (recentLongSms.size() >= 30) recentLongSms.remove(0);
+                            recentLongSms.add(rawLine);
+                        }
+                        continue;
+                    }
+
                     if (rawLine.contains("QueryGWUserPass_With2FA调用开始")) {
                         Matcher m = LOGIN_USER_PATTERN.matcher(rawLine);
                         if (m.find()) currentLoginUser = m.group(1);

@@ -40,29 +40,35 @@ public class SubmitRecordService {
     /**
      * 获取日期表后缀列表（按天分表）【不查未来表】
      */
+    /**
+     * 获取日期表后缀列表（按天分表）【修复跨天查询】
+     */
     private List<String> getDateSuffixList(Date start, Date end) {
         List<String> suffixList = new ArrayList<>();
         if (start == null || end == null) {
             return suffixList;
         }
 
+        // =========== 直接用真实时间范围 ===========
         Date today = new Date();
+        // 结束时间不能超过今天（防止查未来表），但开始时间必须保留！
         Date actualEnd = end.before(today) ? end : today;
 
         Calendar cal = Calendar.getInstance();
-        cal.setTime(start);
+        cal.setTime(start); // 从开始时间遍历（可能是昨天）
+
+        // 遍历 start → actualEnd 所有日期表
         while (!cal.getTime().after(actualEnd)) {
             suffixList.add(String.format("%tY%<tm%<td", cal.getTime()));
             cal.add(Calendar.DATE, 1);
         }
 
-        // 最多查3张表，防止跨月崩溃
+        // 最多查3张表，防止跨月查询过大
         if (suffixList.size() > 3) {
             suffixList = suffixList.subList(suffixList.size() - 3, suffixList.size());
         }
         return suffixList;
     }
-
     /**
      * 检查表是否存在
      */

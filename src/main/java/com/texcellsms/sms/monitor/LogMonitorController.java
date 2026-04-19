@@ -3,6 +3,8 @@ package com.texcellsms.sms.monitor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
+import javax.servlet.http.HttpServletRequest;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -11,9 +13,59 @@ public class LogMonitorController {
 
     private static final String MONITOR_SECRET = "dn17ORUwf36Znl";
 
+    // 已按你的内网IP配置好白名单
+    private static final String[] INNER_IPS = {
+            "127.0.0.1",
+            "192.168.126.",
+            "192.168.3.",
+            "192.168.120.",
+            "10.238.250.",
+            "10."
+    };
+
+    // 获取真实客户端IP
+    private String getRealIp(HttpServletRequest request) {
+        String ip = request.getHeader("X-Forwarded-For");
+        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getHeader("Proxy-Client-IP");
+        }
+        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getHeader("WL-Proxy-Client-IP");
+        }
+        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getRemoteAddr();
+        }
+        if (ip != null && ip.contains(",")) {
+            ip = ip.split(",")[0].trim();
+        }
+        return ip;
+    }
+
+    // 判断是否内网IP
+    private boolean isInnerIp(String ip) {
+        if (ip == null || ip.isEmpty()) return false;
+        for (String prefix : INNER_IPS) {
+            if (ip.startsWith(prefix)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     @GetMapping("/api/monitor/logs")
-    public Map<String, Object> getLogMonitorData(@RequestParam(required = false) String secret) {
+    public Map<String, Object> getLogMonitorData(
+            @RequestParam(required = false) String secret,
+            HttpServletRequest request
+    ) {
         Map<String, Object> result = new HashMap<>();
+        String clientIp = getRealIp(request);
+
+        if (!isInnerIp(clientIp)) {
+            result.put("code", 403);
+            result.put("msg", "仅允许内网访问，您的IP：" + clientIp);
+            return result;
+        }
+
         if (!MONITOR_SECRET.equals(secret)) {
             result.put("code", 401);
             result.put("msg", "无权限");
@@ -23,11 +75,21 @@ public class LogMonitorController {
         result.put("runDuration", LogMonitorTask.getRunDuration());
         result.put("recentErrors", LogMonitorTask.recentErrors);
         result.put("recentGcLogs", LogMonitorTask.recentGcLogs);
+        result.put("recentLongSms", LogMonitorTask.recentLongSms);
+        result.put("clientIp", clientIp);
         return result;
     }
 
     @GetMapping("/monitor")
-    public String getMonitorPage(@RequestParam(required = false) String secret) {
+    public String getMonitorPage(
+            @RequestParam(required = false) String secret,
+            HttpServletRequest request
+    ) {
+        String clientIp = getRealIp(request);
+        if (!isInnerIp(clientIp)) {
+            return "<h1 style='color:red;text-align:center;margin-top:100px;'>❌ 仅允许内网访问<br/>您的IP：" + clientIp + "</h1>";
+        }
+
         if (!MONITOR_SECRET.equals(secret)) {
             return "<h1 style='color:red;text-align:center;margin-top:100px;'>无权限访问</h1>";
         }
@@ -52,6 +114,7 @@ public class LogMonitorController {
                 + ".log-table td{padding:12px 16px;font-size:14px;color:#222;border-bottom:1px solid #f4f4f4;word-break:break-all;white-space:pre-wrap;line-height:1.5;}"
                 + ".level-error{color:#e53935;font-weight:600;}"
                 + ".level-gc{color:#c25100;font-weight:600;}"
+                + ".level-long-sms{color:#007bff;font-weight:600;}"
                 + ".gc-note{color:#1f6feb;font-weight:500;}"
                 + ".empty{text-align:center;padding:44px 0;color:#888;font-size:15px;}"
                 + ".pagination{margin-top:12px;display:flex;gap:8px;justify-content:center;}"
@@ -68,6 +131,16 @@ public class LogMonitorController {
                 + "<span>✅</span>"
                 + "<span>Java 服务状态：正常运行中</span>"
                 + "<span class=\"run-time\" id=\"runTime\">加载中...</span>"
+                + "<span style='margin-left:20px;color:#007bff;'>当前访问IP：<span id='clientIp'>-</span></span>"
+                + "</div>"
+
+                + "<div class=\"log-section\">"
+                + "<div class=\"log-header\"><h2>📩 长短信发送实时监控</h2></div>"
+                + "<table class=\"log-table\">"
+                + "<thead><tr><th>长短信记录（用户/条数/内容/时间）</th></tr></thead>"
+                + "<tbody id=\"longSmsBody\"></tbody>"
+                + "</table>"
+                + "<div class=\"pagination\" id=\"longSmsPagination\"></div>"
                 + "</div>"
 
                 + "<div class=\"log-section\">"
@@ -92,8 +165,8 @@ public class LogMonitorController {
                 + "<script>"
                 + "const secret = 'dn17ORUwf36Znl';"
                 + "const PAGE_SIZE = 10;"
-                + "let errorPage = 1, gcPage = 1;"
-                + "let errorList = [], gcList = [];"
+                + "let errorPage = 1, gcPage = 1, longSmsPage = 1;"
+                + "let errorList = [], gcList = [], longSmsList = [];"
 
                 + "function getGcNote(line) {"
                 + "  if (line.includes('Full GC')) return '【严重】Full GC → 全局垃圾回收，会导致服务卡顿';"
@@ -103,6 +176,22 @@ public class LogMonitorController {
                 + "  if (line.includes('concurrent mode failure')) return '【异常】并发回收失败 → 触发Full GC';"
                 + "  if (line.includes('Metaspace OOM')) return '【异常】元空间溢出 → 类加载过多';"
                 + "  return 'GC 异常事件';"
+                + "}"
+
+                + "function renderLongSmsTable() {"
+                + "  const totalPage = Math.ceil(longSmsList.length / PAGE_SIZE);"
+                + "  const start = (longSmsPage - 1) * PAGE_SIZE;"
+                + "  const end = start + PAGE_SIZE;"
+                + "  const pageData = longSmsList.slice(start, end);"
+                + "  let html = '';"
+                + "  if(pageData.length === 0) html = '<tr><td class=\"empty\">✅ 暂无长短信发送记录</td></tr>';"
+                + "  else {"
+                + "    pageData.forEach(line => {"
+                + "      html += '<tr><td class=\"level-long-sms\">'+line+'</td></tr>';"
+                + "    });"
+                + "  }"
+                + "  document.getElementById('longSmsBody').innerHTML = html;"
+                + "  renderPagination('longSms', longSmsPage, totalPage);"
                 + "}"
 
                 + "function renderErrorTable() {"
@@ -156,17 +245,21 @@ public class LogMonitorController {
 
                 + "function changePage(type, step) {"
                 + "  if(type === 'error') { errorPage += step; renderErrorTable(); }"
-                + "  else { gcPage += step; renderGcTable(); }"
+                + "  else if(type === 'gc') { gcPage += step; renderGcTable(); }"
+                + "  else if(type === 'longSms') { longSmsPage += step; renderLongSmsTable(); }"
                 + "}"
 
                 + "function load() {"
                 + "  fetch('/api/monitor/logs?secret=' + secret)"
                 + "    .then(res => res.json())"
                 + "    .then(data => {"
-                + "      if(data.code === 401) return;"
+                + "      if(data.code === 401 || data.code === 403) return;"
                 + "      document.getElementById('runTime').innerText = '已运行：' + data.runDuration;"
+                + "      document.getElementById('clientIp').innerText = data.clientIp || '-';"
                 + "      errorList = data.recentErrors || [];"
                 + "      gcList = data.recentGcLogs || [];"
+                + "      longSmsList = data.recentLongSms || [];"
+                + "      renderLongSmsTable();"
                 + "      renderErrorTable();"
                 + "      renderGcTable();"
                 + "    });"

@@ -38,15 +38,6 @@ public class DynamicDataSourceConfig {
         return key == null ? DS_ECCOM : key;
     }
 
-    public static void setCurrentDataSource(String dataSourceKey) {
-        if (dataSourceKey != null && !dataSourceKey.isEmpty()) {
-            DATA_SOURCE_CONTEXT.set(dataSourceKey);
-        }
-    }
-
-    public static void clearCurrentDataSource() {
-        DATA_SOURCE_CONTEXT.remove();
-    }
 
 
     //预付正式环境数据源-CRD_DB
