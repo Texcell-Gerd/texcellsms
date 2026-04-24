@@ -72,6 +72,10 @@ public class LogMonitorTask {
 
                 for (String rawLine : lastLines) {
 
+                    if (rawLine.contains("Failed to validate connection")) {
+                        continue;
+                    }
+
                     // ====================== 【长短信监控】 ======================
                     if (rawLine.contains("[长短信发送]")) {
                         if (!recentLongSms.contains(rawLine)) {

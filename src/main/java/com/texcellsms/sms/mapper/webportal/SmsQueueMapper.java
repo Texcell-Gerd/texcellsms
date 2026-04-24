@@ -138,20 +138,21 @@ public interface SmsQueueMapper {
     );
 
     /**
-     * 按任务ID分组统计DR状态
+     * 按任务ID分组统计DR状态（成功/失败）
      */
     @Select({
             "<script>",
-            "SELECT APITaskId, RecvDRStatus, COUNT(*) AS count ",
+            "SELECT APITaskId, ",
+            "SUM(CASE WHEN RecvDRStatus = 'DELIVRD' THEN 1 ELSE 0 END) AS drSuccCount, ",
+            "SUM(CASE WHEN RecvDRStatus != 'DELIVRD' AND RecvDRError IS NOT NULL AND RecvDRError != '' THEN 1 ELSE 0 END) AS drFailCount ",
             "FROM tbl_APITask ",
             "WHERE APITaskId IN ",
             "<foreach collection='taskIds' item='taskId' open='(' separator=',' close=')'>",
-            "    #{taskId}",
+            "#{taskId}",
             "</foreach>",
-            "GROUP BY APITaskId, RecvDRStatus",
+            "GROUP BY APITaskId",
             "</script>"
     })
     @MapKey("APITaskId")
     List<Map<String, Object>> selectDrStatsByTaskIds(@Param("taskIds") List<String> taskIds);
-
 }

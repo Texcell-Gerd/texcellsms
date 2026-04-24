@@ -47,7 +47,7 @@ public class SmsQueueService {
                 subAccount, threeDaysAgoTime, offset, pageSize
         );
 
-        // 统计 DELIVRD / UNKNOWN 状态
+        // 统计 DR 成功/失败数量
         if (list != null && !list.isEmpty()) {
             List<String> taskIds = list.stream()
                     .map(ScheduleTaskVO::getTaskId)
@@ -59,27 +59,22 @@ public class SmsQueueService {
             Map<String, Map<String, Integer>> statMap = new HashMap<>();
             for (Map<String, Object> map : drStats) {
                 String taskId = (String) map.get("APITaskId");
-                String status = (String) map.get("RecvDRStatus");
-                Integer count = ((Number) map.get("count")).intValue();
+                Integer succCount = ((Number) map.get("drSuccCount")).intValue();
+                Integer failCount = ((Number) map.get("drFailCount")).intValue();
 
-                Map<String, Integer> statusCount = statMap.getOrDefault(taskId, new HashMap<>());
-
-                if ("DELIVRD".equals(status)) {
-                    statusCount.put("DELIVRD", count);
-                } else if ("UNKNOWN".equals(status)) {
-                    statusCount.put("UNKNOWN", count);
-                }
-
-                statMap.put(taskId, statusCount);
+                Map<String, Integer> countMap = new HashMap<>();
+                countMap.put("drSuccCount", succCount);
+                countMap.put("drFailCount", failCount);
+                statMap.put(taskId, countMap);
             }
 
             // 赋值统计数据
             for (ScheduleTaskVO vo : list) {
                 if (vo == null) continue;
 
-                Map<String, Integer> statusCount = statMap.getOrDefault(vo.getTaskId(), new HashMap<>());
-                vo.setDrSuccCount(statusCount.getOrDefault("DELIVRD", 0));
-                vo.setDrFailCount(statusCount.getOrDefault("UNKNOWN", 0));
+                Map<String, Integer> countMap = statMap.getOrDefault(vo.getTaskId(), new HashMap<>());
+                vo.setDrSuccCount(countMap.getOrDefault("drSuccCount", 0));
+                vo.setDrFailCount(countMap.getOrDefault("drFailCount", 0));
 
                 // 短信内容加密
                 vo.setShortMessage(Base64Util.encrypt(vo.getShortMessage()));

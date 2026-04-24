@@ -39,8 +39,6 @@ public class SubmitRecordService {
 
     /**
      * 获取日期表后缀列表（按天分表）【不查未来表】
-     */
-    /**
      * 获取日期表后缀列表（按天分表）【修复跨天查询】
      */
     private List<String> getDateSuffixList(Date start, Date end) {
@@ -49,24 +47,27 @@ public class SubmitRecordService {
             return suffixList;
         }
 
-        // =========== 直接用真实时间范围 ===========
-        Date today = new Date();
-        // 结束时间不能超过今天（防止查未来表），但开始时间必须保留！
-        Date actualEnd = end.before(today) ? end : today;
-
         Calendar cal = Calendar.getInstance();
-        cal.setTime(start); // 从开始时间遍历（可能是昨天）
+        cal.setTime(start);
+        // 把开始时间重置到当天 00:00:00，只按日期判断，不看具体时间
+        cal.set(Calendar.HOUR_OF_DAY, 0);
+        cal.set(Calendar.MINUTE, 0);
+        cal.set(Calendar.SECOND, 0);
+        cal.set(Calendar.MILLISECOND, 0);
 
-        // 遍历 start → actualEnd 所有日期表
-        while (!cal.getTime().after(actualEnd)) {
+        // 循环条件改为：只要当前日期的 0点 不晚于结束日期的 0点，就继续
+        Calendar endCal = Calendar.getInstance();
+        endCal.setTime(end);
+        endCal.set(Calendar.HOUR_OF_DAY, 0);
+        endCal.set(Calendar.MINUTE, 0);
+        endCal.set(Calendar.SECOND, 0);
+        endCal.set(Calendar.MILLISECOND, 0);
+
+        while (!cal.getTime().after(endCal.getTime())) {
             suffixList.add(String.format("%tY%<tm%<td", cal.getTime()));
             cal.add(Calendar.DATE, 1);
         }
 
-        // 最多查3张表，防止跨月查询过大
-        if (suffixList.size() > 3) {
-            suffixList = suffixList.subList(suffixList.size() - 3, suffixList.size());
-        }
         return suffixList;
     }
     /**
@@ -113,8 +114,18 @@ public class SubmitRecordService {
                 String table = "Submit_Bill_" + suffix;
                 if (!isTableExist(table)) continue;
 
+                // 生成当前表 当天 00:00:00 ~ 23:59:59
+                String tableDate = suffix; // 20260423
+                String tableStart = tableDate.substring(0,4) + "/" + tableDate.substring(4,6) + "/" + tableDate.substring(6,8) + " 00:00:00";
+                String tableEnd   = tableDate.substring(0,4) + "/" + tableDate.substring(4,6) + "/" + tableDate.substring(6,8) + " 23:59:59";
+
+                // 再和用户传入的时间取交集
+                String finalStart = startTimeStr.compareTo(tableStart) > 0 ? startTimeStr : tableStart;
+                String finalEnd   = endTimeStr.compareTo(tableEnd) < 0 ? endTimeStr : tableEnd;
+
                 List<Map<String, Object>> idWithTimeList = submitRecordMapper.listSubmitMsgIdsWithTime(
-                        suffix, subAccount, startTimeStr, endTimeStr, callee, mcc, mnc, destAccountStatus
+                        suffix, subAccount, finalStart, finalEnd,
+                        callee, mcc, mnc, destAccountStatus
                 );
                 allIdWithTime.addAll(idWithTimeList);
 
