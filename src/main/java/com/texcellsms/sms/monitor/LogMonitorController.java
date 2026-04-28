@@ -71,6 +71,10 @@ public class LogMonitorController {
             result.put("msg", "无权限");
             return result;
         }
+
+        // ====================== 传入当前IP给监控（仅480显示） ======================
+        LogMonitorTask.LAST_LOGIN_IP = clientIp;
+
         result.put("serviceStatus", "UP");
         result.put("runDuration", LogMonitorTask.getRunDuration());
         result.put("recentErrors", LogMonitorTask.recentErrors);

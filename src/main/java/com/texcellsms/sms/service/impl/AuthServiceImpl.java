@@ -40,25 +40,44 @@ public class AuthServiceImpl implements AuthService {
         tokenService.createToken(loginUser);
 
         if (cacheDBLonginResult == null) {
+            // ====================== 登录失败：打印日志 ======================
+            System.out.format("[LOGIN_FAIL] USER=%s | IP=%s | CODE=NULL | MSG=登录验证失败%n",
+                    loginRequest.getUsername(), IP);
             return AjaxResult.error();
         }
 
         if (!"0".equals(cacheDBLonginResult.getResult())) {
-            switch (cacheDBLonginResult.getResult()) {
+            String code = cacheDBLonginResult.getResult();
+            String msg = "";
+
+            switch (code) {
                 case "405":
-                    return new AjaxResult(PARAMETERERROR.getCode(), PARAMETERERROR.getMessage());
+                    msg = PARAMETERERROR.getMessage();
+                    return new AjaxResult(PARAMETERERROR.getCode(), msg);
                 case "502":
-                    return new AjaxResult(CACHEDBERROR.getCode(), CACHEDBERROR.getMessage());
+                    msg = CACHEDBERROR.getMessage();
+                    return new AjaxResult(CACHEDBERROR.getCode(), msg);
                 case "403":
-                    return new AjaxResult(AUTHENTICATIONERROR.getCode(), AUTHENTICATIONERROR.getMessage());
+                    msg = AUTHENTICATIONERROR.getMessage();
+                    return new AjaxResult(AUTHENTICATIONERROR.getCode(), msg);
                 case "603":
-                    return new AjaxResult(ACCOUNTLOCKEDERROR.getCode(), ACCOUNTLOCKEDERROR.getMessage());
+                    msg = ACCOUNTLOCKEDERROR.getMessage();
+                    return new AjaxResult(ACCOUNTLOCKEDERROR.getCode(), msg);
                 case "402":
-                    return new AjaxResult(ACCOUNTERROR.getCode(), ACCOUNTERROR.getMessage());
+                    msg = ACCOUNTERROR.getMessage();
+                    return new AjaxResult(ACCOUNTERROR.getCode(), msg);
                 case "480":
-                    return new AjaxResult(IPLOCKEDERROR.getCode(), IPLOCKEDERROR.getMessage());
+                    msg = IPLOCKEDERROR.getMessage();
+                    // ====================== IP锁定：打印日志 ======================
+                    System.out.format("[LOGIN_FAIL] USER=%s | IP=%s | CODE=480 | MSG=%s%n",
+                            loginRequest.getUsername(), IP, msg);
+                    return new AjaxResult(IPLOCKEDERROR.getCode(), msg);
                 default:
-                    return new AjaxResult(Integer.parseInt(cacheDBLonginResult.getResult()), "");
+                    msg = "登录失败";
+                    // ====================== 其他错误：打印日志 ======================
+                    System.out.format("[LOGIN_FAIL] USER=%s | IP=%s | CODE=%s | MSG=%s%n",
+                            loginRequest.getUsername(), IP, code, msg);
+                    return new AjaxResult(Integer.parseInt(code), "");
             }
         }
         return AjaxResult.success(loginUser);
@@ -101,7 +120,7 @@ public class AuthServiceImpl implements AuthService {
         NCacheDBLink nCacheDBLink = null;
         try {
             nCacheDBLink = NCacheDBLink.getNCacheDBLink();
-            nCacheDBLink.InitEnv("192.168.120.250", 18801, "auth", "auth", "auth", "utf-8", "utf-8");
+            nCacheDBLink.InitEnv("192.168.112.250", 18801, "auth", "auth", "auth", "utf-8", "utf-8");
             nCacheDBLink.ConnectToCacheDB();
             List<Map<String, String>> list = nCacheDBLink.web_QueryUserRate(Username, MCC, MNC);
             return AjaxResult.success(list);

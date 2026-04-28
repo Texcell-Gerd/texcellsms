@@ -14,7 +14,7 @@ import java.util.regex.Pattern;
 @Component
 public class LogMonitorTask {
 
-    // ====================== 新增：服务启动时间 ======================
+    // ====================== 服务启动时间 ======================
     public static long START_TIME = System.currentTimeMillis();
 
     private static final String BUSINESS_LOG_PATH = "logs/texcell-sms.log";
@@ -28,13 +28,16 @@ public class LogMonitorTask {
     private static final Pattern LOGIN_USER_PATTERN = Pattern.compile("用户: (\\w+)");
     private static final Pattern LOGIN_RESULT_PATTERN = Pattern.compile("KEY:Result Val:(\\d+)");
 
+    // ====================== 新增：存储最后登录IP（仅用于480锁定显示） ======================
+    public static String LAST_LOGIN_IP = "-";
+
     // 项目启动时初始化启动时间
     @PostConstruct
     public void init() {
         START_TIME = System.currentTimeMillis();
     }
 
-    // ====================== 新增：获取运行时间 ======================
+    // ====================== 获取运行时间 ======================
     public static String getRunDuration() {
         long ms = System.currentTimeMillis() - START_TIME;
         long sec = ms / 1000;
@@ -95,8 +98,16 @@ public class LogMonitorTask {
 
                         if (currentLoginUser != null && currentLoginResult != null && !"0".equals(currentLoginResult)) {
                             String errMsg = getLoginErrorMsg(currentLoginResult);
-                            String log = String.format("[登录失败] 用户=%s | 错误码=%s | %s",
-                                    currentLoginUser, currentLoginResult, errMsg);
+                            String log;
+
+                            // ====================== 只有480 IP锁定才显示IP ======================
+                            if ("480".equals(currentLoginResult)) {
+                                log = String.format("[登录失败] 用户=%s | 错误码=%s | IP=%s | %s",
+                                        currentLoginUser, currentLoginResult, LAST_LOGIN_IP, errMsg);
+                            } else {
+                                log = String.format("[登录失败] 用户=%s | 错误码=%s | %s",
+                                        currentLoginUser, currentLoginResult, errMsg);
+                            }
 
                             if (!recentErrors.contains(log)) {
                                 if (recentErrors.size() >= 20) recentErrors.remove(0);
