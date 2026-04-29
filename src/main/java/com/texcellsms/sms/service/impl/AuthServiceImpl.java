@@ -89,9 +89,10 @@ public class AuthServiceImpl implements AuthService {
     @Override
     public AjaxResult getBalance(String Username) {
         NCacheDBLink nCacheDBLink = null;
+        int count = -1;
         try {
             nCacheDBLink = NCacheDBLink.getNCacheDBLink();
-            nCacheDBLink.InitEnv();
+            count = nCacheDBLink.InitEnv();
             nCacheDBLink.ConnectToCacheDB();
             Map<String, Object> map = nCacheDBLink.prc_MMSIFQueryBalance(Username);
 
@@ -105,7 +106,7 @@ public class AuthServiceImpl implements AuthService {
             return AjaxResult.error("Failed to query balance");
         } finally {
             // 【重要】必须保证释放连接，否则线上OOM
-            if (nCacheDBLink != null) {
+            if (nCacheDBLink != null|| count>0) {
                 try { nCacheDBLink.Disconnect(); } catch (Exception ignored) {}
                 try { nCacheDBLink.Destroy(); } catch (Exception ignored) {}
             }
@@ -118,9 +119,10 @@ public class AuthServiceImpl implements AuthService {
     @Override
     public AjaxResult getRate(String Username, String MCC, String MNC) {
         NCacheDBLink nCacheDBLink = null;
+        int count = -1;
         try {
             nCacheDBLink = NCacheDBLink.getNCacheDBLink();
-            nCacheDBLink.InitEnv("192.168.112.250", 18801, "auth", "auth", "auth", "utf-8", "utf-8");
+            count=nCacheDBLink.InitEnv("192.168.112.250", 18801, "auth", "auth", "auth", "utf-8", "utf-8");
             nCacheDBLink.ConnectToCacheDB();
             List<Map<String, String>> list = nCacheDBLink.web_QueryUserRate(Username, MCC, MNC);
             return AjaxResult.success(list);
@@ -130,7 +132,7 @@ public class AuthServiceImpl implements AuthService {
             return AjaxResult.error("Failed to query rate");
         } finally {
             // 保证释放
-            if (nCacheDBLink != null) {
+            if (nCacheDBLink != null|| count>0) {
                 try { nCacheDBLink.Disconnect(); } catch (Exception ignored) {}
                 try { nCacheDBLink.Destroy(); } catch (Exception ignored) {}
             }
@@ -143,9 +145,10 @@ public class AuthServiceImpl implements AuthService {
     @Override
     public AjaxResult ChangeSwitchAccountPWD(String Username, String OldPass, String NewPass) {
         NCacheDBLink nCacheDBLink = null;
+        int count = -1;
         try {
             nCacheDBLink = NCacheDBLink.getNCacheDBLink();
-            nCacheDBLink.InitEnv();
+            count=nCacheDBLink.InitEnv();
             nCacheDBLink.ConnectToCacheDB();
             Map<String, Object> map = nCacheDBLink.prc_ChangeSwitchAccountPWD(Username, OldPass, NewPass);
             return AjaxResult.success(map);
@@ -155,7 +158,7 @@ public class AuthServiceImpl implements AuthService {
             return AjaxResult.error("Failed to change password");
         } finally {
             // 保证释放
-            if (nCacheDBLink != null) {
+            if (nCacheDBLink != null || count>0) {
                 try { nCacheDBLink.Disconnect(); } catch (Exception ignored) {}
                 try { nCacheDBLink.Destroy(); } catch (Exception ignored) {}
             }

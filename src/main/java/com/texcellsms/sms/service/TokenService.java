@@ -3,6 +3,7 @@ package com.texcellsms.sms.service;
 import CacheDB.NCacheDBLink;
 import com.texcellsms.sms.model.vo.CacheDBLonginResult;
 import com.texcellsms.sms.model.vo.LoginUser;
+import com.texcellsms.sms.util.AjaxResult;
 import com.texcellsms.sms.util.Constants;
 import com.texcellsms.sms.util.ServletUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -18,7 +19,7 @@ public class TokenService {
 
     private static final long EXPIRE_TIME = Constants.TOKEN_EXPIRE * 60 * 1000L;
     protected static final long MILLIS_SECOND = 1000;
-    private static final NCacheDBLink CACHE_DB_LINK = NCacheDBLink.getNCacheDBLink();
+    private NCacheDBLink CACHE_DB_LINK = NCacheDBLink.getNCacheDBLink();
 
     /**
      * 获取当前登录用户名
@@ -98,21 +99,31 @@ public class TokenService {
         if (loginUser == null) {
             return new CacheDBLonginResult("-1", "", "", "0");
         }
-        CACHE_DB_LINK.InitEnv();
+        Map<String, Object> map =null;
+        int count =-1;
+        try {
+        count = CACHE_DB_LINK.InitEnv();
         CACHE_DB_LINK.ConnectToCacheDB();
-        Map<String, Object> map = CACHE_DB_LINK.ExecProc_QueryGWUserPass_With2FA(
+        map = CACHE_DB_LINK.ExecProc_QueryGWUserPass_With2FA(
                 loginUser.getUsername(),
                 loginUser.getPassword(),
                 loginUser.getIP()
         );
+        } catch (Exception e) {
+            e.printStackTrace();
+           throw new RuntimeException("Login error");
+        }finally {
+            if (CACHE_DB_LINK != null|| count>0) {
+                try { CACHE_DB_LINK.Disconnect(); } catch (Exception ignored) {}
+                try { CACHE_DB_LINK.Destroy(); } catch (Exception ignored) {}
+            }
+        }
         String result = (String) map.getOrDefault("Result", "-1");
         String whitelistIP = (String) map.getOrDefault("WhitelistIP", "");
         String faKey = (String) map.getOrDefault("FAKey", "");
         String isEnable = (String) map.getOrDefault("IsEnable", "0");
 
         CacheDBLonginResult loginResult = new CacheDBLonginResult(result, whitelistIP, faKey, isEnable);
-        CACHE_DB_LINK.Disconnect();
-        CACHE_DB_LINK.Destroy();
         return loginResult;
     }
 
