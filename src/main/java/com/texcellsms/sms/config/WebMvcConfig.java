@@ -14,15 +14,19 @@ public class WebMvcConfig implements WebMvcConfigurer {
 
         // 数据源切换拦截器
         registry.addInterceptor(new DataSourceInterceptor())
-                .addPathPatterns("/api/**");
+                .addPathPatterns("/api/**", "/open/api/**");
 
-        // 鉴权拦截器（放行监控页面）
+        // 鉴权拦截器（放行登录、监控和开放API）
         registry.addInterceptor(new AuthInterceptor())
                 .addPathPatterns("/**")
                 .excludePathPatterns(
                         "/api/auth/login",
-                        "/monitor",        // 放行监控页面
-                        "/api/monitor/logs" // 放行监控接口
+                        "/monitor",
+                        "/api/monitor/logs",
+                        // ✅ 放行三个HTTP API接口
+                        "/open/api/sms/send",
+                        "/open/api/sms/receipt",
+                        "/open/api/sms/balance"
                 );
     }
 }

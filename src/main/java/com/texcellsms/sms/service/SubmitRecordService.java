@@ -289,7 +289,7 @@ public class SubmitRecordService {
         }
     }
 
-    // ====================== 导出功能：完全不动 ======================
+    // ====================== 导出功能 ======================
     public List<SubmitRecordExportVO> queryExportDataForEasyExcel(
             Date startTime, Date endTime,
             String callee, String mcc, String mnc,
@@ -439,5 +439,211 @@ public class SubmitRecordService {
                     + Character.digit(s.charAt(i + 1), 16));
         }
         return data;
+    }
+
+    // ====================== API 专用查询方法 ======================
+    public SubmitRecordWithStatsDTO getSubmitRecordWithStatsAPI(
+            String username,
+            Date startTime, Date endTime,
+            String callee, String mcc, String mnc,
+            String innerReportState,String destAccountStatus,
+            Integer pageNum,
+            Integer pageSize) {
+
+        DynamicDataSourceInterceptor.setCurrentDataSource(DynamicDataSourceConfig.DS_ECCOM);
+        final int FIX_PAGE_SIZE = 10;
+        pageNum = (pageNum == null || pageNum < 1) ? 1 : pageNum;
+
+        String subAccount = username;
+        String startTimeStr = String.format("%tY/%<tm/%<td %<tH:%<tM:%<tS", startTime);
+        String endTimeStr = String.format("%tY/%<tm/%<td %<tH:%<tM:%<tS", endTime);
+
+        callee = Objects.toString(callee, "").trim();
+        mcc = Objects.toString(mcc, "").trim();
+        mnc = Objects.toString(mnc, "").trim();
+        final String finalInnerReportState = Objects.toString(innerReportState, "").trim();
+        destAccountStatus = Objects.toString(destAccountStatus, "").trim();
+
+        List<String> suffixList = getDateSuffixList(startTime, endTime);
+
+        try {
+            Map<String, String> msgIdToTableSuffix = new HashMap<>();
+            Map<String, String> msgIdToSubmitTime = new HashMap<>();
+            List<Map<String, Object>> allIdWithTime = new ArrayList<>();
+
+            for (String suffix : suffixList) {
+                String table = "Submit_Bill_" + suffix;
+                if (!isTableExist(table)) continue;
+
+                String tableDate = suffix;
+                String tableStart = tableDate.substring(0,4) + "/" + tableDate.substring(4,6) + "/" + tableDate.substring(6,8) + " 00:00:00";
+                String tableEnd   = tableDate.substring(0,4) + "/" + tableDate.substring(4,6) + "/" + tableDate.substring(6,8) + " 23:59:59";
+
+                String finalStart = startTimeStr.compareTo(tableStart) > 0 ? startTimeStr : tableStart;
+                String finalEnd   = endTimeStr.compareTo(tableEnd) < 0 ? endTimeStr : tableEnd;
+
+                List<Map<String, Object>> idWithTimeList = submitRecordMapper.listSubmitMsgIdsWithTime(
+                        suffix, subAccount, finalStart, finalEnd,
+                        callee, mcc, mnc, destAccountStatus
+                );
+                allIdWithTime.addAll(idWithTimeList);
+
+                if (allIdWithTime.size() > 1500000) {
+                    throw new RuntimeException("The data volume is too large, please contact staff to query.");
+                }
+
+                for (Map<String, Object> map : idWithTimeList) {
+                    String msgId = (String) map.get("SubmitMsgId");
+                    String submitTime = (String) map.get("SubmitMsgTime");
+                    msgIdToTableSuffix.put(msgId, suffix);
+                    msgIdToSubmitTime.put(msgId, submitTime);
+                }
+            }
+
+            Map<String, Map<String, Object>> feeMap = new HashMap<>();
+            for (String suffix : suffixList) {
+                String table = "Fee_Bill_" + suffix;
+                if (!isTableExist(table)) continue;
+
+                List<Map<String, Object>> feeList = submitRecordMapper.queryFeeBill(
+                        suffix, subAccount, finalInnerReportState, callee, mcc, mnc
+                );
+                for (Map<String, Object> fee : feeList) {
+                    String recvMsgId = (String) fee.get("RecvMsgId");
+                    if (recvMsgId != null) {
+                        feeMap.put(recvMsgId, fee);
+                    }
+                }
+            }
+
+            List<String> validIds = new ArrayList<>();
+            for (Map<String, Object> map : allIdWithTime) {
+                String msgId = (String) map.get("SubmitMsgId");
+                if (!finalInnerReportState.isEmpty() && !feeMap.containsKey(msgId)) {
+                    continue;
+                }
+                validIds.add(msgId);
+            }
+
+            validIds.sort((id1, id2) -> {
+                String t1 = msgIdToSubmitTime.get(id1);
+                String t2 = msgIdToSubmitTime.get(id2);
+                if (t1 == null) return 1;
+                if (t2 == null) return -1;
+                return t2.compareTo(t1);
+            });
+
+            long total = validIds.size();
+            long deliverSuccess = 0, deliverFail = 0;
+            for (String id : validIds) {
+                Map<String, Object> f = feeMap.get(id);
+                if (f == null) continue;
+                String state = String.valueOf(f.get("InnerReportState"));
+                if ("DELIVRD".equals(state)) {
+                    deliverSuccess++;
+                } else if ("UNDELIV".equals(state) || "UNKNOWN".equals(state)) {
+                    deliverFail++;
+                }
+            }
+
+            long submitSuccess = total;
+            long submitFail = 0;
+            if (finalInnerReportState.isEmpty()) {
+                if ("success".equals(destAccountStatus)) {
+                    submitSuccess = total;
+                    submitFail = 0;
+                } else if ("fail".equals(destAccountStatus)) {
+                    submitFail = total;
+                    submitSuccess = 0;
+                }
+            }
+
+            boolean hasSearchCondition =
+                    (callee != null && !callee.trim().isEmpty())
+                            || (mcc != null && !mcc.trim().isEmpty())
+                            || (mnc != null && !mnc.trim().isEmpty())
+                            || (destAccountStatus != null && !destAccountStatus.trim().isEmpty())
+                            || (finalInnerReportState != null && !finalInnerReportState.trim().isEmpty());
+
+            if (hasSearchCondition) {
+                pageNum = 1;
+            }
+
+            int skip = (pageNum - 1) * FIX_PAGE_SIZE;
+            List<String> pageIds = validIds.stream().skip(skip).limit(FIX_PAGE_SIZE).collect(Collectors.toList());
+            List<SubmitRecordDTO> pageRecords = new ArrayList<>();
+
+            if (!pageIds.isEmpty()) {
+                Map<String, List<String>> tableToIds = new HashMap<>();
+                for (String id : pageIds) {
+                    String suffix = msgIdToTableSuffix.get(id);
+                    if (suffix != null) {
+                        tableToIds.computeIfAbsent(suffix, k -> new ArrayList<>()).add(id);
+                    }
+                }
+                for (Map.Entry<String, List<String>> entry : tableToIds.entrySet()) {
+                    List<String> ids = entry.getValue();
+                    if (ids.size() > 1000) ids = ids.subList(0, 1000);
+                    pageRecords.addAll(submitRecordMapper.listByIds(entry.getKey(), ids));
+                }
+            }
+
+            pageRecords.sort(Comparator.comparing(SubmitRecordDTO::getSubmitMsgTime, Comparator.nullsLast(Comparator.reverseOrder())));
+
+            List<SubmitRecordDTO> merged = new ArrayList<>();
+            for (SubmitRecordDTO sub : pageRecords) {
+                Map<String, Object> f = feeMap.get(sub.getSubmitMsgId());
+                if (f != null) {
+                    sub.setInnerReportState((String) f.get("InnerReportState"));
+                    sub.setRecvDRTime((String) f.get("RecvDRTime"));
+                } else {
+                    sub.setInnerReportState("已提交");
+                    sub.setRecvDRTime(null);
+                }
+
+                // ==========================================
+                // 🔥 已修复：调用 不加密的解析方法
+                // ==========================================
+                try {
+                    String content = decodeLongSmsForExport(sub.getOriginalShortMessage(), sub.getDcs());
+                    sub.setShortMessage(content == null ? "" : content.replaceAll("\\n|\\r", " "));
+                } catch (Exception e) {
+                    sub.setShortMessage("");
+                }
+
+                String chargeFee = sub.getChargeFee();
+                if (chargeFee == null || "0".equals(chargeFee)) {
+                    sub.setActualChargeFee("0");
+                } else {
+                    try {
+                        BigDecimal feeVal = new BigDecimal(chargeFee);
+                        BigDecimal actual = feeVal.divide(new BigDecimal(10000), 4, RoundingMode.HALF_UP);
+                        sub.setActualChargeFee(actual.stripTrailingZeros().toPlainString());
+                    } catch (Exception e) {
+                        sub.setActualChargeFee("0");
+                    }
+                }
+                merged.add(sub);
+            }
+
+            String submitSuccessRate = total > 0 ? PERCENT_FORMAT.format((double) submitSuccess / total) : "0.00%";
+            String deliverRate = submitSuccess > 0 ? PERCENT_FORMAT.format((double) deliverSuccess / submitSuccess) : "0.00%";
+
+            SubmitRecordWithStatsDTO dto = new SubmitRecordWithStatsDTO();
+            dto.setRecords(merged);
+            dto.setSubmitTotal(total);
+            dto.setSubmitFailCount(submitFail);
+            dto.setSubmitSuccessRate(submitSuccessRate);
+            dto.setDeliverSuccessCount(deliverSuccess);
+            dto.setDeliverFailCount(deliverFail);
+            dto.setDeliverSuccessRate(deliverRate);
+            dto.setPageCount(total <= 0 ? 0 : (int) Math.ceil((double) total / FIX_PAGE_SIZE));
+            dto.setCurrentPage(pageNum);
+            dto.setPageSize(FIX_PAGE_SIZE);
+            return dto;
+
+        } finally {
+            DynamicDataSourceInterceptor.clearCurrentDataSource();
+        }
     }
 }
