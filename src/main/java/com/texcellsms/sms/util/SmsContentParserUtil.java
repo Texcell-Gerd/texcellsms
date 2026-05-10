@@ -80,7 +80,7 @@ public class SmsContentParserUtil {
     // 测试示例
     public static void main(String[] args) {
         String username = "CGerd";
-        String timestamp = "1778405159";
+        String timestamp = "1778407339";
         String password = "xiongan1";
 
         String sign = genHmacSha256Sign(username, timestamp, password);
