@@ -1,6 +1,9 @@
 package com.texcellsms.sms.util;
 
 import org.apache.commons.codec.binary.Hex;
+
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 
@@ -51,5 +54,36 @@ public class SmsContentParserUtil {
         } catch (Exception e) {
             return ""; // 解析失败返回空，不显示乱码
         }
+    }
+
+    public static String genHmacSha256Sign(String username, String timestamp, String password) {
+        try {
+            // 拼接规则 和后端保持完全一致
+            String content = username + timestamp + password;
+            String secret = password;
+
+            Mac mac = Mac.getInstance("HmacSHA256");
+            SecretKeySpec keySpec = new SecretKeySpec(
+                    secret.getBytes(StandardCharsets.UTF_8),
+                    "HmacSHA256"
+            );
+            mac.init(keySpec);
+            byte[] hashBytes = mac.doFinal(content.getBytes(StandardCharsets.UTF_8));
+            // Base64 输出
+            return Base64.getEncoder().encodeToString(hashBytes);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return "";
+        }
+    }
+
+    // 测试示例
+    public static void main(String[] args) {
+        String username = "CGerd";
+        String timestamp = "1778405159";
+        String password = "xiongan1";
+
+        String sign = genHmacSha256Sign(username, timestamp, password);
+        System.out.println("签名：" + sign);
     }
 }
