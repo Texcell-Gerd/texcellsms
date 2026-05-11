@@ -5,15 +5,13 @@ import org.springframework.stereotype.Component;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
-import java.util.Base64;
 
 @Component
 public class CustomerApiSignUtil {
 
-    // ====================== HMAC-SHA256 ======================
+    // ====================== HMAC-SHA256 → 直接返回十六进制 ======================
     public static String createSign(String username, String timestamp, String password) {
         try {
-            // 拼接规则：username + timestamp + password
             String plainText = username + timestamp + password;
 
             Mac mac = Mac.getInstance("HmacSHA256");
@@ -21,8 +19,16 @@ public class CustomerApiSignUtil {
             mac.init(secretKey);
 
             byte[] hash = mac.doFinal(plainText.getBytes(StandardCharsets.UTF_8));
-            // 返回 Base64 编码（行业标准）
-            return Base64.getEncoder().encodeToString(hash);
+
+            // 直接转十六进制
+            StringBuilder hex = new StringBuilder();
+            for (byte b : hash) {
+                String h = Integer.toHexString(b & 0xFF);
+                if (h.length() == 1) hex.append('0');
+                hex.append(h);
+            }
+            return hex.toString();
+
         } catch (Exception e) {
             return "";
         }
@@ -33,8 +39,6 @@ public class CustomerApiSignUtil {
         if (StrUtil.hasBlank(username, timestamp, sign, password)) {
             return AjaxResult.error(400, "Required parameters are missing");
         }
-        // 修复URL传输中 + 号变空格的问题
-        sign = sign.replace(" ", "+");
 
         long reqTime;
         try {
@@ -51,7 +55,9 @@ public class CustomerApiSignUtil {
         }
 
         String serverSign = createSign(username, timestamp, password);
-        if (!serverSign.equals(sign)) {
+
+        // 不区分大小写比对
+        if (!serverSign.equalsIgnoreCase(sign)) {
             return AjaxResult.error(401, "Authentication failed: invalid signature");
         }
 

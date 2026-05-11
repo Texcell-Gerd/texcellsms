@@ -56,23 +56,22 @@ public class SmsContentParserUtil {
         }
     }
 
-    public static String genHmacSha256Sign(String username, String timestamp, String password) {
+    public static String genHmacSha256Hex(String username, String timestamp, String password) {
         try {
-            // 拼接规则 和后端保持完全一致
             String content = username + timestamp + password;
-            String secret = password;
-
             Mac mac = Mac.getInstance("HmacSHA256");
-            SecretKeySpec keySpec = new SecretKeySpec(
-                    secret.getBytes(StandardCharsets.UTF_8),
-                    "HmacSHA256"
-            );
+            SecretKeySpec keySpec = new SecretKeySpec(password.getBytes(StandardCharsets.UTF_8), "HmacSHA256");
             mac.init(keySpec);
-            byte[] hashBytes = mac.doFinal(content.getBytes(StandardCharsets.UTF_8));
-            // Base64 输出
-            return Base64.getEncoder().encodeToString(hashBytes);
+            byte[] hash = mac.doFinal(content.getBytes(StandardCharsets.UTF_8));
+
+            StringBuilder hex = new StringBuilder();
+            for (byte b : hash) {
+                String h = Integer.toHexString(b & 0xFF);
+                if (h.length() == 1) hex.append('0');
+                hex.append(h);
+            }
+            return hex.toString();
         } catch (Exception e) {
-            e.printStackTrace();
             return "";
         }
     }
@@ -80,10 +79,10 @@ public class SmsContentParserUtil {
     // 测试示例
     public static void main(String[] args) {
         String username = "CGerd";
-        String timestamp = "1778407339";
+        String timestamp = "1778468932945";
         String password = "xiongan1";
 
-        String sign = genHmacSha256Sign(username, timestamp, password);
+        String sign = genHmacSha256Hex(username, timestamp, password);
         System.out.println("签名：" + sign);
     }
 }
