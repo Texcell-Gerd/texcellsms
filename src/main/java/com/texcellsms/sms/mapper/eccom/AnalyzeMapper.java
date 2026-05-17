@@ -12,6 +12,7 @@ import java.util.List;
 public interface AnalyzeMapper {
 
     // ====================== 列表分页 ======================
+    // ====================== 列表分页 ======================
     @Select({
             "SELECT",
             "    SubmitTime    AS submitTime,",
@@ -31,7 +32,7 @@ public interface AnalyzeMapper {
             "AND SubmitTime <= #{end} ",
             "AND (#{mcc} IS NULL OR #{mcc} = '' OR MCC = #{mcc}) ",
             "AND (#{mnc} IS NULL OR #{mnc} = '' OR MNC = #{mnc}) ",
-            "ORDER BY ReportTime DESC ",
+            "ORDER BY SubmitTime DESC, ReportTime DESC ",
             "LIMIT #{offset}, #{pageSize}"
     })
     List<AnalyzeDTO> selectAnalyzePage(
