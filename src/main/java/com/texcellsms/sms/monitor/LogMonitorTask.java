@@ -217,12 +217,19 @@ public class LogMonitorTask {
                     }
 
                     // ====================== 异常监控 ======================
+                    if (rawLine.contains("Allocation Failure") || rawLine.contains("PSYoungGen")) {
+                        continue;
+                    }
+
                     if ((rawLine.contains("ERROR") || rawLine.contains("Exception") ||
                             rawLine.contains("Failed") || rawLine.contains("错误")) &&
-                            !rawLine.contains("INFO") && !rawLine.contains("DEBUG")) {
+                            !rawLine.contains("INFO") && !rawLine.contains("DEBUG") &&
+                            !rawLine.contains("Allocation Failure") &&
+                            !rawLine.contains("PSYoungGen") &&
+                            !rawLine.contains("GC")) {
 
                         String parsed = parseAndClassifyLog(rawLine);
-                        if (!recentErrors.contains(parsed)) {
+                        if (parsed != null && !recentErrors.contains(parsed)) {
                             addToList(recentErrors, parsed, 100);
                         }
                     }
@@ -247,9 +254,14 @@ public class LogMonitorTask {
                 while ((line = br.readLine()) != null) {
                     if (line.contains("CommandLine flags")) continue;
 
-                    boolean isAbnormal = line.contains("Full GC") || line.contains("OutOfMemory") ||
-                            line.contains("promotion failed") || line.contains("concurrent mode failure") ||
-                            line.contains("Allocation Failure") || line.contains("Metaspace OOM");
+                    // 只识别真正危险GC，普通Young GC忽略
+                    boolean isAbnormal = line.contains("Full GC")
+                            || line.contains("OutOfMemoryError")
+                            || line.contains("promotion failed")
+                            || line.contains("concurrent mode failure")
+                            || line.contains("Metaspace OOM")
+                            || line.contains("GC pause (G1 Evacuation Pause)")
+                            || line.contains("GC overhead limit exceeded");
 
                     if (isAbnormal) {
                         String logWithTime = "[" + DATE_FORMAT.format(new Date()) + "] " + line;
@@ -302,7 +314,10 @@ public class LogMonitorTask {
         String time = extractTime(rawLine);
         String type = "未知错误";
         String keyInfo = "";
-
+        // 跳过GC日志
+        if (rawLine.contains("Allocation Failure") || rawLine.contains("PSYoungGen")) {
+            return null;
+        }
         if (rawLine.contains("NullPointerException")) {
             type = "空指针异常";
             keyInfo = "Java代码访问了null对象，请检查变量初始化";
