@@ -204,7 +204,7 @@ public class SmsSendService {
         List<String> parts = splitContent(content, splitCount);
 
 
-        String pksn = "01";
+        String pksn = "77";
         String totalParts = String.format("%02X", splitCount);
 
         for (int i = 0; i < parts.size(); i++) {
