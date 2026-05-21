@@ -33,6 +33,14 @@ public class AuthServiceImpl implements AuthService {
 
         CacheDBLonginResult cacheDBLonginResult = tokenService.getToken(loginUser);
 
+        if (!("%".equals(cacheDBLonginResult.getWhitelistIP())||cacheDBLonginResult.getWhitelistIP().contains(IP))){
+            String msg = IPLOCKEDERROR.getMessage();
+            // ====================== IP锁定：打印日志 ======================
+            System.out.format("[LOGIN_FAIL] USER=%s | IP=%s | CODE=480 | MSG=%s%n",
+                    loginRequest.getUsername(), IP, msg);
+            return new AjaxResult(IPLOCKEDERROR.getCode(), msg);
+        }
+
         // 生成安全TOKEN
         String safeToken = UUID.randomUUID().toString().replace("-", "");
         loginUser.setToken(safeToken);
