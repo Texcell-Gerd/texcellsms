@@ -31,6 +31,7 @@ public enum SMSResponseMessage {
     IPERROR("Bound IP does not match", 403),
     IPAUTHORIZATIONERROR("Bound IP does not match", 101),
     IPLOCKEDERROR("The IP has been locked due to excessive failed attempts.", 480),
+    IPWHHITLIST("Please contact the administrator to add IPs to the whitelist.", 481),
 
     // ==================== 新增：查询相关错误（以下为新增，不改动原有） ====================
     /**

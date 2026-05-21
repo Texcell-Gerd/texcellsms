@@ -35,11 +35,11 @@ public class AuthServiceImpl implements AuthService {
 
 
         if (!("%".equals(cacheDBLonginResult.getWhitelistIP())||cacheDBLonginResult.getWhitelistIP().contains(IP))){
-            String msg = IPLOCKEDERROR.getMessage();
+            String msg = IPWHHITLIST.getMessage();
             // ====================== IP锁定：打印日志 ======================
             System.out.format("[LOGIN_FAIL] USER=%s | IP=%s | CODE=480 | MSG=%s%n B",
                     loginRequest.getUsername(), IP, msg,!("%".equals(cacheDBLonginResult.getWhitelistIP())||cacheDBLonginResult.getWhitelistIP().contains(IP)));
-            return new AjaxResult(IPLOCKEDERROR.getCode(), msg);
+            return new AjaxResult(IPWHHITLIST.getCode(), msg);
         }
 
         // 生成安全TOKEN
