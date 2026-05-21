@@ -1,57 +1,134 @@
 package com.texcellsms.sms.monitor;
 
+import com.texcellsms.sms.interceptor.SecurityMonitorInterceptor;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import javax.annotation.PostConstruct;
 import java.io.*;
+import java.lang.management.*;
 import java.nio.charset.StandardCharsets;
-import java.util.LinkedList;
-import java.util.List;
+import java.text.SimpleDateFormat;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 @Component
 public class LogMonitorTask {
 
-    // ====================== 服务启动时间 ======================
+    // ====================== 服务基础信息 ======================
     public static long START_TIME = System.currentTimeMillis();
+    private static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
 
+    // ====================== 日志文件路径配置 ======================
     private static final String BUSINESS_LOG_PATH = "logs/texcell-sms.log";
     private static final String GC_LOG_PATH = "logs/gc.log";
 
+    // ====================== 监控数据存储 ======================
     public static final List<String> recentErrors = new LinkedList<>();
     public static final List<String> recentGcLogs = new LinkedList<>();
-    public static final List<String> recentLongSms = new LinkedList<>(); // 长短信监控
+    public static final List<String> recentLongSms = new LinkedList<>();
+    public static final List<String> recentApiLogs = new LinkedList<>();
+    public static final List<String> recentLoginLogs = new LinkedList<>();
 
-    // 登录日志正则
+    // ====================== 统计数据 ======================
+    private static final Map<String, AtomicInteger> apiStats = new HashMap<>();
+
+    // ====================== 正则表达式 ======================
     private static final Pattern LOGIN_USER_PATTERN = Pattern.compile("用户: (\\w+)");
     private static final Pattern LOGIN_RESULT_PATTERN = Pattern.compile("KEY:Result Val:(\\d+)");
+    private static final Pattern API_PATTERN = Pattern.compile("\\[API调用\\] (GET|POST) (\\S+) 耗时:(\\d+)ms 状态:(\\S+)");
+    private static final Pattern TIMESTAMP_PATTERN = Pattern.compile("^(\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2})");
+    private static final Pattern IP_PATTERN = Pattern.compile("\\b(?:[0-9]{1,3}\\.){3}[0-9]{1,3}\\b");
 
-    // ====================== 新增：存储最后登录IP（仅用于480锁定显示） ======================
-    public static String LAST_LOGIN_IP = "-";
-
-    // 项目启动时初始化启动时间
     @PostConstruct
     public void init() {
         START_TIME = System.currentTimeMillis();
     }
 
-    // ====================== 获取运行时间 ======================
+    // ====================== 获取运行时长 ======================
     public static String getRunDuration() {
         long ms = System.currentTimeMillis() - START_TIME;
         long sec = ms / 1000;
         long min = sec / 60;
         long hour = min / 60;
         long day = hour / 24;
-
-        sec %= 60;
-        min %= 60;
-        hour %= 24;
-
-        return day + "天 " + hour + "时 " + min + "分 " + sec + "秒";
+        return day + "天 " + (hour % 24) + "时 " + (min % 60) + "分 " + (sec % 60) + "秒";
     }
 
+    public static String getStartTimeStr() {
+        return DATE_FORMAT.format(new Date(START_TIME));
+    }
+
+    // ====================== 获取系统指标 ======================
+    public static Map<String, Object> getSystemMetrics() {
+        Map<String, Object> metrics = new HashMap<>();
+
+        MemoryMXBean memoryMXBean = ManagementFactory.getMemoryMXBean();
+        MemoryUsage heapUsage = memoryMXBean.getHeapMemoryUsage();
+        MemoryUsage nonHeapUsage = memoryMXBean.getNonHeapMemoryUsage();
+        metrics.put("heapUsed", heapUsage.getUsed() / 1024 / 1024);
+        metrics.put("heapMax", heapUsage.getMax() / 1024 / 1024);
+        metrics.put("nonHeapUsed", nonHeapUsage.getUsed() / 1024 / 1024);
+
+        ThreadMXBean threadMXBean = ManagementFactory.getThreadMXBean();
+        metrics.put("threadCount", threadMXBean.getThreadCount());
+        metrics.put("peakThreadCount", threadMXBean.getPeakThreadCount());
+        metrics.put("daemonThreadCount", threadMXBean.getDaemonThreadCount());
+
+        ClassLoadingMXBean classLoadingMXBean = ManagementFactory.getClassLoadingMXBean();
+        metrics.put("loadedClasses", classLoadingMXBean.getLoadedClassCount());
+        metrics.put("totalLoadedClasses", classLoadingMXBean.getTotalLoadedClassCount());
+
+        OperatingSystemMXBean osMXBean = ManagementFactory.getOperatingSystemMXBean();
+        metrics.put("availableProcessors", osMXBean.getAvailableProcessors());
+        metrics.put("systemLoadAverage", osMXBean.getSystemLoadAverage());
+
+        return metrics;
+    }
+
+    // ====================== 获取统计数据 ======================
+    public static Map<String, Object> getStatistics() {
+        Map<String, Object> stats = new HashMap<>();
+
+        stats.put("errorCount", recentErrors.size());
+        stats.put("gcCount", recentGcLogs.size());
+        stats.put("longSmsCount", recentLongSms.size());
+        stats.put("apiCallCount", recentApiLogs.size());
+
+        synchronized (recentLoginLogs) {
+            int successCount = 0;
+            int failCount = 0;
+            for (String log : recentLoginLogs) {
+                if (log.contains("成功")) {
+                    successCount++;
+                } else if (log.contains("失败")) {
+                    failCount++;
+                }
+            }
+            stats.put("loginSuccessCount", successCount);
+            stats.put("loginFailCount", failCount);
+        }
+
+        Map<String, Integer> apiTop = new LinkedHashMap<>();
+        synchronized (apiStats) {
+            List<Map.Entry<String, AtomicInteger>> list = new ArrayList<>(apiStats.entrySet());
+            list.sort((entry1, entry2) -> entry2.getValue().get() - entry1.getValue().get());
+
+            int limit = 0;
+            for (Map.Entry<String, AtomicInteger> entry : list) {
+                if (limit++ >= 10) break;
+                apiTop.put(entry.getKey(), entry.getValue().get());
+            }
+        }
+        stats.put("topApis", apiTop);
+
+        return stats;
+    }
+
+    // ====================== 业务日志扫描 ======================
     @Scheduled(fixedRate = 10000)
     public void scanBusinessLog() {
         try {
@@ -67,7 +144,7 @@ public class LogMonitorTask {
                     allLines.add(line);
                 }
 
-                int start = Math.max(0, allLines.size() - 500);
+                int start = Math.max(0, allLines.size() - 1000);
                 List<String> lastLines = allLines.subList(start, allLines.size());
 
                 String currentLoginUser = null;
@@ -79,75 +156,84 @@ public class LogMonitorTask {
                         continue;
                     }
 
-                    // ====================== 【长短信监控】 ======================
-                    if (rawLine.contains("[长短信发送]")) {
-                        if (!recentLongSms.contains(rawLine)) {
-                            if (recentLongSms.size() >= 30) recentLongSms.remove(0);
-                            recentLongSms.add(rawLine);
+                    // ====================== API调用监控 ======================
+                    Matcher apiMatcher = API_PATTERN.matcher(rawLine);
+                    if (apiMatcher.find()) {
+                        String method = apiMatcher.group(1);
+                        String path = apiMatcher.group(2);
+                        String cost = apiMatcher.group(3);
+                        String status = apiMatcher.group(4);
+                        String log = String.format("[%s] | %s %s | %sms | %s",
+                                extractTime(rawLine), method, path, cost, status);
+
+                        if (!recentApiLogs.contains(log)) {
+                            addToList(recentApiLogs, log, 200);
+                            String apiKey = method + " " + path.split("\\?")[0];
+                            apiStats.computeIfAbsent(apiKey, k -> new AtomicInteger()).incrementAndGet();
                         }
                         continue;
                     }
 
+                    // ====================== 长短信监控 ======================
+                    if (rawLine.contains("[长短信发送]")) {
+                        String log = String.format("[%s] | %s", extractTime(rawLine), rawLine);
+                        if (!recentLongSms.contains(log)) {
+                            addToList(recentLongSms, log, 100);
+                        }
+                        continue;
+                    }
+
+                    // ====================== 登录监控 ======================
                     if (rawLine.contains("QueryGWUserPass_With2FA调用开始")) {
                         Matcher m = LOGIN_USER_PATTERN.matcher(rawLine);
                         if (m.find()) currentLoginUser = m.group(1);
                     }
+
                     if (rawLine.contains("KEY:Result Val:")) {
                         Matcher m = LOGIN_RESULT_PATTERN.matcher(rawLine);
                         if (m.find()) currentLoginResult = m.group(1);
 
-                        if (currentLoginUser != null && currentLoginResult != null && !"0".equals(currentLoginResult)) {
-                            String errMsg = getLoginErrorMsg(currentLoginResult);
-                            String log;
+                        if (currentLoginUser != null && currentLoginResult != null) {
+                            boolean isSuccess = "0".equals(currentLoginResult);
+                            String result = isSuccess ? "成功" : "失败";
+                            String errMsg = isSuccess ? "" : ("(" + getLoginErrorMsg(currentLoginResult) + ")");
+                            String log = String.format("[%s] | %s | %s | 登录%s %s",
+                                    extractTime(rawLine), currentLoginUser, result, result, errMsg);
 
-                            // ====================== 只有480 IP锁定才显示IP ======================
-                            if ("480".equals(currentLoginResult)) {
-                                log = String.format("[登录失败] 用户=%s | 错误码=%s | IP=%s | %s",
-                                        currentLoginUser, currentLoginResult, LAST_LOGIN_IP, errMsg);
-                            } else {
-                                log = String.format("[登录失败] 用户=%s | 错误码=%s | %s",
-                                        currentLoginUser, currentLoginResult, errMsg);
+                            if (!recentLoginLogs.contains(log)) {
+                                addToList(recentLoginLogs, log, 200);
                             }
 
-                            if (!recentErrors.contains(log)) {
-                                if (recentErrors.size() >= 20) recentErrors.remove(0);
-                                recentErrors.add(log);
+                            // 暴力破解检测 → 统一交给 SecurityMonitorInterceptor
+                            if (!isSuccess) {
+                                String ip = extractIpFromLog(rawLine);
+                                if (ip != null) {
+                                    SecurityMonitorInterceptor.recordLoginFailure(ip);
+                                }
                             }
                         }
                         currentLoginUser = null;
                         currentLoginResult = null;
                     }
 
-                    if ((rawLine.contains("ERROR") || rawLine.contains("Exception") || rawLine.contains("Failed")) && !rawLine.contains("INFO"))  {
+                    // ====================== 异常监控 ======================
+                    if ((rawLine.contains("ERROR") || rawLine.contains("Exception") ||
+                            rawLine.contains("Failed") || rawLine.contains("错误")) &&
+                            !rawLine.contains("INFO") && !rawLine.contains("DEBUG")) {
+
                         String parsed = parseAndClassifyLog(rawLine);
                         if (!recentErrors.contains(parsed)) {
-                            if (recentErrors.size() >= 20) recentErrors.remove(0);
-                            recentErrors.add(parsed);
+                            addToList(recentErrors, parsed, 100);
                         }
                     }
                 }
             }
-        } catch (Exception e) { }
-    }
-
-    private String getLoginErrorMsg(String code) {
-        if ("402".equals(code)) {
-            return "账号或密码错误";
-        } else if ("403".equals(code)) {
-            return "认证失败/两步验证获取失败";
-        } else if ("405".equals(code)) {
-            return "参数不完整";
-        } else if ("480".equals(code)) {
-            return "IP已锁定（多次失败）";
-        } else if ("502".equals(code)) {
-            return "CacheDB执行失败";
-        } else if ("603".equals(code)) {
-            return "账户已锁定";
-        } else {
-            return "未知登录错误";
+        } catch (Exception e) {
+            System.err.println("业务日志扫描异常: " + e.getMessage());
         }
     }
 
+    // ====================== GC日志扫描 ======================
     @Scheduled(fixedRate = 30000)
     public void scanGcLog() {
         try {
@@ -161,34 +247,59 @@ public class LogMonitorTask {
                 while ((line = br.readLine()) != null) {
                     if (line.contains("CommandLine flags")) continue;
 
-                    boolean isAbnormal =
-                            line.contains("Full GC")
-                                    || line.contains("OutOfMemory")
-                                    || line.contains("promotion failed")
-                                    || line.contains("concurrent mode failure")
-                                    || line.contains("Allocation Failure")
-                                    || line.contains("Metaspace OOM");
+                    boolean isAbnormal = line.contains("Full GC") || line.contains("OutOfMemory") ||
+                            line.contains("promotion failed") || line.contains("concurrent mode failure") ||
+                            line.contains("Allocation Failure") || line.contains("Metaspace OOM");
 
                     if (isAbnormal) {
-                        if (!recentGcLogs.contains(line)) {
-                            if (recentGcLogs.size() >= 20) recentGcLogs.remove(0);
-                            recentGcLogs.add(line);
+                        String logWithTime = "[" + DATE_FORMAT.format(new Date()) + "] " + line;
+                        if (!recentGcLogs.contains(logWithTime)) {
+                            addToList(recentGcLogs, logWithTime, 50);
                         }
                     }
                 }
             }
-        } catch (Exception e) { }
+        } catch (Exception e) {
+            System.err.println("GC日志扫描异常: " + e.getMessage());
+        }
+    }
+
+    // ====================== 辅助方法 ======================
+    private static void addToList(List<String> list, String item, int maxSize) {
+        synchronized (list) {
+            if (list.size() >= maxSize) {
+                list.remove(0);
+            }
+            list.add(item);
+        }
+    }
+
+    private static String extractTime(String rawLine) {
+        Matcher m = TIMESTAMP_PATTERN.matcher(rawLine);
+        if (m.find()) return m.group(1);
+        return DATE_FORMAT.format(new Date());
+    }
+
+    private static String extractIpFromLog(String rawLine) {
+        Matcher m = IP_PATTERN.matcher(rawLine);
+        if (m.find()) return m.group();
+        return null;
+    }
+
+    private String getLoginErrorMsg(String code) {
+        switch (code) {
+            case "402": return "账号或密码错误";
+            case "403": return "认证失败/两步验证获取失败";
+            case "405": return "参数不完整";
+            case "480": return "IP已锁定（多次失败）";
+            case "502": return "CacheDB执行失败";
+            case "603": return "账户已锁定";
+            default: return "未知登录错误";
+        }
     }
 
     private String parseAndClassifyLog(String rawLine) {
-        String time = "";
-        Pattern p1 = Pattern.compile("^(\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2})");
-        Pattern p2 = Pattern.compile("^(\\w{3} \\w{3} \\d{2} \\d{2}:\\d{2}:\\d{2} CST \\d{4})");
-        Matcher m1 = p1.matcher(rawLine);
-        Matcher m2 = p2.matcher(rawLine);
-        if (m1.find()) time = m1.group(1);
-        else if (m2.find()) time = m2.group(1);
-
+        String time = extractTime(rawLine);
         String type = "未知错误";
         String keyInfo = "";
 
@@ -237,9 +348,15 @@ public class LogMonitorTask {
         } else if (rawLine.contains("OutOfMemoryError")) {
             type = "内存溢出错误";
             keyInfo = "JVM内存不足，请检查内存配置或大对象泄漏";
+        } else if (rawLine.contains("登录") || rawLine.contains("Login")) {
+            type = "登录异常";
+            keyInfo = "用户登录失败，请检查账号密码或权限";
+        } else if (rawLine.contains("短信") || rawLine.contains("SMS")) {
+            type = "短信异常";
+            keyInfo = "短信发送或接收失败，请检查运营商配置";
         }
 
-        String shortRaw = rawLine.length() > 150 ? rawLine.substring(0, 150) + "..." : rawLine;
+        String shortRaw = rawLine.length() > 200 ? rawLine.substring(0, 200) + "..." : rawLine;
         return String.format("[%s] | [%s] | %s | %s", time, type, keyInfo, shortRaw);
     }
 }

@@ -1,16 +1,19 @@
 package com.texcellsms.sms.service;
 
 import CacheDB.NCacheDBLink;
+import com.alibaba.fastjson2.JSON;
 import com.texcellsms.sms.model.vo.CacheDBLonginResult;
 import com.texcellsms.sms.model.vo.LoginUser;
-import com.texcellsms.sms.util.AjaxResult;
 import com.texcellsms.sms.util.Constants;
 import com.texcellsms.sms.util.ServletUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpSession;
+import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -19,8 +22,8 @@ public class TokenService {
 
     private static final long EXPIRE_TIME = Constants.TOKEN_EXPIRE * 60 * 1000L;
     protected static final long MILLIS_SECOND = 1000;
-    private NCacheDBLink CACHE_DB_LINK = NCacheDBLink.getNCacheDBLink();
-
+    private static final NCacheDBLink CACHE_DB_LINK = NCacheDBLink.getNCacheDBLink();
+    private static final Logger logger = LoggerFactory.getLogger(TokenService.class);
     /**
      * 获取当前登录用户名
      */
@@ -99,31 +102,21 @@ public class TokenService {
         if (loginUser == null) {
             return new CacheDBLonginResult("-1", "", "", "0");
         }
-        Map<String, Object> map =null;
-        int count =-1;
-        try {
-        count = CACHE_DB_LINK.InitEnv();
+        CACHE_DB_LINK.InitEnv();
         CACHE_DB_LINK.ConnectToCacheDB();
-        map = CACHE_DB_LINK.ExecProc_QueryGWUserPass_With2FA(
+        Map<String, Object> map = CACHE_DB_LINK.ExecProc_QueryGWUserPass_With2FA(
                 loginUser.getUsername(),
                 loginUser.getPassword(),
                 loginUser.getIP()
         );
-        } catch (Exception e) {
-            e.printStackTrace();
-           throw new RuntimeException("Login error");
-        }finally {
-            if (CACHE_DB_LINK != null|| count>0) {
-                try { CACHE_DB_LINK.Disconnect(); } catch (Exception ignored) {}
-                try { CACHE_DB_LINK.Destroy(); } catch (Exception ignored) {}
-            }
-        }
         String result = (String) map.getOrDefault("Result", "-1");
         String whitelistIP = (String) map.getOrDefault("WhitelistIP", "");
         String faKey = (String) map.getOrDefault("FAKey", "");
         String isEnable = (String) map.getOrDefault("IsEnable", "0");
 
         CacheDBLonginResult loginResult = new CacheDBLonginResult(result, whitelistIP, faKey, isEnable);
+        CACHE_DB_LINK.Disconnect();
+        CACHE_DB_LINK.Destroy();
         return loginResult;
     }
 
@@ -146,38 +139,61 @@ public class TokenService {
     }
 
     /**
-     * 获取真实IP
+     * 获取用户真实IP
      */
     public static String getIpAddress(HttpServletRequest request) {
         if (request == null) {
+            logger.warn("request为空");
             return "";
         }
-        String ip = request.getHeader("x-forwarded-for");
-        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
-            ip = request.getHeader("Proxy-Client-IP");
+
+        String cfIp = request.getHeader("CF-Connecting-IP");
+        String realIp = request.getHeader("X-Real-IP");
+        String xff = request.getHeader("X-Forwarded-For");
+        String remoteAddr = request.getRemoteAddr();
+        String host = request.getHeader("host");
+
+        logger.info("【域名】{} | CF-IP:{} | X-Real-IP:{} | XFF:{} | Remote:{}",
+                host, cfIp, realIp, xff, remoteAddr);
+
+        // 1️⃣ 优先：CF-Connecting-IP（Cloudflare 专用）
+        if (isValidIp(cfIp)) {
+            String real = cfIp.trim();
+            logger.info("✅ 最终登录IP(Cloudflare)：{}", real);
+            return real;
         }
-        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
-            ip = request.getHeader("WL-Proxy-Client-IP");
+
+        // 2️⃣ 次选：X-Real-IP（Nginx 透传）
+        if (isValidIp(realIp)) {
+            String real = realIp.trim();
+            logger.info("✅ 最终登录IP(Nginx直连)：{}", real);
+            return real;
         }
-        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
-            ip = request.getHeader("HTTP_CLIENT_IP");
-        }
-        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
-            ip = request.getHeader("HTTP_X_FORWARDED_FOR");
-        }
-        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
-            ip = request.getRemoteAddr();
-        }
-        if (ip != null && !ip.isEmpty()) {
-            String[] ips = ip.split(",");
+
+        // 3️⃣ 备用：X-Forwarded-For（取第一个有效IP）
+        if (isValidIp(xff)) {
+            String[] ips = xff.split(",");
             for (String strIp : ips) {
-                if (!"unknown".equalsIgnoreCase(strIp)) {
-                    ip = strIp.trim();
-                    break;
+                if (isValidIp(strIp)) {
+                    String real = strIp.trim();
+                    logger.info("✅ 最终登录IP(X-Forwarded-For)：{}", real);
+                    return real;
                 }
             }
         }
-        return ip == null ? "" : ip;
+
+        // 4️⃣ 兜底
+        String ip = remoteAddr;
+        logger.warn("⚠️ 兜底使用 RemoteAddr：{}", ip);
+        return isValidIp(ip) ? ip.trim() : "";
+    }
+
+    private static boolean isValidIp(String ip) {
+        if (ip == null) return false;
+        String trimmed = ip.trim();
+        if (trimmed.isEmpty()) return false;
+        if ("unknown".equalsIgnoreCase(trimmed)) return false;
+        return true;
     }
 
     /**

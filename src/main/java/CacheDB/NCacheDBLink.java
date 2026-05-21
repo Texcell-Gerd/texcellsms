@@ -447,7 +447,7 @@ public class NCacheDBLink {
 		}
 		//System.out.println("---------------QueryGWUserPass_With2FA--------------");
 		//System.out.println("Ret=" + pResult.getnRet() + ",sError=" + decodeErr + ",outputCount=" + pResult.getnOutputParaCount() + ",totaldataset:" + pResult.getnTotalDataSet());
-		logger.info(strSQL+"调用开始 用户: {}",strUserName);
+		logger.info(strSQL+"调用开始 用户: {} IP:{}",strUserName,strReqIP);
 		logger.info("Ret={} ,sError={} outputCount={} totaldataset:{}", pResult.getnRet(),decodeErr, pResult.getnOutputParaCount() , pResult.getnTotalDataSet());
 		List<Recordset> pOutVal = pResult.getOutputPara();
 		Map<String, Object> map = new HashMap<String, Object>();
