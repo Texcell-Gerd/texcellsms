@@ -7,6 +7,8 @@ import com.texcellsms.sms.model.vo.LoginUser;
 import com.texcellsms.sms.service.AuthService;
 import com.texcellsms.sms.service.TokenService;
 import com.texcellsms.sms.util.AjaxResult;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -19,6 +21,9 @@ import static com.texcellsms.sms.util.SMSResponseMessage.*;
 
 @Service
 public class AuthServiceImpl implements AuthService {
+
+    // 你的 Logger 完全对齐
+    private static final Logger logger = LoggerFactory.getLogger(AuthServiceImpl.class);
 
     /**
      * 用户登录接口
@@ -33,28 +38,14 @@ public class AuthServiceImpl implements AuthService {
 
         CacheDBLonginResult cacheDBLonginResult = tokenService.getToken(loginUser);
 
-
-        if (!("%".equals(cacheDBLonginResult.getWhitelistIP())||cacheDBLonginResult.getWhitelistIP().contains(IP))){
-            String msg = IPWHHITLIST.getMessage();
-            // ====================== IP锁定：打印日志 ======================
-            System.out.format("[LOGIN_FAIL] USER=%s | IP=%s | CODE=480 | MSG=%s%n B",
-                    loginRequest.getUsername(), IP, msg,!("%".equals(cacheDBLonginResult.getWhitelistIP())||cacheDBLonginResult.getWhitelistIP().contains(IP)));
-            return new AjaxResult(IPWHHITLIST.getCode(), msg);
-        }
-
-        // 生成安全TOKEN
-        String safeToken = UUID.randomUUID().toString().replace("-", "");
-        loginUser.setToken(safeToken);
-        loginUser.setCreateTime(System.currentTimeMillis());
-        tokenService.createToken(loginUser);
-
+        // ====================== 登录结果为空 ======================
         if (cacheDBLonginResult == null) {
-            // ====================== 登录失败：打印日志 ======================
-            System.out.format("[LOGIN_FAIL] USER=%s | IP=%s | CODE=NULL | MSG=登录验证失败%n",
+            logger.error("[LOGIN_FAIL] USER={} | IP={} | CODE=NULL | MSG=Authentication failed",
                     loginRequest.getUsername(), IP);
             return AjaxResult.error();
         }
 
+        // ====================== 业务错误码处理 ======================
         if (!"0".equals(cacheDBLonginResult.getResult())) {
             String code = cacheDBLonginResult.getResult();
             String msg = "";
@@ -62,35 +53,82 @@ public class AuthServiceImpl implements AuthService {
             switch (code) {
                 case "405":
                     msg = PARAMETERERROR.getMessage();
+                    logger.error("[LOGIN_FAIL] USER={} | IP={} | CODE=405 | MSG={}",
+                            loginRequest.getUsername(), IP, msg);
                     return new AjaxResult(PARAMETERERROR.getCode(), msg);
                 case "502":
                     msg = CACHEDBERROR.getMessage();
+                    logger.error("[LOGIN_FAIL] USER={} | IP={} | CODE=502 | MSG={}",
+                            loginRequest.getUsername(), IP, msg);
                     return new AjaxResult(CACHEDBERROR.getCode(), msg);
                 case "403":
                     msg = AUTHENTICATIONERROR.getMessage();
+                    logger.error("[LOGIN_FAIL] USER={} | IP={} | CODE=403 | MSG={}",
+                            loginRequest.getUsername(), IP, msg);
                     return new AjaxResult(AUTHENTICATIONERROR.getCode(), msg);
                 case "603":
                     msg = ACCOUNTLOCKEDERROR.getMessage();
+                    logger.error("[LOGIN_FAIL] USER={} | IP={} | CODE=603 | MSG={}",
+                            loginRequest.getUsername(), IP, msg);
                     return new AjaxResult(ACCOUNTLOCKEDERROR.getCode(), msg);
                 case "402":
                     msg = ACCOUNTERROR.getMessage();
+                    logger.error("[LOGIN_FAIL] USER={} | IP={} | CODE=402 | MSG={}",
+                            loginRequest.getUsername(), IP, msg);
                     return new AjaxResult(ACCOUNTERROR.getCode(), msg);
                 case "480":
                     msg = IPLOCKEDERROR.getMessage();
-                    // ====================== IP锁定：打印日志 ======================
-                    System.out.format("[LOGIN_FAIL] USER=%s | IP=%s | CODE=480 | MSG=%s%n",
+                    logger.error("[LOGIN_FAIL] USER={} | IP={} | CODE=480 | MSG={}",
                             loginRequest.getUsername(), IP, msg);
                     return new AjaxResult(IPLOCKEDERROR.getCode(), msg);
                 default:
-                    msg = "登录失败";
-                    // ====================== 其他错误：打印日志 ======================
-                    System.out.format("[LOGIN_FAIL] USER=%s | IP=%s | CODE=%s | MSG=%s%n",
+                    msg = "Login failed";
+                    logger.error("[LOGIN_FAIL] USER={} | IP={} | CODE={} | MSG={}",
                             loginRequest.getUsername(), IP, code, msg);
-                    return new AjaxResult(Integer.parseInt(code), "");
+                    return new AjaxResult(Integer.parseInt(code), msg);
             }
         }
+
+        // ====================== IP白名单校验（支持多IP） ======================
+        String whiteIP = cacheDBLonginResult.getWhitelistIP();
+        boolean ipAllowed;
+
+        if (whiteIP == null || whiteIP.trim().isEmpty()) {
+            ipAllowed = true;
+        } else if ("%".equals(whiteIP.trim())) {
+            ipAllowed = true;
+        } else {
+            String[] allowedIPs = whiteIP.split("[;,\\s]+");
+            ipAllowed = false;
+            for (String allowedIp : allowedIPs) {
+                if (allowedIp.trim().equals(IP)) {
+                    ipAllowed = true;
+                    break;
+                }
+            }
+        }
+
+        // IP 不匹配
+        if (!ipAllowed) {
+            String msg = "IP address not in whitelist";
+            logger.error("[LOGIN_FAIL] USER={} | IP={} | WHITELIST={} | MSG={}",
+                    loginRequest.getUsername(), IP, whiteIP, msg);
+            return new AjaxResult(480, msg);
+        }
+
+        // ====================== 登录成功 ======================
+        String safeToken = java.util.UUID.randomUUID().toString().replace("-", "");
+        loginUser.setToken(safeToken);
+        loginUser.setCreateTime(System.currentTimeMillis());
+        tokenService.createToken(loginUser);
+
+        // ✅ 这个格式 100% 匹配监控面板，会自动进入登录日志
+        logger.info("[LOGIN_SUCCESS] USER={} | IP={} | WHITELIST={} | MSG=Login success",
+                loginRequest.getUsername(), IP, whiteIP);
+
         return AjaxResult.success(loginUser);
     }
+
 
     /**
      * 查询账户余额
