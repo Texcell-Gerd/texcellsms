@@ -20,4 +20,10 @@ public class LoginUser implements Serializable {
     private String UUID;
 
     private long createTime;
+
+    private String sManualKey;
+
+    private String sQRCode;
+
+    private String faKey;
 }

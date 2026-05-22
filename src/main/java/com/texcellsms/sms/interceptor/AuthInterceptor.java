@@ -29,6 +29,10 @@ public class AuthInterceptor implements HandlerInterceptor {
             return true;
         }
 
+        if (request.getRequestURI().equals(Constants.Verify)) {
+            return true;
+        }
+
         // 1. 取 Token（兼容大小写）
         String token = request.getHeader(Constants.HEADER);
         if (token == null || token.trim().isEmpty()) {

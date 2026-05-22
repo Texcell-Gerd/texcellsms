@@ -5,9 +5,15 @@ import com.texcellsms.sms.controller.AuthController;
 import com.texcellsms.sms.util.AjaxResult;
 import org.springframework.stereotype.Service;
 
+import javax.servlet.http.HttpServletRequest;
+
 @Service
 public interface AuthService {
   AjaxResult login(AuthController.LoginRequest loginRequest,String IP);
+
+  AjaxResult login2FA(AuthController.LoginRequest loginRequest,String IP,HttpServletRequest request);
+
+  AjaxResult AVerify(String Token,String code,String IP);
 
   AjaxResult getBalance(String Username);
 

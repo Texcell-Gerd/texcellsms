@@ -114,6 +114,11 @@ public class Constants
     public static final String LOGIN="/api/auth/login";
 
     /**
+     * 登录路径
+     */
+    public static final String Verify="/api/auth/2FAVerify";
+
+    /**
      * 令牌
      */
     public static final String HEADER = "Authorization";

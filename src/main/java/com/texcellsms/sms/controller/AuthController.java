@@ -74,7 +74,21 @@ public class AuthController {
         loginRequest.setUsername(AppName);
         loginRequest.setPassword(Secret);
         String IP = TokenService.getIpAddress(request);
-        AjaxResult ajaxResult = authService.login(loginRequest, IP);
+        AjaxResult ajaxResult = authService.login2FA(loginRequest, IP,request);
+        if (ajaxResult.get("data") != null && !ajaxResult.get("data").equals("")) {
+            response.setHeader(Constants.HEADER, JSON.toJavaObject(ajaxResult.get("data"), LoginUser.class).getToken());
+        }
+        return ajaxResult;
+    }
+
+
+    @PostMapping("/api/auth/2FAVerify")
+    public AjaxResult AVerify(
+            @RequestHeader(RequestHeaderConstants.AUTHORIZATION) String Authorization,
+            @RequestHeader("Code") String code,
+            HttpServletRequest request, HttpServletResponse response) {
+        String IP = TokenService.getIpAddress(request);
+        AjaxResult ajaxResult = authService.AVerify(Authorization,code,IP);
         if (ajaxResult.get("data") != null && !ajaxResult.get("data").equals("")) {
             response.setHeader(Constants.HEADER, JSON.toJavaObject(ajaxResult.get("data"), LoginUser.class).getToken());
         }

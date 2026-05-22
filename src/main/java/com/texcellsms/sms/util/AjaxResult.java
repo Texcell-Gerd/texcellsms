@@ -13,6 +13,37 @@ public class AjaxResult extends HashMap<String, Object>
     public static final String MSG_TAG = "msg";
     public static final String DATA_TAG = "data";
 
+
+
+    /**
+     * 获取响应码
+     */
+    public int getCode() {
+        return (int) this.getOrDefault(CODE_TAG, -1);
+    }
+
+    /**
+     * 获取响应消息
+     */
+    public String getMsg() {
+        return (String) this.getOrDefault(MSG_TAG, "");
+    }
+
+    /**
+     * 获取响应数据
+     */
+    @SuppressWarnings("unchecked")
+    public <T> T getData() {
+        return (T) this.get(DATA_TAG);
+    }
+
+    /**
+     * 获取整个内容 Map（即当前对象本身）
+     */
+    public HashMap<String, Object> getContent() {
+        return this;
+    }
+
     public AjaxResult() {}
 
     public AjaxResult(int code, String msg)
@@ -57,6 +88,11 @@ public class AjaxResult extends HashMap<String, Object>
     public static AjaxResult success(String msg, Object data)
     {
         return new AjaxResult(SMSResponseMessage.SUCCESS.getCode(), msg, data);
+    }
+
+    public static AjaxResult success(int code,String msg, Object data)
+    {
+        return new AjaxResult(code, msg, data);
     }
 
     // 失败

@@ -32,6 +32,10 @@ public enum SMSResponseMessage {
     IPAUTHORIZATIONERROR("Bound IP does not match", 101),
     IPLOCKEDERROR("The IP has been locked due to excessive failed attempts.", 480),
     IPWHHITLIST("Please contact the administrator to add IPs to the whitelist.", 481),
+    LOGIN2FA("Perform two-step verification",201),
+    TWOSTEPVERIFICATIONFAILED("Two-step verification code mismatch",482),
+    BIND2AT("Please bind your account first.",483),
+
 
     // ==================== 新增：查询相关错误（以下为新增，不改动原有） ====================
     /**
