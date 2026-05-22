@@ -228,7 +228,7 @@ public class AuthServiceImpl implements AuthService {
         }
 
         //====================== 两步验证 ======================
-        if ("1".equals(cacheDBLonginResult.getIsEnable())&&cacheDBLonginResult.getFAKey().length()>1){
+        if ("0".equals(cacheDBLonginResult.getIsEnable())&&cacheDBLonginResult.getFAKey().length()>1){
             return Google2FA(loginRequest,request.getRemoteHost(),cacheDBLonginResult.getFAKey());
         }
 
@@ -316,7 +316,7 @@ public class AuthServiceImpl implements AuthService {
         // 4. 验证验证码是否正确
         boolean isValid = gAuth.authorize(loginUser.getFaKey(), Integer.parseInt(userProvidedCode));
         if (!isValid) {
-            AjaxResult.error(TWOSTEPVERIFICATIONFAILED.getCode(), TWOSTEPVERIFICATIONFAILED.getMessage());
+           return AjaxResult.error(TWOSTEPVERIFICATIONFAILED.getCode(), TWOSTEPVERIFICATIONFAILED.getMessage());
         }
         return AjaxResult.success(loginUser);
     }
