@@ -18,7 +18,7 @@ public class NCacheDBLink {
 
 	private static final int connections = 10;
 
-	private static final String sServer ="192.168.112.250";
+	private static final String sServer ="192.168.120.250";
 
 	private static int nPort = 11781;
 
