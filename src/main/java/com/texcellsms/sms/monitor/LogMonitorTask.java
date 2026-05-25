@@ -1,6 +1,8 @@
 package com.texcellsms.sms.monitor;
 
 import com.texcellsms.sms.interceptor.SecurityMonitorInterceptor;
+import com.texcellsms.sms.mapper.webportal.LoginAuditLogMapper;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -9,8 +11,8 @@ import java.io.*;
 import java.lang.management.*;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
+import java.time.LocalDateTime;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -31,10 +33,16 @@ public class LogMonitorTask {
     public static final List<String> recentGcLogs = new LinkedList<>();
     public static final List<String> recentLongSms = new LinkedList<>();
     public static final List<String> recentApiLogs = new LinkedList<>();
-    public static final List<String> recentLoginLogs = new LinkedList<>();
+
+    // ✅ 登录日志改为从数据库查询，不再从文件解析
+    // public static final List<String> recentLoginLogs = new LinkedList<>();  // 删除这行
 
     // ====================== 统计数据 ======================
     private static final Map<String, AtomicInteger> apiStats = new HashMap<>();
+
+    // ✅ 新增：登录统计数据缓存
+    private static final Map<String, Object> loginStatsCache = new HashMap<>();
+    private static long lastLoginStatsTime = 0;
 
     // ====================== 正则表达式 ======================
     private static final Pattern LOGIN_USER_PATTERN = Pattern.compile("用户: (\\w+)");
@@ -42,6 +50,9 @@ public class LogMonitorTask {
     private static final Pattern API_PATTERN = Pattern.compile("\\[API调用\\] (GET|POST) (\\S+) 耗时:(\\d+)ms 状态:(\\S+)");
     private static final Pattern TIMESTAMP_PATTERN = Pattern.compile("^(\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2})");
     private static final Pattern IP_PATTERN = Pattern.compile("\\b(?:[0-9]{1,3}\\.){3}[0-9]{1,3}\\b");
+
+    @Autowired(required = false)
+    private LoginAuditLogMapper loginAuditLogMapper;
 
     @PostConstruct
     public void init() {
@@ -89,8 +100,8 @@ public class LogMonitorTask {
         return metrics;
     }
 
-    // ====================== 获取统计数据 ======================
-    public static Map<String, Object> getStatistics() {
+    // ====================== 获取统计数据（包含从数据库查询的登录统计）======================
+    public Map<String, Object> getStatistics() {
         Map<String, Object> stats = new HashMap<>();
 
         stats.put("errorCount", recentErrors.size());
@@ -98,19 +109,11 @@ public class LogMonitorTask {
         stats.put("longSmsCount", recentLongSms.size());
         stats.put("apiCallCount", recentApiLogs.size());
 
-        synchronized (recentLoginLogs) {
-            int successCount = 0;
-            int failCount = 0;
-            for (String log : recentLoginLogs) {
-                if (log.contains("成功")) {
-                    successCount++;
-                } else if (log.contains("失败")) {
-                    failCount++;
-                }
-            }
-            stats.put("loginSuccessCount", successCount);
-            stats.put("loginFailCount", failCount);
-        }
+        // ✅ 从数据库获取登录统计数据
+        Map<String, Object> loginStats = getLoginStatsFromDb();
+        stats.put("loginSuccessCount", loginStats.getOrDefault("successCount", 0));
+        stats.put("loginFailCount", loginStats.getOrDefault("failCount", 0));
+        stats.put("totalLoginCount", loginStats.getOrDefault("totalCount", 0));
 
         Map<String, Integer> apiTop = new LinkedHashMap<>();
         synchronized (apiStats) {
@@ -124,6 +127,42 @@ public class LogMonitorTask {
             }
         }
         stats.put("topApis", apiTop);
+
+        return stats;
+    }
+
+    /**
+     * ✅ 从数据库获取登录统计数据（带缓存，每分钟刷新一次）
+     */
+    private Map<String, Object> getLoginStatsFromDb() {
+        // 缓存60秒
+        if (System.currentTimeMillis() - lastLoginStatsTime < 60000 && !loginStatsCache.isEmpty()) {
+            return loginStatsCache;
+        }
+
+        Map<String, Object> stats = new HashMap<>();
+        stats.put("successCount", 0);
+        stats.put("failCount", 0);
+        stats.put("totalCount", 0);
+
+        if (loginAuditLogMapper == null) {
+            return stats;
+        }
+
+        try {
+            LocalDateTime todayStart = LocalDateTime.now().withHour(0).withMinute(0).withSecond(0);
+            long successCount = loginAuditLogMapper.count(null, null, 1, todayStart, null);
+            long failCount = loginAuditLogMapper.count(null, null, 0, todayStart, null);
+
+            stats.put("successCount", successCount);
+            stats.put("failCount", failCount);
+            stats.put("totalCount", successCount + failCount);
+
+            loginStatsCache.putAll(stats);
+            lastLoginStatsTime = System.currentTimeMillis();
+        } catch (Exception e) {
+            System.err.println("获取登录统计数据失败: " + e.getMessage());
+        }
 
         return stats;
     }
@@ -183,28 +222,12 @@ public class LogMonitorTask {
                         continue;
                     }
 
-                    // ====================== 登录监控 ======================
-                    if (rawLine.contains("QueryGWUserPass_With2FA调用开始")) {
-                        Matcher m = LOGIN_USER_PATTERN.matcher(rawLine);
-                        if (m.find()) currentLoginUser = m.group(1);
-                    }
-
+                    // ====================== 暴力破解检测======================
                     if (rawLine.contains("KEY:Result Val:")) {
                         Matcher m = LOGIN_RESULT_PATTERN.matcher(rawLine);
-                        if (m.find()) currentLoginResult = m.group(1);
-
-                        if (currentLoginUser != null && currentLoginResult != null) {
+                        if (m.find()) {
+                            currentLoginResult = m.group(1);
                             boolean isSuccess = "0".equals(currentLoginResult);
-                            String result = isSuccess ? "成功" : "失败";
-                            String errMsg = isSuccess ? "" : ("(" + getLoginErrorMsg(currentLoginResult) + ")");
-                            String log = String.format("[%s] | %s | %s | 登录%s %s",
-                                    extractTime(rawLine), currentLoginUser, result, result, errMsg);
-
-                            if (!recentLoginLogs.contains(log)) {
-                                addToList(recentLoginLogs, log, 200);
-                            }
-
-                            // 暴力破解检测 → 统一交给 SecurityMonitorInterceptor
                             if (!isSuccess) {
                                 String ip = extractIpFromLog(rawLine);
                                 if (ip != null) {
@@ -212,8 +235,7 @@ public class LogMonitorTask {
                                 }
                             }
                         }
-                        currentLoginUser = null;
-                        currentLoginResult = null;
+                        continue;
                     }
 
                     // ====================== 异常监控 ======================
@@ -254,7 +276,6 @@ public class LogMonitorTask {
                 while ((line = br.readLine()) != null) {
                     if (line.contains("CommandLine flags")) continue;
 
-                    // 只识别真正危险GC，普通Young GC忽略
                     boolean isAbnormal = line.contains("Full GC")
                             || line.contains("OutOfMemoryError")
                             || line.contains("promotion failed")
@@ -298,26 +319,15 @@ public class LogMonitorTask {
         return null;
     }
 
-    private String getLoginErrorMsg(String code) {
-        switch (code) {
-            case "402": return "账号或密码错误";
-            case "403": return "认证失败/两步验证获取失败";
-            case "405": return "参数不完整";
-            case "480": return "IP已锁定（多次失败）";
-            case "502": return "CacheDB执行失败";
-            case "603": return "账户已锁定";
-            default: return "未知登录错误";
-        }
-    }
-
     private String parseAndClassifyLog(String rawLine) {
         String time = extractTime(rawLine);
         String type = "未知错误";
         String keyInfo = "";
-        // 跳过GC日志
+
         if (rawLine.contains("Allocation Failure") || rawLine.contains("PSYoungGen")) {
             return null;
         }
+
         if (rawLine.contains("NullPointerException")) {
             type = "空指针异常";
             keyInfo = "Java代码访问了null对象，请检查变量初始化";

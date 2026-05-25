@@ -19,52 +19,42 @@ public class SecurityMonitorInterceptor implements HandlerInterceptor {
     private static final Logger logger = LoggerFactory.getLogger(SecurityMonitorInterceptor.class);
     private static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
 
-    // IP访问频率记录
     private static final Map<String, LinkedList<Long>> ipAccessRecords = new ConcurrentHashMap<>();
-
-    // IP登录失败次数记录
     private static final Map<String, AtomicInteger> ipLoginFailCount = new ConcurrentHashMap<>();
-
-    // 全局攻击日志存储
     public static final List<String> recentAttacks = new LinkedList<>();
-
-    // 攻击类型计数
     public static final Map<String, AtomicInteger> attackStats = new ConcurrentHashMap<>();
 
-    // 阈值配置
     private static final int MAX_REQUESTS_PER_MINUTE = 60;
     private static final int MAX_LOGIN_FAILS_PER_HOUR = 10;
     private static final long BLOCK_DURATION = 5 * 60 * 1000;
-
-    // 临时封禁的IP
     private static final Map<String, Long> blockedIps = new ConcurrentHashMap<>();
 
-    // SQL注入检测
     private static final Pattern SQL_INJECTION_PATTERN = Pattern.compile(
             "(?i)(SELECT|INSERT|DELETE|UPDATE|DROP|UNION|ALTER|CREATE|TRUNCATE|EXEC|EXECUTE|" +
-                    "AND.*=.*|OR.*=.*|'.*--|'.*#|/\\*.*\\*/|XP_|SP_|WAITFOR|DELAY|BENCHMARK|SLEEP\\()"
+                    "'.*--|'.*#|/\\*.*\\*/|XP_|SP_|WAITFOR|DELAY|BENCHMARK|SLEEP\\()"
     );
 
-    // XSS攻击检测
     private static final Pattern XSS_PATTERN = Pattern.compile(
             "(?i)(<script|</script|alert\\(|onclick=|onload=|javascript:|<iframe|<img src|" +
                     "onerror=|prompt\\(|confirm\\(|document\\.|window\\.|location\\.|eval\\()"
     );
 
-    // 敏感路径
     private static final List<String> SENSITIVE_PATHS = Arrays.asList(
             "/admin", "/manage", "/config", "/env", "/actuator", "/swagger",
             "/druid", "/api/doc", "/v2/api-docs", "/metrics", "/heapdump",
             "/threaddump", "/logfile", "/h2-console", "/console"
     );
 
-    // 扫描器特征
     private static final List<String> SCANNER_AGENTS = Arrays.asList(
             "nmap", "nikto", "sqlmap", "dirb", "gobuster", "masscan", "wpscan",
             "nessus", "openvas", "burp", "zap", "acunetix", "awvs"
     );
 
-    // 统一记录暴力破解
+    // ====================== 接口白名单======================
+    private static final List<String> EXPORT_WHITE_LIST = Arrays.asList(
+            "/api/eccom/submit-record/export/easyexcel"
+    );
+
     public static void recordLoginFailure(String ip) {
         if (ip == null) return;
         AtomicInteger failCount = ipLoginFailCount.computeIfAbsent(ip, k -> new AtomicInteger(0));
@@ -78,7 +68,6 @@ public class SecurityMonitorInterceptor implements HandlerInterceptor {
         }
     }
 
-    // 直接记录攻击（供外部调用）
     public static void recordAttackDirect(String attackLog) {
         synchronized (recentAttacks) {
             if (recentAttacks.size() >= 100) recentAttacks.remove(0);
@@ -103,42 +92,41 @@ public class SecurityMonitorInterceptor implements HandlerInterceptor {
         String userAgent = request.getHeader("User-Agent");
         String queryString = request.getQueryString();
 
-        // 1. 检查是否被封禁
+        // ====================== ✅ 白名单直接放行 ======================
+        if (EXPORT_WHITE_LIST.contains(uri)) {
+            return true;
+        }
+
         if (isBlocked(clientIp)) {
             recordAttack(clientIp, "IP临时封禁", uri, "5分钟内禁止访问");
             response.setStatus(429);
             return false;
         }
 
-        // 2. 请求频率限制
         if (checkRateLimit(clientIp)) {
             recordAttack(clientIp, "高频请求攻击", uri, "超过每分钟60次");
             response.setStatus(429);
             return false;
         }
 
-        // 3. SQL注入
         if (checkSqlInjection(uri, queryString, request)) {
             recordAttack(clientIp, "SQL注入攻击", uri, "检测到注入特征");
             response.setStatus(403);
             return false;
         }
 
-        // 4. XSS攻击
         if (checkXss(uri, queryString, request)) {
             recordAttack(clientIp, "XSS攻击", uri, "检测到脚本特征");
             response.setStatus(403);
             return false;
         }
 
-        // 5. 敏感路径扫描
         if (checkSensitivePath(uri)) {
             recordAttack(clientIp, "敏感路径扫描", uri, "非法访问后台路径");
             response.setStatus(404);
             return false;
         }
 
-        // 6. 扫描器特征
         if (checkScanner(userAgent)) {
             recordAttack(clientIp, "扫描器攻击", uri, "检测到扫描器UA");
             response.setStatus(403);
@@ -148,14 +136,12 @@ public class SecurityMonitorInterceptor implements HandlerInterceptor {
         return true;
     }
 
-    // 统一攻击记录
     private void recordAttack(String ip, String type, String target, String detail) {
         String log = String.format("[%s] | IP:%s | 类型:%s | 目标:%s | 详情:%s",
                 DATE_FORMAT.format(new Date()), ip, type, target, detail);
         recordAttackDirect(log);
     }
 
-    // 检查IP是否被封禁
     private boolean isBlocked(String ip) {
         Long blockTime = blockedIps.get(ip);
         if (blockTime != null) {
@@ -168,12 +154,10 @@ public class SecurityMonitorInterceptor implements HandlerInterceptor {
         return false;
     }
 
-    // 封禁IP
     private void blockIp(String ip) {
         blockedIps.put(ip, System.currentTimeMillis());
     }
 
-    // 频率限制
     private boolean checkRateLimit(String ip) {
         long now = System.currentTimeMillis();
         LinkedList<Long> records = ipAccessRecords.computeIfAbsent(ip, k -> new LinkedList<>());
@@ -191,17 +175,13 @@ public class SecurityMonitorInterceptor implements HandlerInterceptor {
     }
 
     private boolean checkSqlInjection(String uri, String queryString, HttpServletRequest request) {
-        // 短信送达状态白名单，直接放行
         List<String> whiteList = Arrays.asList("DELIVRD", "UNDELIV", "UNKNOWN", "submit", "fail", "success");
 
-        // 检查 URI
         if (SQL_INJECTION_PATTERN.matcher(uri).find()) {
             return true;
         }
 
-        // 检查 QueryString
         if (queryString != null) {
-            // 如果是短信状态，直接放行
             for (String white : whiteList) {
                 if (queryString.contains(white)) {
                     return false;
@@ -212,13 +192,11 @@ public class SecurityMonitorInterceptor implements HandlerInterceptor {
             }
         }
 
-        // 检查参数
         Map<String, String[]> params = request.getParameterMap();
         for (String[] values : params.values()) {
             for (String v : values) {
                 if (v == null) continue;
 
-                // 白名单直接放行
                 for (String white : whiteList) {
                     if (v.equalsIgnoreCase(white)) {
                         return false;
@@ -263,7 +241,6 @@ public class SecurityMonitorInterceptor implements HandlerInterceptor {
         return false;
     }
 
-    // 获取真实IP
     private String getClientIp(HttpServletRequest request) {
         String ip = request.getHeader("X-Forwarded-For");
         if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
@@ -278,7 +255,6 @@ public class SecurityMonitorInterceptor implements HandlerInterceptor {
         return ip;
     }
 
-    // 获取攻击统计（给面板用）
     public static Map<String, Object> getAttackStatistics() {
         Map<String, Object> stats = new HashMap<>();
         stats.put("totalAttacks", recentAttacks.size());
