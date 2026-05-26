@@ -228,8 +228,6 @@ public class AuthServiceImpl implements AuthService {
             return new AjaxResult(480, msg);
         }
 
-        cacheDBLonginResult.setIsEnable("1");
-
         //====================== 两步验证 ======================
         if ("0".equals(cacheDBLonginResult.getIsEnable())){
             return Google2FA(loginRequest,request.getRemoteHost(),cacheDBLonginResult.getFAKey());
