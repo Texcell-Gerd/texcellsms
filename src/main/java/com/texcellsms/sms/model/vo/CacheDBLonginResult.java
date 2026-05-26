@@ -10,12 +10,14 @@ public class CacheDBLonginResult implements Serializable {
     private String  WhitelistIP;
     private String  FAKey;
     private String  IsEnable;
+    private String Email;
 
-    public CacheDBLonginResult(String result, String whitelistIP, String FAKey, String isEnable) {
+    public CacheDBLonginResult(String result, String whitelistIP, String FAKey, String isEnable, String email) {
         Result = result;
         WhitelistIP = whitelistIP;
         this.FAKey = FAKey;
         IsEnable = isEnable;
+        Email = email;
     }
 
     public CacheDBLonginResult(){

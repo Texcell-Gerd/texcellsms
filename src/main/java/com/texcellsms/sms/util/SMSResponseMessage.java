@@ -35,7 +35,11 @@ public enum SMSResponseMessage {
     LOGIN2FA("Perform two-step verification",201),
     TWOSTEPVERIFICATIONFAILED("Two-step verification code mismatch",482),
     BIND2AT("Please bind your account first.",483),
-
+    EMAILDOESNOTEXIST("Email does not exist,Please contact the administrator.",484),
+    EMAILFAILED("Email failed to send, please log in again to try.",485),
+    EMAILSUCCESSFULLY("Email sent successfully, please verify.",202),
+    CODEEXPIRED("Your verification code has expired. Please log in again.",486),
+    FREQUENTEMAILSENDING("Frequent email sending",487),
 
     // ==================== 新增：查询相关错误（以下为新增，不改动原有） ====================
     /**

@@ -29,9 +29,6 @@ public class AuthInterceptor implements HandlerInterceptor {
             return true;
         }
 
-        if (request.getRequestURI().equals(Constants.Verify)) {
-            return true;
-        }
 
         // 1. 取 Token（兼容大小写）
         String token = request.getHeader(Constants.HEADER);
@@ -43,6 +40,14 @@ public class AuthInterceptor implements HandlerInterceptor {
         if (token == null || token.trim().isEmpty() || "undefined".equals(token)) {
             sendError(response, SMSResponseMessage.AUTHORIZATIONERROR);
             return false;
+        }
+
+        if (request.getRequestURI().equals(Constants.Verify)) {
+            return true;
+        }
+
+        if (request.getRequestURI().equals(Constants.AVerifyEmail)) {
+            return true;
         }
 
         // 3. 检查是否存在

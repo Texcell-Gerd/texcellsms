@@ -11,6 +11,7 @@ import com.texcellsms.sms.service.AuthService;
 import com.texcellsms.sms.service.TempTokenUtil;
 import com.texcellsms.sms.service.TokenService;
 import com.texcellsms.sms.util.AjaxResult;
+import com.texcellsms.sms.util.EmailUtil;
 import com.warrenstrange.googleauth.GoogleAuthenticator;
 import com.warrenstrange.googleauth.GoogleAuthenticatorKey;
 import com.warrenstrange.googleauth.GoogleAuthenticatorQRGenerator;
@@ -19,6 +20,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpSession;
 import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.List;
@@ -43,7 +45,6 @@ public class AuthServiceImpl implements AuthService {
         loginUser.setUsername(loginRequest.getUsername());
         loginUser.setPassword(loginRequest.getPassword());
         loginUser.setIP(IP);
-
         CacheDBLonginResult cacheDBLonginResult = tokenService.getToken(loginUser);
 
         // ====================== 登录结果为空 ======================
@@ -140,7 +141,7 @@ public class AuthServiceImpl implements AuthService {
 
 
     @Override
-    public AjaxResult login2FA(AuthController.LoginRequest loginRequest, String IP, HttpServletRequest request) {
+    public AjaxResult login2FA(HttpSession session,AuthController.LoginRequest loginRequest, String IP, HttpServletRequest request) {
         TokenService tokenService = new TokenService();
         LoginUser loginUser = new LoginUser();
         loginUser.setUsername(loginRequest.getUsername());
@@ -227,11 +228,15 @@ public class AuthServiceImpl implements AuthService {
             return new AjaxResult(480, msg);
         }
 
+        cacheDBLonginResult.setIsEnable("1");
+
         //====================== 两步验证 ======================
-        if ("0".equals(cacheDBLonginResult.getIsEnable())&&cacheDBLonginResult.getFAKey().length()>1){
+        if ("0".equals(cacheDBLonginResult.getIsEnable())){
             return Google2FA(loginRequest,request.getRemoteHost(),cacheDBLonginResult.getFAKey());
         }
-
+        if ("2".equals(cacheDBLonginResult.getIsEnable())){
+            return Email2FA(session,loginRequest,cacheDBLonginResult.getEmail());
+        }
         // ====================== 登录成功 ======================
         String safeToken = java.util.UUID.randomUUID().toString().replace("-", "");
         loginUser.setToken(safeToken);
@@ -293,6 +298,45 @@ public class AuthServiceImpl implements AuthService {
         return AjaxResult.success(LOGIN2FA.getCode(),LOGIN2FA.getMessage(),loginUser);
     }
 
+
+    public AjaxResult Email2FA(HttpSession session,AuthController.LoginRequest loginRequest,String email){
+
+        String sessionEmail = (String) session.getAttribute(email);
+        logger.info("sessionEmail{}{}",sessionEmail,sessionEmail!=null);
+        if (sessionEmail!=null){
+            return AjaxResult.error(FREQUENTEMAILSENDING.getCode(),FREQUENTEMAILSENDING.getMessage());
+        };
+
+        if ("".equals(email)||email==null){
+            return AjaxResult.error(EMAILDOESNOTEXIST.getCode(),EMAILDOESNOTEXIST.getMessage());
+        }
+
+        // 生成验证码
+        String code = EmailUtil.generateCode();
+
+        // 发送邮件
+        boolean success = EmailUtil.sendEmailCode(email, code);
+
+        if (success) {
+            LoginUser loginUser = new LoginUser();
+            loginUser.setToken(TempTokenUtil.generateToken(loginRequest.getUsername(),loginRequest.getPassword()));
+            loginUser.setEmail(email);
+            // 保存验证码
+            session.setAttribute("emailCode:"+loginUser.getToken(), code);
+            // 保存时间（可选）
+            session.setAttribute("emailCodeTime:"+loginUser.getToken(), System.currentTimeMillis());
+            // 保存邮箱
+            session.setAttribute("email:"+loginUser.getToken(), email);
+            // 保存邮箱
+            session.setAttribute(email, email);
+            // 设置过期时间
+            session.setMaxInactiveInterval(5 * 60);
+            return AjaxResult.success(EMAILSUCCESSFULLY.getCode(),EMAILSUCCESSFULLY.getMessage(),loginUser);
+        }
+
+        return AjaxResult.error(EMAILFAILED.getCode(),EMAILFAILED.getMessage());
+    }
+
     @Override
     public AjaxResult AVerify(String Token, String code, String IP) {
         if (!TempTokenUtil.verifyTokenTimestamp(Token)){
@@ -306,6 +350,44 @@ public class AuthServiceImpl implements AuthService {
         AjaxResult ajaxResult = login(loginRequest,IP);
         LoginUser loginUser = ajaxResult.getData();
         return GoogleAuthVerification(loginUser,code);
+    }
+
+    @Override
+    public AjaxResult AVerifyEmail(HttpSession session,String Token, String code, String IP) {
+        String sessionCode = (String) session.getAttribute("emailCode:"+Token);
+        String sessionEmail = (String) session.getAttribute("email:"+Token);
+        Long sendTime = (Long)session.getAttribute("emailCodeTime:"+Token);
+        logger.info("sessionCode{} sessionEmail{} sendTime{}", sessionCode,sessionEmail,sendTime);
+        if (sendTime==null||"".equals(sendTime)){
+            return AjaxResult.error(CODEEXPIRED.getCode(),CODEEXPIRED.getMessage());
+        }
+        // 5分钟过期
+        long now = System.currentTimeMillis();
+        if (now - sendTime > 5 * 60 * 1000) {
+            // 删除Session
+            session.removeAttribute("emailCode"+Token);
+            session.removeAttribute("email"+Token);
+            session.removeAttribute("emailCode"+Token);
+            session.removeAttribute(sessionEmail);
+            return AjaxResult.error(CODEEXPIRED.getCode(),CODEEXPIRED.getMessage());
+        }
+        // 验证码校验
+        if (!sessionCode.equals(code)) {
+            return AjaxResult.error(TWOSTEPVERIFICATIONFAILED.getCode(),TWOSTEPVERIFICATIONFAILED.getMessage());
+        }
+        // 删除Session
+        session.removeAttribute("emailCode"+Token);
+        session.removeAttribute("email"+Token);
+        session.removeAttribute("emailCode"+Token);
+        session.removeAttribute(sessionEmail);
+        //正式登录
+        String name = TempTokenUtil.getUsernameFromToken(Token);
+        String password = TempTokenUtil.getPasswordFromToken(Token);
+        AuthController.LoginRequest loginRequest =new AuthController.LoginRequest();
+        loginRequest.setUsername(name);
+        loginRequest.setPassword(password);
+        AjaxResult ajaxResult = login(loginRequest,IP);
+        return ajaxResult;
     }
 
     public AjaxResult GoogleAuthVerification(LoginUser loginUser,String userProvidedCode){

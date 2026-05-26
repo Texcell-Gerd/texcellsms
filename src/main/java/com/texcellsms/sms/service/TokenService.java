@@ -100,7 +100,7 @@ public class TokenService {
      */
     public synchronized CacheDBLonginResult getToken(LoginUser loginUser) {
         if (loginUser == null) {
-            return new CacheDBLonginResult("-1", "", "", "0");
+            return new CacheDBLonginResult("-1", "", "", "0","");
         }
         CACHE_DB_LINK.InitEnv();
         CACHE_DB_LINK.ConnectToCacheDB();
@@ -113,8 +113,9 @@ public class TokenService {
         String whitelistIP = (String) map.getOrDefault("WhitelistIP", "");
         String faKey = (String) map.getOrDefault("FAKey", "");
         String isEnable = (String) map.getOrDefault("IsEnable", "0");
+        String  Email = (String) map.getOrDefault("Email", "");
 
-        CacheDBLonginResult loginResult = new CacheDBLonginResult(result, whitelistIP, faKey, isEnable);
+        CacheDBLonginResult loginResult = new CacheDBLonginResult(result, whitelistIP, faKey, isEnable,Email);
         CACHE_DB_LINK.Disconnect();
         CACHE_DB_LINK.Destroy();
         return loginResult;

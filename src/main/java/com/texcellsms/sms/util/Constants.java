@@ -118,6 +118,12 @@ public class Constants
      */
     public static final String Verify="/api/auth/2FAVerify";
 
+
+    /**
+     * 登录路径
+     */
+    public static final String AVerifyEmail="/api/auth/2FAVerifyEmail";
+
     /**
      * 令牌
      */

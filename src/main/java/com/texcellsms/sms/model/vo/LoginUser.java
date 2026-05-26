@@ -26,4 +26,6 @@ public class LoginUser implements Serializable {
     private String sQRCode;
 
     private String faKey;
+
+    private String Email;
 }

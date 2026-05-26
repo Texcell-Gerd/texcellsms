@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.*;
 
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
+import javax.servlet.http.HttpSession;
 
 @RestController
 public class AuthController {
@@ -69,12 +70,12 @@ public class AuthController {
             @RequestHeader(RequestHeaderConstants.X_REQUEST) String xRequest,
             @RequestHeader("AppName") String AppName,
             @RequestHeader("Secret") String Secret,
-            HttpServletRequest request, HttpServletResponse response) {
+            HttpServletRequest request, HttpServletResponse response,HttpSession session) {
         LoginRequest loginRequest = new LoginRequest();
         loginRequest.setUsername(AppName);
         loginRequest.setPassword(Secret);
         String IP = TokenService.getIpAddress(request);
-        AjaxResult ajaxResult = authService.login2FA(loginRequest, IP,request);
+        AjaxResult ajaxResult = authService.login2FA(session,loginRequest,IP,request);
         if (ajaxResult.get("data") != null && !ajaxResult.get("data").equals("")) {
             response.setHeader(Constants.HEADER, JSON.toJavaObject(ajaxResult.get("data"), LoginUser.class).getToken());
         }
@@ -89,6 +90,19 @@ public class AuthController {
             HttpServletRequest request, HttpServletResponse response) {
         String IP = TokenService.getIpAddress(request);
         AjaxResult ajaxResult = authService.AVerify(Authorization,code,IP);
+        if (ajaxResult.get("data") != null && !ajaxResult.get("data").equals("")) {
+            response.setHeader(Constants.HEADER, JSON.toJavaObject(ajaxResult.get("data"), LoginUser.class).getToken());
+        }
+        return ajaxResult;
+    }
+
+    @PostMapping("/api/auth/2FAVerifyEmail")
+    public AjaxResult AVerifyEmail(
+            @RequestHeader(RequestHeaderConstants.AUTHORIZATION) String Authorization,
+            @RequestHeader("Code") String code,
+            HttpServletRequest request, HttpServletResponse response, HttpSession session) {
+        String IP = TokenService.getIpAddress(request);
+        AjaxResult ajaxResult = authService.AVerifyEmail(session,Authorization,code,IP);
         if (ajaxResult.get("data") != null && !ajaxResult.get("data").equals("")) {
             response.setHeader(Constants.HEADER, JSON.toJavaObject(ajaxResult.get("data"), LoginUser.class).getToken());
         }
