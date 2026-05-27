@@ -83,6 +83,7 @@ public class AuthController {
     }
 
 
+
     @PostMapping("/api/auth/2FAVerify")
     public AjaxResult AVerify(
             @RequestHeader(RequestHeaderConstants.AUTHORIZATION) String Authorization,
@@ -90,6 +91,22 @@ public class AuthController {
             HttpServletRequest request, HttpServletResponse response) {
         String IP = TokenService.getIpAddress(request);
         AjaxResult ajaxResult = authService.AVerify(Authorization,code,IP);
+        if (ajaxResult.get("data") != null && !ajaxResult.get("data").equals("")) {
+            response.setHeader(Constants.HEADER, JSON.toJavaObject(ajaxResult.get("data"), LoginUser.class).getToken());
+        }
+        return ajaxResult;
+    }
+
+
+    @PostMapping("/api/auth/Replace2FAVerify")
+    public AjaxResult ReplaceAVerify(
+            @RequestHeader(RequestHeaderConstants.AUTHORIZATION) String Authorization,
+            @RequestHeader("Key") String key,
+            @RequestHeader("Enable") String Enable,
+            @RequestHeader("Email") String Email,
+            @RequestHeader("OpType") String OpType,
+            HttpServletRequest request, HttpServletResponse response) {
+        AjaxResult ajaxResult = authService.Update2FAVerify(TokenService.getUsername(Authorization),key,Enable,Email,OpType);
         if (ajaxResult.get("data") != null && !ajaxResult.get("data").equals("")) {
             response.setHeader(Constants.HEADER, JSON.toJavaObject(ajaxResult.get("data"), LoginUser.class).getToken());
         }

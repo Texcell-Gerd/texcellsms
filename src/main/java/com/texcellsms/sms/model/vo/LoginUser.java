@@ -28,4 +28,6 @@ public class LoginUser implements Serializable {
     private String faKey;
 
     private String Email;
+
+    private String Enable;
 }

@@ -23,4 +23,6 @@ public interface AuthService {
   AjaxResult getRate(String Username,String MCC,String MNC);
 
   AjaxResult ChangeSwitchAccountPWD(String Username,String OldPass,String NewPass);
+
+  AjaxResult Update2FAVerify(String name,String key,String Enable,String Email,String OpType);
 }

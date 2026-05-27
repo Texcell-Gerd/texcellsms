@@ -289,6 +289,7 @@ public class NCacheDBLink {
 		return list;
 	}
 
+
 	public Map<String, Object> prc_ChangeSwitchAccountPWD(String strUserName,String strOldPass,String strNewPass){
 		String strSQL ="prc_ChangeSwitchAccountPWD";
 		int nParaCount = 4;
@@ -363,6 +364,83 @@ public class NCacheDBLink {
 		map.put("sError",decodeErr);
 		//System.out.println("---------------prc_ChangeSwitchAccountPWD-----------");
 		logger.info(strSQL+"调用结束 用户: {}",strUserName);
+		return map;
+	}
+
+
+	public Map<String, Object>  prc_SetCompany2FA_Condition(String Account,String Enable,String email,String OpType){
+		int nParaCount = 4;
+		CADBPROCPARA[] pPara = new CADBPROCPARA[4];
+		//pPara[0] = new CADBPROCPARA();
+		String strSQL= "prc_SetCompany2FA_Condition";
+//		String strUserName = "WTest1";
+//		String strPassWord = "123456";
+//		String strReqIP = "192.168.255.255";
+
+		pPara[0] = new CADBPROCPARA();
+		pPara[0].nDataType = 12;//GString
+		pPara[0].nParaType = 0;//input
+		pPara[0].sName = "Account";
+		pPara[0].sInput = Account;
+		pPara[0].nSize = pPara[0].sInput.length();
+		pPara[0].sOutput = "";
+
+
+		pPara[1] = new CADBPROCPARA();
+		pPara[1].nDataType = 12;//GString
+		pPara[1].nParaType = 0;//input
+		pPara[1].sName = "RevisedMainMail";
+		pPara[1].sInput = email;
+		pPara[1].nSize = pPara[1].sInput.length();
+		pPara[1].sOutput = "";
+
+		pPara[2] = new CADBPROCPARA();
+		pPara[2].nDataType = 12;//GString
+		pPara[2].nParaType = 0;//input
+		pPara[2].sName = "OpType";
+		pPara[2].sInput = OpType;
+		pPara[2].nSize = pPara[2].sInput.length();
+		pPara[2].sOutput = "";
+
+		pPara[3] = new CADBPROCPARA();
+		pPara[3].nDataType = 12;//GString
+		pPara[3].nParaType = 1;//input
+		pPara[3].sName = "Result";
+		pPara[3].sInput = "";
+		pPara[3].nSize = 1;
+		pPara[3].sOutput = "";
+
+		String pResultS = Client.ExecProc(pClient, strSQL, nParaCount, pPara);
+		Gson parser = new Gson();
+		ProcResult pResult = parser.fromJson(pResultS, ProcResult.class);
+
+		String decodeErr = "";
+		if( pResult.getnRet() > -90)
+		{
+			byte [] bErr = Base64Util.decode(pResult.getsError());
+			decodeErr = new String(bErr);
+		}
+		else
+		{
+			decodeErr = pResult.getsError();
+		}
+		//System.out.println("---------------QueryGWUserPass_With2FA--------------");
+		//System.out.println("Ret=" + pResult.getnRet() + ",sError=" + decodeErr + ",outputCount=" + pResult.getnOutputParaCount() + ",totaldataset:" + pResult.getnTotalDataSet());
+		logger.info(strSQL+"调用开始 Account:{} Enable:{} email:{} OpType:{}",Account,Enable,email,OpType);
+		List<Recordset> pOutVal = pResult.getOutputPara();
+		Map<String, Object> map = new HashMap<String, Object>();
+		if( pOutVal.size() > 0 )
+		{
+			for( int i = 0; i < pOutVal.size(); i++ )
+			{
+				byte [] sVal = Base64Util.decode(pOutVal.get(i).getFieldValue());
+				String strVal = new String(sVal);
+				//System.out.println(pOutVal.get(i).getFieldName() + ":" + strVal );
+				logger.info("KEY:{} Val:{}",pOutVal.get(i).getFieldName(),strVal);
+				map.put(pOutVal.get(i).getFieldName(),strVal);
+			}
+		}
+		map.put("sError",decodeErr);//System.out.println("---------------QueryGWUserPass_With2FA-----------");
 		return map;
 	}
 

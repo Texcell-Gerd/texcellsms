@@ -131,7 +131,8 @@ public class AuthServiceImpl implements AuthService {
         loginUser.setCreateTime(System.currentTimeMillis());
         tokenService.createToken(loginUser);
         loginUser.setFaKey(cacheDBLonginResult.getFAKey());
-
+        loginUser.setEmail(cacheDBLonginResult.getEmail());
+        loginUser.setEnable(cacheDBLonginResult.getIsEnable());
         // ✅ 这个格式 100% 匹配监控面板，会自动进入登录日志
         logger.info("[LOGIN_SUCCESS] USER={} | IP={} | WHITELIST={} | MSG=Login success",
                 loginRequest.getUsername(), IP, whiteIP);
@@ -230,16 +231,19 @@ public class AuthServiceImpl implements AuthService {
 
         //====================== 两步验证 ======================
         if ("0".equals(cacheDBLonginResult.getIsEnable())){
-            return Google2FA(loginRequest,request.getRemoteHost(),cacheDBLonginResult.getFAKey());
+            return Google2FA(loginRequest,request.getRemoteHost(),cacheDBLonginResult.getFAKey(),cacheDBLonginResult);
         }
         if ("2".equals(cacheDBLonginResult.getIsEnable())){
-            return Email2FA(session,loginRequest,cacheDBLonginResult.getEmail());
+            return Email2FA(session,loginRequest,cacheDBLonginResult.getEmail(),cacheDBLonginResult);
         }
         // ====================== 登录成功 ======================
         String safeToken = java.util.UUID.randomUUID().toString().replace("-", "");
         loginUser.setToken(safeToken);
         loginUser.setCreateTime(System.currentTimeMillis());
         tokenService.createToken(loginUser);
+        loginUser.setFaKey(cacheDBLonginResult.getFAKey());
+        loginUser.setEmail(cacheDBLonginResult.getEmail());
+        loginUser.setEnable(cacheDBLonginResult.getIsEnable());
 
         // ✅ 这个格式 100% 匹配监控面板，会自动进入登录日志
         logger.info("[LOGIN_SUCCESS] USER={} | IP={} | WHITELIST={} | MSG=Login success",
@@ -248,7 +252,7 @@ public class AuthServiceImpl implements AuthService {
     }
 
 
-    public AjaxResult Google2FA(AuthController.LoginRequest loginRequest, String host,String okey){
+    public AjaxResult Google2FA(AuthController.LoginRequest loginRequest, String host,String okey,CacheDBLonginResult result){
         NCacheDBLink nCacheDBLink = null;
         String secretKey=null;
         String qrCodeData=null;
@@ -293,11 +297,14 @@ public class AuthServiceImpl implements AuthService {
         loginUser.setSManualKey(secretKey);
         loginUser.setSQRCode(qrCodeData);
         loginUser.setToken(TempTokenUtil.generateToken(loginRequest.getUsername(),loginRequest.getPassword()));
+        loginUser.setFaKey(result.getFAKey());
+        loginUser.setEmail(result.getEmail());
+        loginUser.setEnable(result.getIsEnable());
         return AjaxResult.success(LOGIN2FA.getCode(),LOGIN2FA.getMessage(),loginUser);
     }
 
 
-    public AjaxResult Email2FA(HttpSession session,AuthController.LoginRequest loginRequest,String email){
+    public AjaxResult Email2FA(HttpSession session,AuthController.LoginRequest loginRequest,String email,CacheDBLonginResult result){
 
         String sessionEmail = (String) session.getAttribute(email);
         logger.info("sessionEmail{}{}",sessionEmail,sessionEmail!=null);
@@ -319,6 +326,8 @@ public class AuthServiceImpl implements AuthService {
             LoginUser loginUser = new LoginUser();
             loginUser.setToken(TempTokenUtil.generateToken(loginRequest.getUsername(),loginRequest.getPassword()));
             loginUser.setEmail(email);
+            loginUser.setFaKey(result.getFAKey());
+            loginUser.setEnable(result.getIsEnable());
             // 保存验证码
             session.setAttribute("emailCode:"+loginUser.getToken(), code);
             // 保存时间（可选）
@@ -476,6 +485,33 @@ public class AuthServiceImpl implements AuthService {
         } catch (Exception e) {
             e.printStackTrace();
             return AjaxResult.error("Failed to change password");
+        } finally {
+            // 保证释放
+            if (nCacheDBLink != null || count>0) {
+                try { nCacheDBLink.Disconnect(); } catch (Exception ignored) {}
+                try { nCacheDBLink.Destroy(); } catch (Exception ignored) {}
+            }
+        }
+    }
+
+    @Override
+    public AjaxResult Update2FAVerify(String name, String key, String Enable, String Email, String OpType) {
+        NCacheDBLink nCacheDBLink = null;
+        int count = -1;
+        try {
+            nCacheDBLink = NCacheDBLink.getNCacheDBLink();
+            count=nCacheDBLink.InitEnv();
+            nCacheDBLink.ConnectToCacheDB();
+            Map<String, Object> map =null;
+            if ("4".equals(OpType)){
+                map = nCacheDBLink.prc_Set2FAKeyForCompanyId("",name);
+            } else {
+                map = nCacheDBLink.prc_SetCompany2FA_Condition(name,Enable,Email,OpType);
+            }
+            return AjaxResult.success(map);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return AjaxResult.error("Failed to UpdateAVerify");
         } finally {
             // 保证释放
             if (nCacheDBLink != null || count>0) {
