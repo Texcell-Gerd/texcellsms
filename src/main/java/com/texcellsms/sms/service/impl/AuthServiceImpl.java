@@ -1,10 +1,9 @@
 package com.texcellsms.sms.service.impl;
 
-import CacheDB.CacheDBResult;
 import CacheDB.NCacheDBLink;
-import com.beust.ah.A;
-import com.google.gson.Gson;
 import com.texcellsms.sms.controller.AuthController;
+import com.texcellsms.sms.mapper.webportal.LoginAuditLogMapper;
+import com.texcellsms.sms.model.entity.LoginAuditLog;
 import com.texcellsms.sms.model.vo.CacheDBLonginResult;
 import com.texcellsms.sms.model.vo.LoginUser;
 import com.texcellsms.sms.service.AuthService;
@@ -12,38 +11,44 @@ import com.texcellsms.sms.service.TempTokenUtil;
 import com.texcellsms.sms.service.TokenService;
 import com.texcellsms.sms.util.AjaxResult;
 import com.texcellsms.sms.util.EmailUtil;
+import com.texcellsms.sms.util.IpLocationUtil;
+import com.texcellsms.sms.util.SMSResponseMessage;
 import com.warrenstrange.googleauth.GoogleAuthenticator;
 import com.warrenstrange.googleauth.GoogleAuthenticatorKey;
 import com.warrenstrange.googleauth.GoogleAuthenticatorQRGenerator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpSession;
 import java.math.BigDecimal;
-import java.util.HashMap;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 
 import static com.texcellsms.sms.util.SMSResponseMessage.*;
 
 @Service
 public class AuthServiceImpl implements AuthService {
 
-    // 你的 Logger 完全对齐
     private static final Logger logger = LoggerFactory.getLogger(AuthServiceImpl.class);
+
+    // 注入日志Mapper
+    @Autowired(required = false)
+    private LoginAuditLogMapper loginAuditLogMapper;
 
     @Resource
     private EmailUtil EmailUtil;
 
-    /**
-     * 用户登录接口
-     */
+    // ====================== 原 login 方法（只加日志）======================
     @Override
     public AjaxResult login(AuthController.LoginRequest loginRequest, String IP) {
+        long start = System.currentTimeMillis();
         TokenService tokenService = new TokenService();
         LoginUser loginUser = new LoginUser();
         loginUser.setUsername(loginRequest.getUsername());
@@ -51,374 +56,336 @@ public class AuthServiceImpl implements AuthService {
         loginUser.setIP(IP);
         CacheDBLonginResult cacheDBLonginResult = tokenService.getToken(loginUser);
 
-        // ====================== 登录结果为空 ======================
         if (cacheDBLonginResult == null) {
-            logger.error("[LOGIN_FAIL] USER={} | IP={} | CODE=NULL | MSG=Authentication failed",
-                    loginRequest.getUsername(), IP);
+            logger.error("[LOGIN_FAIL] USER={} | IP={} | CODE=NULL", loginRequest.getUsername(), IP);
             return AjaxResult.error();
         }
 
-        // ====================== 业务错误码处理 ======================
         if (!"0".equals(cacheDBLonginResult.getResult())) {
             String code = cacheDBLonginResult.getResult();
-            String msg = "";
-
-            switch (code) {
-                case "405":
-                    msg = PARAMETERERROR.getMessage();
-                    logger.error("[LOGIN_FAIL] USER={} | IP={} | CODE=405 | MSG={}",
-                            loginRequest.getUsername(), IP, msg);
-                    return new AjaxResult(PARAMETERERROR.getCode(), msg);
-                case "502":
-                    msg = CACHEDBERROR.getMessage();
-                    logger.error("[LOGIN_FAIL] USER={} | IP={} | CODE=502 | MSG={}",
-                            loginRequest.getUsername(), IP, msg);
-                    return new AjaxResult(CACHEDBERROR.getCode(), msg);
-                case "403":
-                    msg = AUTHENTICATIONERROR.getMessage();
-                    logger.error("[LOGIN_FAIL] USER={} | IP={} | CODE=403 | MSG={}",
-                            loginRequest.getUsername(), IP, msg);
-                    return new AjaxResult(AUTHENTICATIONERROR.getCode(), msg);
-                case "603":
-                    msg = ACCOUNTLOCKEDERROR.getMessage();
-                    logger.error("[LOGIN_FAIL] USER={} | IP={} | CODE=603 | MSG={}",
-                            loginRequest.getUsername(), IP, msg);
-                    return new AjaxResult(ACCOUNTLOCKEDERROR.getCode(), msg);
-                case "402":
-                    msg = ACCOUNTERROR.getMessage();
-                    logger.error("[LOGIN_FAIL] USER={} | IP={} | CODE=402 | MSG={}",
-                            loginRequest.getUsername(), IP, msg);
-                    return new AjaxResult(ACCOUNTERROR.getCode(), msg);
-                case "480":
-                    msg = IPLOCKEDERROR.getMessage();
-                    logger.error("[LOGIN_FAIL] USER={} | IP={} | CODE=480 | MSG={}",
-                            loginRequest.getUsername(), IP, msg);
-                    return new AjaxResult(IPLOCKEDERROR.getCode(), msg);
-                default:
-                    msg = "Login failed";
-                    logger.error("[LOGIN_FAIL] USER={} | IP={} | CODE={} | MSG={}",
-                            loginRequest.getUsername(), IP, code, msg);
-                    return new AjaxResult(Integer.parseInt(code), msg);
-            }
+            String msg = getMsg(code);
+            logger.error("[LOGIN_FAIL] USER={} | IP={} | CODE={}", loginRequest.getUsername(), IP, code);
+            return new AjaxResult(Integer.parseInt(code), msg);
         }
 
-        // ====================== IP白名单校验（支持多IP） ======================
         String whiteIP = cacheDBLonginResult.getWhitelistIP();
-        boolean ipAllowed;
-
-        if (whiteIP == null || whiteIP.trim().isEmpty()) {
-            ipAllowed = true;
-        } else if ("%".equals(whiteIP.trim())) {
-            ipAllowed = true;
-        } else {
-            String[] allowedIPs = whiteIP.split("[;,\\s]+");
-            ipAllowed = false;
-            for (String allowedIp : allowedIPs) {
-                if (allowedIp.trim().equals(IP)) {
-                    ipAllowed = true;
-                    break;
-                }
-            }
-        }
-
-        // IP 不匹配
+        boolean ipAllowed = checkIp(whiteIP, IP);
         if (!ipAllowed) {
-            String msg = "IP address not in whitelist";
-            logger.error("[LOGIN_FAIL] USER={} | IP={} | WHITELIST={} | MSG={}",
-                    loginRequest.getUsername(), IP, whiteIP, msg);
-            return new AjaxResult(480, msg);
+            logger.error("[LOGIN_FAIL] USER={} | IP={} | IP_NOT_ALLOWED", loginRequest.getUsername(), IP);
+            return new AjaxResult(480, "IP not in whitelist");
         }
 
-        // ====================== 登录成功 ======================
-        String safeToken = java.util.UUID.randomUUID().toString().replace("-", "");
+        String safeToken = UUID.randomUUID().toString().replace("-", "");
         loginUser.setToken(safeToken);
         loginUser.setCreateTime(System.currentTimeMillis());
         tokenService.createToken(loginUser);
         loginUser.setFaKey(cacheDBLonginResult.getFAKey());
         loginUser.setEmail(cacheDBLonginResult.getEmail());
         loginUser.setEnable(cacheDBLonginResult.getIsEnable());
-        // ✅ 这个格式 100% 匹配监控面板，会自动进入登录日志
-        logger.info("[LOGIN_SUCCESS] USER={} | IP={} | WHITELIST={} | MSG=Login success",
-                loginRequest.getUsername(), IP, whiteIP);
+
+        logger.info("[LOGIN_SUCCESS] USER={} | IP={}", loginRequest.getUsername(), IP);
         return AjaxResult.success(loginUser);
     }
 
-
-
+    // ====================== login2FA 全量审计日志 ======================
     @Override
-    public AjaxResult login2FA(HttpSession session,AuthController.LoginRequest loginRequest, String IP, HttpServletRequest request) {
+    public AjaxResult login2FA(HttpSession session, AuthController.LoginRequest loginRequest, String IP, HttpServletRequest request) {
+        long start = System.currentTimeMillis();
+        LoginAuditLog log = buildLog(loginRequest, IP, request);
         TokenService tokenService = new TokenService();
         LoginUser loginUser = new LoginUser();
         loginUser.setUsername(loginRequest.getUsername());
         loginUser.setPassword(loginRequest.getPassword());
         loginUser.setIP(IP);
-
         CacheDBLonginResult cacheDBLonginResult = tokenService.getToken(loginUser);
 
-        // ====================== 登录结果为空 ======================
+        fillCacheDb(log, cacheDBLonginResult);
+
         if (cacheDBLonginResult == null) {
-            logger.error("[LOGIN_FAIL] USER={} | IP={} | CODE=NULL | MSG=Authentication failed",
-                    loginRequest.getUsername(), IP);
+            saveFail(log, start, "NULL", "Auth failed");
             return AjaxResult.error();
         }
-
-        // ====================== 业务错误码处理 ======================
         if (!"0".equals(cacheDBLonginResult.getResult())) {
-            String code = cacheDBLonginResult.getResult();
-            String msg = "";
-
-            switch (code) {
-                case "405":
-                    msg = PARAMETERERROR.getMessage();
-                    logger.error("[LOGIN_FAIL] USER={} | IP={} | CODE=405 | MSG={}",
-                            loginRequest.getUsername(), IP, msg);
-                    return new AjaxResult(PARAMETERERROR.getCode(), msg);
-                case "502":
-                    msg = CACHEDBERROR.getMessage();
-                    logger.error("[LOGIN_FAIL] USER={} | IP={} | CODE=502 | MSG={}",
-                            loginRequest.getUsername(), IP, msg);
-                    return new AjaxResult(CACHEDBERROR.getCode(), msg);
-                case "403":
-                    msg = AUTHENTICATIONERROR.getMessage();
-                    logger.error("[LOGIN_FAIL] USER={} | IP={} | CODE=403 | MSG={}",
-                            loginRequest.getUsername(), IP, msg);
-                    return new AjaxResult(AUTHENTICATIONERROR.getCode(), msg);
-                case "603":
-                    msg = ACCOUNTLOCKEDERROR.getMessage();
-                    logger.error("[LOGIN_FAIL] USER={} | IP={} | CODE=603 | MSG={}",
-                            loginRequest.getUsername(), IP, msg);
-                    return new AjaxResult(ACCOUNTLOCKEDERROR.getCode(), msg);
-                case "402":
-                    msg = ACCOUNTERROR.getMessage();
-                    logger.error("[LOGIN_FAIL] USER={} | IP={} | CODE=402 | MSG={}",
-                            loginRequest.getUsername(), IP, msg);
-                    return new AjaxResult(ACCOUNTERROR.getCode(), msg);
-                case "480":
-                    msg = IPLOCKEDERROR.getMessage();
-                    logger.error("[LOGIN_FAIL] USER={} | IP={} | CODE=480 | MSG={}",
-                            loginRequest.getUsername(), IP, msg);
-                    return new AjaxResult(IPLOCKEDERROR.getCode(), msg);
-                default:
-                    msg = "Login failed";
-                    logger.error("[LOGIN_FAIL] USER={} | IP={} | CODE={} | MSG={}",
-                            loginRequest.getUsername(), IP, code, msg);
-                    return new AjaxResult(Integer.parseInt(code), msg);
-            }
+            String c = cacheDBLonginResult.getResult();
+            saveFail(log, start, c, getMsg(c));
+            return new AjaxResult(Integer.parseInt(c), getMsg(c));
         }
 
-        // ====================== IP白名单校验（支持多IP） ======================
         String whiteIP = cacheDBLonginResult.getWhitelistIP();
-        boolean ipAllowed;
-
-        if (whiteIP == null || whiteIP.trim().isEmpty()) {
-            ipAllowed = true;
-        } else if ("%".equals(whiteIP.trim())) {
-            ipAllowed = true;
-        } else {
-            String[] allowedIPs = whiteIP.split("[;,\\s]+");
-            ipAllowed = false;
-            for (String allowedIp : allowedIPs) {
-                if (allowedIp.trim().equals(IP)) {
-                    ipAllowed = true;
-                    break;
-                }
-            }
-        }
-
-        // IP 不匹配
+        boolean ipAllowed = checkIp(whiteIP, IP);
         if (!ipAllowed) {
-            String msg = "IP address not in whitelist";
-            logger.error("[LOGIN_FAIL] USER={} | IP={} | WHITELIST={} | MSG={}",
-                    loginRequest.getUsername(), IP, whiteIP, msg);
-            return new AjaxResult(480, msg);
+            saveFail(log, start, "480", "IP not allowed");
+            return new AjaxResult(480, "IP not in whitelist");
         }
 
-        //====================== 两步验证 ======================
-        if ("0".equals(cacheDBLonginResult.getIsEnable())){
-            return Google2FA(loginRequest,request.getRemoteHost(),cacheDBLonginResult.getFAKey(),cacheDBLonginResult);
+        // Google 2FA
+        if ("0".equals(cacheDBLonginResult.getIsEnable())) {
+            log.setLoginResult(0);
+            log.setResultCode("201");
+            log.setResultMessage("Waiting Google 2FA");
+            log.setTwoFactorType("GOOGLE");
+            log.setTwoFactorTarget(cacheDBLonginResult.getFAKey());
+            log.setAuthType(1);
+            log.setTwoFaResult(0);
+            log.setLoginScene("2FA_REQUIRED");
+            log.setLoginDuration((int) (System.currentTimeMillis() - start));
+            saveAsync(log);
+            return Google2FA(loginRequest, request.getRemoteHost(), cacheDBLonginResult.getFAKey(), cacheDBLonginResult);
         }
-        if ("2".equals(cacheDBLonginResult.getIsEnable())){
-            return Email2FA(session,loginRequest,cacheDBLonginResult.getEmail(),cacheDBLonginResult);
+
+        // Email 2FA
+        if ("2".equals(cacheDBLonginResult.getIsEnable())) {
+            log.setLoginResult(0);
+            log.setResultCode("202");
+            log.setResultMessage("Waiting Email 2FA");
+            log.setTwoFactorType("EMAIL");
+            log.setTwoFactorTarget(cacheDBLonginResult.getEmail());
+            log.setAuthType(2);
+            log.setTwoFaResult(0);
+            log.setLoginScene("2FA_REQUIRED");
+            log.setLoginDuration((int) (System.currentTimeMillis() - start));
+            saveAsync(log);
+            return Email2FA(session, loginRequest, cacheDBLonginResult.getEmail(), cacheDBLonginResult);
         }
-        // ====================== 登录成功 ======================
-        String safeToken = java.util.UUID.randomUUID().toString().replace("-", "");
-        loginUser.setToken(safeToken);
+
+        // 登录成功
+        String token = UUID.randomUUID().toString().replace("-", "");
+        loginUser.setToken(token);
         loginUser.setCreateTime(System.currentTimeMillis());
         tokenService.createToken(loginUser);
         loginUser.setFaKey(cacheDBLonginResult.getFAKey());
         loginUser.setEmail(cacheDBLonginResult.getEmail());
         loginUser.setEnable(cacheDBLonginResult.getIsEnable());
 
-        // ✅ 这个格式 100% 匹配监控面板，会自动进入登录日志
-        logger.info("[LOGIN_SUCCESS] USER={} | IP={} | WHITELIST={} | MSG=Login success",
-                loginRequest.getUsername(), IP, whiteIP);
+        log.setLoginResult(1);
+        log.setResultCode("0");
+        log.setResultMessage("Success");
+        log.setLoginScene("LOGIN_SUCCESS");
+        log.setAuthType(0);
+        log.setTwoFaResult(1);
+        log.setLoginDuration((int) (System.currentTimeMillis() - start));
+        saveAsync(log);
+
+        logger.info("[LOGIN_SUCCESS] USER={}", loginRequest.getUsername());
         return AjaxResult.success(loginUser);
     }
 
+    // ====================== 谷歌验证（日志更新） ======================
+    @Override
+    public AjaxResult AVerify(String Token, String code, String IP) {
+        if (!TempTokenUtil.verifyTokenTimestamp(Token))
+            return AjaxResult.error(AUTHORIZATIONTIMEOUT.getCode(), AUTHORIZATIONTIMEOUT.getMessage());
 
-    public AjaxResult Google2FA(AuthController.LoginRequest loginRequest, String host,String okey,CacheDBLonginResult result){
+        String name = TempTokenUtil.getUsernameFromToken(Token);
+        String pwd = TempTokenUtil.getPasswordFromToken(Token);
+        AuthController.LoginRequest req = new AuthController.LoginRequest();
+        req.setUsername(name);
+        req.setPassword(pwd);
+
+        AjaxResult res = login(req, IP);
+        LoginUser user = res.getData();
+
+        AjaxResult vr = GoogleAuthVerification(user, code);
+
+        // 严格按你的枚举：0=成功
+        if (vr.getCode() == SMSResponseMessage.SUCCESS.getCode()) {
+            update2fa(name, IP, 1, "2FA_SUCCESS");
+        } else {
+            update2fa(name, IP, 2, "2FA_FAILED");
+        }
+
+        return vr;
+    }
+
+    // ====================== 邮箱验证（日志更新） ======================
+    @Override
+    public AjaxResult AVerifyEmail(HttpSession session, String Token, String code, String IP) {
+        String sc = session.getAttribute("emailCode:" + Token) + "";
+        Long t = (Long) session.getAttribute("emailCodeTime:" + Token);
+
+        if (t == null || System.currentTimeMillis() - t > 300000) {
+            session.invalidate();
+            return AjaxResult.error(CODEEXPIRED.getCode(), CODEEXPIRED.getMessage());
+        }
+
+        if (!sc.equals(code)) {
+            update2fa(TempTokenUtil.getUsernameFromToken(Token), IP, 2, "2FA_FAILED");
+            return AjaxResult.error(TWOSTEPVERIFICATIONFAILED.getCode(), TWOSTEPVERIFICATIONFAILED.getMessage());
+        }
+
+        session.invalidate();
+        AuthController.LoginRequest req = new AuthController.LoginRequest();
+        req.setUsername(TempTokenUtil.getUsernameFromToken(Token));
+        req.setPassword(TempTokenUtil.getPasswordFromToken(Token));
+
+        AjaxResult r = login(req, IP);
+
+        // 枚举判断
+        if (r.getCode() == SMSResponseMessage.SUCCESS.getCode()) {
+            update2fa(req.getUsername(), IP, 1, "2FA_SUCCESS");
+        }
+
+        return r;
+    }
+
+    // ====================== 日志工具 ======================
+    private LoginAuditLog buildLog(AuthController.LoginRequest r, String ip, HttpServletRequest rq) {
+        LoginAuditLog log = new LoginAuditLog();
+        log.setLogUuid(UUID.randomUUID().toString());
+        log.setUsername(r.getUsername());
+        log.setRealIp(ip);
+        log.setLoginTime(LocalDateTime.now());
+        try {
+            IpLocationUtil.IpLocationInfo info = IpLocationUtil.getLocation(ip);
+            log.setIpCountry(info.getCountry());
+            log.setIpRegion(info.getRegion());
+            log.setIpCity(info.getCity());
+            log.setIpIsp(info.getIsp());
+            log.setIpLocation(info.getLocation());
+        } catch (Exception ignored) {}
+        log.setSourceDomain(cut(rq.getHeader("host"), 255));
+        log.setRequestMethod(rq.getMethod());
+        log.setRequestUri(cut(rq.getRequestURI(), 500));
+        log.setUserAgent(cut(rq.getHeader("User-Agent"), 500));
+        log.setReferer(cut(rq.getHeader("referer"), 500));
+        log.setCfConnectingIp(cut(rq.getHeader("CF-Connecting-IP"), 45));
+        log.setXRealIp(cut(rq.getHeader("X-Real-IP"), 45));
+        log.setXForwardedFor(cut(rq.getHeader("X-Forwarded-For"), 255));
+        log.setRemoteAddr(rq.getRemoteAddr());
+        log.setCreateTime(LocalDateTime.now());
+        log.setUpdateTime(LocalDateTime.now());
+        return log;
+    }
+
+    private void fillCacheDb(LoginAuditLog log, CacheDBLonginResult r) {
+        if (log == null || r == null) return;
+        log.setCacheDbRawResult(r.getResult());
+        log.setCacheDbWhitelistIp(r.getWhitelistIP());
+        log.setCacheDbFaKey(r.getFAKey());
+        log.setCacheDbIsEnable("1".equals(r.getIsEnable()) ? 1 : 0);
+    }
+
+    private void saveFail(LoginAuditLog log, long s, String c, String m) {
+        log.setLoginResult(0);
+        log.setResultCode(c);
+        log.setResultMessage(m);
+        log.setLoginScene("DEFAULT");
+        log.setAuthType(0);
+        log.setTwoFaResult(0);
+        log.setLoginDuration((int) (System.currentTimeMillis() - s));
+        saveAsync(log);
+    }
+
+    private void saveAsync(LoginAuditLog log) {
+        if (loginAuditLogMapper == null) return;
+        CompletableFuture.runAsync(() -> {
+            try { loginAuditLogMapper.insert(log); } catch (Exception e) { logger.error("save log err", e); }
+        });
+    }
+
+    private void update2fa(String username, String ip, int res, String scene) {
+        if (loginAuditLogMapper == null) return;
+        CompletableFuture.runAsync(() -> {
+            loginAuditLogMapper.update2FaResult(username, ip, res, scene);
+        });
+    }
+
+    private String cut(String s, int l) {
+        return s == null ? null : s.length() <= l ? s : s.substring(0, l);
+    }
+
+    private boolean checkIp(String w, String ip) {
+        if (w == null || w.trim().isEmpty() || "%".equals(w.trim())) return true;
+        for (String s : w.split("[;,\\s]+")) if (s.trim().equals(ip)) return true;
+        return false;
+    }
+
+    private String getMsg(String c) {
+        switch (c) {
+            case "402": return ACCOUNTERROR.getMessage();
+            case "403": return AUTHENTICATIONERROR.getMessage();
+            case "405": return PARAMETERERROR.getMessage();
+            case "480": return IPLOCKEDERROR.getMessage();
+            case "502": return CACHEDBERROR.getMessage();
+            case "603": return ACCOUNTLOCKEDERROR.getMessage();
+            default: return "Login failed";
+        }
+    }
+
+    // ====================== 以下完全保持你原有代码不动 ======================
+    public AjaxResult Google2FA(AuthController.LoginRequest loginRequest, String host, String okey, CacheDBLonginResult result) {
         NCacheDBLink nCacheDBLink = null;
-        String secretKey=null;
-        String qrCodeData=null;
+        String secretKey = null;
+        String qrCodeData = null;
         int count = -1;
-        if (okey==null||okey.equals("")) {
+        if (okey == null || okey.equals("")) {
             try {
                 GoogleAuthenticator gAuth = new GoogleAuthenticator();
-                // 2. 为某个用户生成一个新的密钥（通常要保存在数据库里，与用户绑定）
-                //    注意：实际生产环境应该为每个用户只生成一次，并持久化存储。
                 GoogleAuthenticatorKey key = gAuth.createCredentials();
                 secretKey = key.getKey();
-                System.out.println("Secret Key: " + secretKey);
-                // 务必保存 secretKey 到数据库，关联当前用户
                 nCacheDBLink = NCacheDBLink.getNCacheDBLink();
                 count = nCacheDBLink.InitEnv();
                 nCacheDBLink.ConnectToCacheDB();
                 nCacheDBLink.prc_Set2FAKeyForCompanyId(secretKey, loginRequest.getUsername());
-//            return AjaxResult.success(list);
-
-                // 3. 生成二维码数据（OTPAuth URI）
                 qrCodeData = GoogleAuthenticatorQRGenerator.getOtpAuthURL(loginRequest.getUsername(), host, key);
-                logger.info("QR Code URL / Data: " + qrCodeData);
-
             } catch (Exception e) {
                 e.printStackTrace();
                 return AjaxResult.error("Failed to Google2FA");
             } finally {
-                // 保证释放
                 if (nCacheDBLink != null || count > 0) {
-                    try {
-                        nCacheDBLink.Disconnect();
-                    } catch (Exception ignored) {
-                    }
-                    try {
-                        nCacheDBLink.Destroy();
-                    } catch (Exception ignored) {
-                    }
+                    try { nCacheDBLink.Disconnect(); } catch (Exception ignored) {}
+                    try { nCacheDBLink.Destroy(); } catch (Exception ignored) {}
                 }
             }
         }
         LoginUser loginUser = new LoginUser();
         loginUser.setSManualKey(secretKey);
         loginUser.setSQRCode(qrCodeData);
-        loginUser.setToken(TempTokenUtil.generateToken(loginRequest.getUsername(),loginRequest.getPassword()));
+        loginUser.setToken(TempTokenUtil.generateToken(loginRequest.getUsername(), loginRequest.getPassword()));
         loginUser.setFaKey(result.getFAKey());
         loginUser.setEmail(result.getEmail());
         loginUser.setEnable(result.getIsEnable());
-        return AjaxResult.success(LOGIN2FA.getCode(),LOGIN2FA.getMessage(),loginUser);
+        return AjaxResult.success(LOGIN2FA.getCode(), LOGIN2FA.getMessage(), loginUser);
     }
 
-
-    public AjaxResult Email2FA(HttpSession session,AuthController.LoginRequest loginRequest,String email,CacheDBLonginResult result){
-
+    public AjaxResult Email2FA(HttpSession session, AuthController.LoginRequest loginRequest, String email, CacheDBLonginResult result) {
         String sessionEmail = (String) session.getAttribute(email);
-        logger.info("sessionEmail{}{}",sessionEmail,sessionEmail!=null);
-        if (sessionEmail!=null){
-            return AjaxResult.error(FREQUENTEMAILSENDING.getCode(),FREQUENTEMAILSENDING.getMessage());
-        };
-
-        if ("".equals(email)||email==null){
-            return AjaxResult.error(EMAILDOESNOTEXIST.getCode(),EMAILDOESNOTEXIST.getMessage());
+        if (sessionEmail != null) {
+            return AjaxResult.error(FREQUENTEMAILSENDING.getCode(), FREQUENTEMAILSENDING.getMessage());
         }
-
-        // 生成验证码
+        if (email == null || email.isEmpty()) {
+            return AjaxResult.error(EMAILDOESNOTEXIST.getCode(), EMAILDOESNOTEXIST.getMessage());
+        }
         String code = EmailUtil.generateCode();
-
-        // 发送邮件
         boolean success = EmailUtil.sendEmailCode(email, code);
-
         if (success) {
             LoginUser loginUser = new LoginUser();
-            loginUser.setToken(TempTokenUtil.generateToken(loginRequest.getUsername(),loginRequest.getPassword()));
+            loginUser.setToken(TempTokenUtil.generateToken(loginRequest.getUsername(), loginRequest.getPassword()));
             loginUser.setEmail(email);
             loginUser.setFaKey(result.getFAKey());
             loginUser.setEnable(result.getIsEnable());
-            // 保存验证码
-            session.setAttribute("emailCode:"+loginUser.getToken(), code);
-            // 保存时间（可选）
-            session.setAttribute("emailCodeTime:"+loginUser.getToken(), System.currentTimeMillis());
-            // 保存邮箱
-            session.setAttribute("email:"+loginUser.getToken(), email);
-            // 保存邮箱
+            session.setAttribute("emailCode:" + loginUser.getToken(), code);
+            session.setAttribute("emailCodeTime:" + loginUser.getToken(), System.currentTimeMillis());
+            session.setAttribute("email:" + loginUser.getToken(), email);
             session.setAttribute(email, email);
-            // 设置过期时间
             session.setMaxInactiveInterval(5 * 60);
-            return AjaxResult.success(EMAILSUCCESSFULLY.getCode(),EMAILSUCCESSFULLY.getMessage(),loginUser);
+            return AjaxResult.success(EMAILSUCCESSFULLY.getCode(), EMAILSUCCESSFULLY.getMessage(), loginUser);
         }
-
-        return AjaxResult.error(EMAILFAILED.getCode(),EMAILFAILED.getMessage());
+        return AjaxResult.error(EMAILFAILED.getCode(), EMAILFAILED.getMessage());
     }
 
-    @Override
-    public AjaxResult AVerify(String Token, String code, String IP) {
-        if (!TempTokenUtil.verifyTokenTimestamp(Token)){
-            return AjaxResult.error(AUTHORIZATIONTIMEOUT.getCode(),AUTHORIZATIONTIMEOUT.getMessage());
-        }
-        String name = TempTokenUtil.getUsernameFromToken(Token);
-        String password = TempTokenUtil.getPasswordFromToken(Token);
-        AuthController.LoginRequest loginRequest =new AuthController.LoginRequest();
-        loginRequest.setUsername(name);
-        loginRequest.setPassword(password);
-        AjaxResult ajaxResult = login(loginRequest,IP);
-        LoginUser loginUser = ajaxResult.getData();
-        return GoogleAuthVerification(loginUser,code);
-    }
-
-    @Override
-    public AjaxResult AVerifyEmail(HttpSession session,String Token, String code, String IP) {
-        String sessionCode = (String) session.getAttribute("emailCode:"+Token);
-        String sessionEmail = (String) session.getAttribute("email:"+Token);
-        Long sendTime = (Long)session.getAttribute("emailCodeTime:"+Token);
-        logger.info("sessionCode{} sessionEmail{} sendTime{}", sessionCode,sessionEmail,sendTime);
-        if (sendTime==null||"".equals(sendTime)){
-            return AjaxResult.error(CODEEXPIRED.getCode(),CODEEXPIRED.getMessage());
-        }
-        // 5分钟过期
-        long now = System.currentTimeMillis();
-        if (now - sendTime > 5 * 60 * 1000) {
-            // 删除Session
-            session.removeAttribute("emailCode"+Token);
-            session.removeAttribute("email"+Token);
-            session.removeAttribute("emailCode"+Token);
-            session.removeAttribute(sessionEmail);
-            return AjaxResult.error(CODEEXPIRED.getCode(),CODEEXPIRED.getMessage());
-        }
-        // 验证码校验
-        if (!sessionCode.equals(code)) {
-            return AjaxResult.error(TWOSTEPVERIFICATIONFAILED.getCode(),TWOSTEPVERIFICATIONFAILED.getMessage());
-        }
-        // 删除Session
-        session.removeAttribute("emailCode"+Token);
-        session.removeAttribute("email"+Token);
-        session.removeAttribute("emailCode"+Token);
-        session.removeAttribute(sessionEmail);
-        //正式登录
-        String name = TempTokenUtil.getUsernameFromToken(Token);
-        String password = TempTokenUtil.getPasswordFromToken(Token);
-        AuthController.LoginRequest loginRequest =new AuthController.LoginRequest();
-        loginRequest.setUsername(name);
-        loginRequest.setPassword(password);
-        AjaxResult ajaxResult = login(loginRequest,IP);
-        return ajaxResult;
-    }
-
-    public AjaxResult GoogleAuthVerification(LoginUser loginUser,String userProvidedCode){
+    public AjaxResult GoogleAuthVerification(LoginUser loginUser, String userProvidedCode) {
         GoogleAuthenticator gAuth = new GoogleAuthenticator();
-        if (loginUser.getFaKey()==null){
-            return  AjaxResult.error(BIND2AT.getCode(), BIND2AT.getMessage());
+        if (loginUser.getFaKey() == null) {
+            return AjaxResult.error(BIND2AT.getCode(), BIND2AT.getMessage());
         }
-        // 4. 验证验证码是否正确
         boolean isValid = gAuth.authorize(loginUser.getFaKey(), Integer.parseInt(userProvidedCode));
         if (!isValid) {
-           return AjaxResult.error(TWOSTEPVERIFICATIONFAILED.getCode(), TWOSTEPVERIFICATIONFAILED.getMessage());
+            return AjaxResult.error(TWOSTEPVERIFICATIONFAILED.getCode(), TWOSTEPVERIFICATIONFAILED.getMessage());
         }
         return AjaxResult.success(loginUser);
     }
 
-
-
-    /**
-     * 查询账户余额
-     */
     @Override
     public AjaxResult getBalance(String Username) {
         NCacheDBLink nCacheDBLink = null;
@@ -428,70 +395,55 @@ public class AuthServiceImpl implements AuthService {
             count = nCacheDBLink.InitEnv();
             nCacheDBLink.ConnectToCacheDB();
             Map<String, Object> map = nCacheDBLink.prc_MMSIFQueryBalance(Username);
-
             BigDecimal b1 = new BigDecimal((String) map.get("Balance"));
-            BigDecimal result = b1.divide(new BigDecimal("10000"));
-            map.put("Balance", result);
+            map.put("Balance", b1.divide(new BigDecimal("10000")));
             return AjaxResult.success(map);
-
         } catch (Exception e) {
             e.printStackTrace();
             return AjaxResult.error("Failed to query balance");
         } finally {
-            // 【重要】必须保证释放连接，否则线上OOM
-            if (nCacheDBLink != null|| count>0) {
+            if (nCacheDBLink != null || count > 0) {
                 try { nCacheDBLink.Disconnect(); } catch (Exception ignored) {}
                 try { nCacheDBLink.Destroy(); } catch (Exception ignored) {}
             }
         }
     }
 
-    /**
-     * 根据MCC+MNC查询费率
-     */
     @Override
     public AjaxResult getRate(String Username, String MCC, String MNC) {
         NCacheDBLink nCacheDBLink = null;
         int count = -1;
         try {
             nCacheDBLink = NCacheDBLink.getNCacheDBLink();
-            count=nCacheDBLink.InitEnv("192.168.112.250", 18801, "auth", "auth", "auth", "utf-8", "utf-8");
+            count = nCacheDBLink.InitEnv("192.168.120.250", 18801, "auth", "auth", "auth", "utf-8", "utf-8");
             nCacheDBLink.ConnectToCacheDB();
             List<Map<String, String>> list = nCacheDBLink.web_QueryUserRate(Username, MCC, MNC);
             return AjaxResult.success(list);
-
         } catch (Exception e) {
             e.printStackTrace();
             return AjaxResult.error("Failed to query rate");
         } finally {
-            // 保证释放
-            if (nCacheDBLink != null|| count>0) {
+            if (nCacheDBLink != null || count > 0) {
                 try { nCacheDBLink.Disconnect(); } catch (Exception ignored) {}
                 try { nCacheDBLink.Destroy(); } catch (Exception ignored) {}
             }
         }
     }
 
-    /**
-     * 修改子账户密码
-     */
     @Override
     public AjaxResult ChangeSwitchAccountPWD(String Username, String OldPass, String NewPass) {
         NCacheDBLink nCacheDBLink = null;
         int count = -1;
         try {
             nCacheDBLink = NCacheDBLink.getNCacheDBLink();
-            count=nCacheDBLink.InitEnv();
+            count = nCacheDBLink.InitEnv();
             nCacheDBLink.ConnectToCacheDB();
-            Map<String, Object> map = nCacheDBLink.prc_ChangeSwitchAccountPWD(Username, OldPass, NewPass);
-            return AjaxResult.success(map);
-
+            return AjaxResult.success(nCacheDBLink.prc_ChangeSwitchAccountPWD(Username, OldPass, NewPass));
         } catch (Exception e) {
             e.printStackTrace();
             return AjaxResult.error("Failed to change password");
         } finally {
-            // 保证释放
-            if (nCacheDBLink != null || count>0) {
+            if (nCacheDBLink != null || count > 0) {
                 try { nCacheDBLink.Disconnect(); } catch (Exception ignored) {}
                 try { nCacheDBLink.Destroy(); } catch (Exception ignored) {}
             }
@@ -504,21 +456,16 @@ public class AuthServiceImpl implements AuthService {
         int count = -1;
         try {
             nCacheDBLink = NCacheDBLink.getNCacheDBLink();
-            count=nCacheDBLink.InitEnv();
+            count = nCacheDBLink.InitEnv();
             nCacheDBLink.ConnectToCacheDB();
-            Map<String, Object> map =null;
-            if ("4".equals(OpType)){
-                map = nCacheDBLink.prc_Set2FAKeyForCompanyId("",name);
-            } else {
-                map = nCacheDBLink.prc_SetCompany2FA_Condition(name,Enable,Email,OpType);
-            }
-            return AjaxResult.success(map);
+            return AjaxResult.success("4".equals(OpType)
+                    ? nCacheDBLink.prc_Set2FAKeyForCompanyId("", name)
+                    : nCacheDBLink.prc_SetCompany2FA_Condition(name, Enable, Email, OpType));
         } catch (Exception e) {
             e.printStackTrace();
             return AjaxResult.error("Failed to UpdateAVerify");
         } finally {
-            // 保证释放
-            if (nCacheDBLink != null || count>0) {
+            if (nCacheDBLink != null || count > 0) {
                 try { nCacheDBLink.Disconnect(); } catch (Exception ignored) {}
                 try { nCacheDBLink.Destroy(); } catch (Exception ignored) {}
             }

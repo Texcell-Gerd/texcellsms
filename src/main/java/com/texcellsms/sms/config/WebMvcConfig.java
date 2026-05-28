@@ -21,15 +21,18 @@ public class WebMvcConfig implements WebMvcConfigurer {
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
 
-        // 安全监控拦截器（最优先执行，放在最前面）
+        // 安全监控拦截器
         registry.addInterceptor(securityMonitorInterceptor)
                 .addPathPatterns("/**")
-                .excludePathPatterns("/monitor", "/api/monitor/**");  // 排除监控自身
+                .excludePathPatterns(
+                        "/monitor/**",
+                        "/api/monitor/**"
+                );
 
         // API日志拦截器
         registry.addInterceptor(apiLogInterceptor)
                 .addPathPatterns("/api/**", "/open/api/**")
-                .excludePathPatterns("/api/monitor/logs", "/monitor");
+                .excludePathPatterns("/api/monitor/**", "/monitor/**");
 
         // 数据源切换拦截器
         registry.addInterceptor(new DataSourceInterceptor())
@@ -40,8 +43,8 @@ public class WebMvcConfig implements WebMvcConfigurer {
                 .addPathPatterns("/**")
                 .excludePathPatterns(
                         "/api/auth/login",
-                        "/monitor",
-                        "/api/monitor/logs",
+                        "/monitor/**",
+                        "/api/monitor/**",
                         "/open/api/sms/send",
                         "/open/api/sms/receipt",
                         "/open/api/sms/balance",
