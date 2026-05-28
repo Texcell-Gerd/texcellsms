@@ -187,7 +187,7 @@ public class AuthServiceImpl implements AuthService {
 
         AjaxResult vr = GoogleAuthVerification(user, code);
 
-        // 严格按你的枚举：0=成功
+        // 枚举：0=成功
         if (vr.getCode() == SMSResponseMessage.SUCCESS.getCode()) {
             update2fa(name, IP, 1, "2FA_SUCCESS");
         } else {
@@ -312,7 +312,7 @@ public class AuthServiceImpl implements AuthService {
         }
     }
 
-    // ====================== 以下完全保持你原有代码不动 ======================
+    // ====================== 原有代码不动 ======================
     public AjaxResult Google2FA(AuthController.LoginRequest loginRequest, String host, String okey, CacheDBLonginResult result) {
         NCacheDBLink nCacheDBLink = null;
         String secretKey = null;
