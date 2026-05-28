@@ -104,3 +104,9 @@ management:
   endpoint:
     health:
       show-details: always
+
+mail:
+  from-email: report@texcellsms.com
+  auth-code: "@Adsl888"
+  smtp-host: smtp.exmail.qq.com
+  smtp-port: 465

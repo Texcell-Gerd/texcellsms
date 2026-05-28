@@ -1,60 +1,47 @@
 package com.texcellsms.sms.util;
 
+import com.texcellsms.sms.config.MailProperties;
+import org.springframework.stereotype.Component;
+
+import javax.annotation.Resource;
 import javax.mail.*;
 import javax.mail.internet.InternetAddress;
 import javax.mail.internet.MimeMessage;
 import java.util.Properties;
 import java.util.Random;
 
+@Component
 public class EmailUtil {
 
-    /**
-     * 发件人邮箱
-     */
-    private static final String FROM_EMAIL = "report@texcellsms.com";
-
-    /**
-     * SMTP授权码
-     * 注意不是邮箱密码
-     */
-    private static final String EMAIL_AUTH_CODE = "@Adsl888";
-
-    /**
-     * SMTP服务器
-     */
-    private static final String SMTP_HOST = "smtp.exmail.qq.com";
-
-    /**
-     * SMTP端口
-     */
-    private static final String SMTP_PORT = "465";
+    @Resource
+    private MailProperties mailConfig;
 
     /**
      * 生成6位验证码
      */
-    public static String generateCode() {
+    public String generateCode() {
+
         Random random = new Random();
+
         int code = 100000 + random.nextInt(900000);
+
         return String.valueOf(code);
     }
 
     /**
      * 发送验证码邮件
-     *
-     * @param toEmail 收件人邮箱
-     * @param code 验证码
-     * @return 是否发送成功
      */
-    public static boolean sendEmailCode(String toEmail, String code) {
+    public boolean sendEmailCode(String toEmail, String code) {
 
         try {
+
             Properties props = new Properties();
 
             // SMTP服务器
-            props.put("mail.smtp.host", SMTP_HOST);
+            props.put("mail.smtp.host", mailConfig.getSmtpHost());
 
             // SMTP端口
-            props.put("mail.smtp.port", SMTP_PORT);
+            props.put("mail.smtp.port", mailConfig.getSmtpPort());
 
             // 开启认证
             props.put("mail.smtp.auth", "true");
@@ -64,27 +51,39 @@ public class EmailUtil {
 
             // 创建Session
             Session session = Session.getInstance(props, new Authenticator() {
+
                 @Override
                 protected PasswordAuthentication getPasswordAuthentication() {
-                    return new PasswordAuthentication(FROM_EMAIL, EMAIL_AUTH_CODE);
+
+                    return new PasswordAuthentication(
+                            mailConfig.getFromEmail(),
+                            mailConfig.getAuthCode()
+                    );
                 }
             });
 
-            // 开启调试（生产环境可以关闭）
+            // 调试模式
             session.setDebug(false);
 
             // 创建邮件对象
             MimeMessage message = new MimeMessage(session);
 
             // 发件人
-            message.setFrom(new InternetAddress(FROM_EMAIL));
+            message.setFrom(
+                    new InternetAddress(mailConfig.getFromEmail())
+            );
 
             // 收件人
-            message.setRecipient(Message.RecipientType.TO,
-                    new InternetAddress(toEmail));
+            message.setRecipient(
+                    Message.RecipientType.TO,
+                    new InternetAddress(toEmail)
+            );
 
             // 邮件标题
-            message.setSubject("TEXCELLSMS Email Verification Code");
+            message.setSubject(
+                    "TEXCELLSMS Email Verification",
+                    "UTF-8"
+            );
 
             // 邮件内容
             String content =
@@ -117,6 +116,7 @@ public class EmailUtil {
 
                             "</div>";
 
+            // HTML格式
             message.setContent(content, "text/html;charset=UTF-8");
 
             // 发送邮件
@@ -125,32 +125,12 @@ public class EmailUtil {
             return true;
 
         } catch (Exception e) {
+
             e.printStackTrace();
+
             return false;
         }
     }
-
-    /**
-     * 测试
-     */
-//    public static void main(String[] args) {
-//
-//        // 收件邮箱
-//        String toEmail = "edmond@texcellsms.com";
-//
-//        // 生成验证码
-//        String code = generateCode();
-//
-//        // 发送
-//        boolean result = sendEmailCode(toEmail, code);
-//
-//        if (result) {
-//            System.out.println("发送成功");
-//            System.out.println("验证码：" + code);
-//        } else {
-//            System.out.println("发送失败");
-//        }
-//    }
 }
 
 

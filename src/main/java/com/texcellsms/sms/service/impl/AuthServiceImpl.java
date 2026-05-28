@@ -19,6 +19,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpSession;
 import java.math.BigDecimal;
@@ -34,6 +35,9 @@ public class AuthServiceImpl implements AuthService {
 
     // 你的 Logger 完全对齐
     private static final Logger logger = LoggerFactory.getLogger(AuthServiceImpl.class);
+
+    @Resource
+    private EmailUtil EmailUtil;
 
     /**
      * 用户登录接口
