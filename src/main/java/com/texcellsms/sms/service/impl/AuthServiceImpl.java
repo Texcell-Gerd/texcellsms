@@ -245,7 +245,7 @@ public class AuthServiceImpl implements AuthService {
         loginUser.setToken(safeToken);
         loginUser.setCreateTime(System.currentTimeMillis());
         tokenService.createToken(loginUser);
-        loginUser.setFaKey(cacheDBLonginResult.getFAKey());
+        loginUser.setFaKey("".equals(cacheDBLonginResult.getFAKey())?"":"1");
         loginUser.setEmail(cacheDBLonginResult.getEmail());
         loginUser.setEnable(cacheDBLonginResult.getIsEnable());
 
@@ -301,7 +301,6 @@ public class AuthServiceImpl implements AuthService {
         loginUser.setSManualKey(secretKey);
         loginUser.setSQRCode(qrCodeData);
         loginUser.setToken(TempTokenUtil.generateToken(loginRequest.getUsername(),loginRequest.getPassword()));
-        loginUser.setFaKey(result.getFAKey());
         loginUser.setEmail(result.getEmail());
         loginUser.setEnable(result.getIsEnable());
         return AjaxResult.success(LOGIN2FA.getCode(),LOGIN2FA.getMessage(),loginUser);
