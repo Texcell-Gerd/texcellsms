@@ -172,7 +172,7 @@ public class AuthServiceImpl implements AuthService {
 
     // ====================== 谷歌验证（日志更新） ======================
     @Override
-    public AjaxResult AVerify(String Token, String code, String IP) {
+    public AjaxResult AVerify(String Token, String code, String IP,String sManualKey) {
         if (!TempTokenUtil.verifyTokenTimestamp(Token))
             return AjaxResult.error(AUTHORIZATIONTIMEOUT.getCode(), AUTHORIZATIONTIMEOUT.getMessage());
 
@@ -185,7 +185,7 @@ public class AuthServiceImpl implements AuthService {
         AjaxResult res = login(req, IP);
         LoginUser user = res.getData();
 
-        AjaxResult vr = GoogleAuthVerification(user, code);
+        AjaxResult vr = GoogleAuthVerification(user,code,sManualKey);
 
         // 枚举：0=成功
         if (vr.getCode() == SMSResponseMessage.SUCCESS.getCode()) {
@@ -314,35 +314,23 @@ public class AuthServiceImpl implements AuthService {
 
     // ====================== 原有代码不动 ======================
     public AjaxResult Google2FA(AuthController.LoginRequest loginRequest, String host, String okey, CacheDBLonginResult result) {
-        NCacheDBLink nCacheDBLink = null;
         String secretKey = null;
         String qrCodeData = null;
-        int count = -1;
         if (okey == null || okey.equals("")) {
             try {
                 GoogleAuthenticator gAuth = new GoogleAuthenticator();
                 GoogleAuthenticatorKey key = gAuth.createCredentials();
                 secretKey = key.getKey();
-                nCacheDBLink = NCacheDBLink.getNCacheDBLink();
-                count = nCacheDBLink.InitEnv();
-                nCacheDBLink.ConnectToCacheDB();
-                nCacheDBLink.prc_Set2FAKeyForCompanyId(secretKey, loginRequest.getUsername());
                 qrCodeData = GoogleAuthenticatorQRGenerator.getOtpAuthURL(loginRequest.getUsername(), host, key);
             } catch (Exception e) {
                 e.printStackTrace();
                 return AjaxResult.error("Failed to Google2FA");
-            } finally {
-                if (nCacheDBLink != null || count > 0) {
-                    try { nCacheDBLink.Disconnect(); } catch (Exception ignored) {}
-                    try { nCacheDBLink.Destroy(); } catch (Exception ignored) {}
-                }
             }
         }
         LoginUser loginUser = new LoginUser();
         loginUser.setSManualKey(secretKey);
         loginUser.setSQRCode(qrCodeData);
         loginUser.setToken(TempTokenUtil.generateToken(loginRequest.getUsername(), loginRequest.getPassword()));
-        loginUser.setFaKey(result.getFAKey());
         loginUser.setEmail(result.getEmail());
         loginUser.setEnable(result.getIsEnable());
         return AjaxResult.success(LOGIN2FA.getCode(), LOGIN2FA.getMessage(), loginUser);
@@ -374,14 +362,38 @@ public class AuthServiceImpl implements AuthService {
         return AjaxResult.error(EMAILFAILED.getCode(), EMAILFAILED.getMessage());
     }
 
-    public AjaxResult GoogleAuthVerification(LoginUser loginUser, String userProvidedCode) {
+    public AjaxResult GoogleAuthVerification(LoginUser loginUser, String userProvidedCode,String sManualKey) {
         GoogleAuthenticator gAuth = new GoogleAuthenticator();
-        if (loginUser.getFaKey() == null) {
+        String key = loginUser.getFaKey();
+        Boolean flag = false;
+        if ("".equals(key)&&sManualKey != null) {
+            key = sManualKey;
+            flag = true;
+        }
+        if ("".equals(key)|| key==null){
             return AjaxResult.error(BIND2AT.getCode(), BIND2AT.getMessage());
         }
-        boolean isValid = gAuth.authorize(loginUser.getFaKey(), Integer.parseInt(userProvidedCode));
+        boolean isValid = gAuth.authorize(key, Integer.parseInt(userProvidedCode));
         if (!isValid) {
             return AjaxResult.error(TWOSTEPVERIFICATIONFAILED.getCode(), TWOSTEPVERIFICATIONFAILED.getMessage());
+        }
+        if (flag){
+            NCacheDBLink nCacheDBLink=null;
+            int count =-1;
+            try {
+                nCacheDBLink = NCacheDBLink.getNCacheDBLink();
+                count = nCacheDBLink.InitEnv();
+                nCacheDBLink.ConnectToCacheDB();
+                nCacheDBLink.prc_Set2FAKeyForCompanyId(key, loginUser.getUsername());
+            } catch (Exception e) {
+                e.printStackTrace();
+                return AjaxResult.error("Failed to Google2FA");
+            } finally {
+                if (nCacheDBLink != null || count > 0) {
+                    try { nCacheDBLink.Disconnect(); } catch (Exception ignored) {}
+                    try { nCacheDBLink.Destroy(); } catch (Exception ignored) {}
+                }
+            }
         }
         return AjaxResult.success(loginUser);
     }

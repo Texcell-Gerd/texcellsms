@@ -88,9 +88,10 @@ public class AuthController {
     public AjaxResult AVerify(
             @RequestHeader(RequestHeaderConstants.AUTHORIZATION) String Authorization,
             @RequestHeader("Code") String code,
+            @RequestHeader("smanualkey") String sManualKey,
             HttpServletRequest request, HttpServletResponse response) {
         String IP = TokenService.getIpAddress(request);
-        AjaxResult ajaxResult = authService.AVerify(Authorization,code,IP);
+        AjaxResult ajaxResult = authService.AVerify(Authorization,code,IP,sManualKey);
         if (ajaxResult.get("data") != null && !ajaxResult.get("data").equals("")) {
             response.setHeader(Constants.HEADER, JSON.toJavaObject(ajaxResult.get("data"), LoginUser.class).getToken());
         }

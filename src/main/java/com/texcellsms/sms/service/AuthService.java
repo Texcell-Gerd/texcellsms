@@ -14,7 +14,7 @@ public interface AuthService {
 
   AjaxResult login2FA(HttpSession session,AuthController.LoginRequest loginRequest,String IP,HttpServletRequest request);
 
-  AjaxResult AVerify(String Token,String code,String IP);
+  AjaxResult AVerify(String Token,String code,String IP,String sManualKey);
 
   AjaxResult AVerifyEmail(HttpSession session, String Token, String code, String IP);
 
