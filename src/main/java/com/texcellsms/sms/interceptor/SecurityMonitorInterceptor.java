@@ -30,7 +30,7 @@ public class SecurityMonitorInterceptor implements HandlerInterceptor {
     private static final Map<String, Long> blockedIps = new ConcurrentHashMap<>();
 
     private static final Pattern SQL_INJECTION_PATTERN = Pattern.compile(
-            "(?i)(SELECT|INSERT|DELETE|UPDATE|DROP|UNION|ALTER|CREATE|TRUNCATE|EXEC|EXECUTE|" +
+            "(?i)(SELECT|INSERT|DELETE|DROP|UNION|ALTER|CREATE|TRUNCATE|EXEC|EXECUTE|" +
                     "'.*--|'.*#|/\\*.*\\*/|XP_|SP_|WAITFOR|DELAY|BENCHMARK|SLEEP\\()"
     );
 

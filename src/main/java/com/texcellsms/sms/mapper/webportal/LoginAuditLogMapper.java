@@ -80,6 +80,25 @@ public interface LoginAuditLogMapper {
                @Param("startTime") LocalDateTime startTime,
                @Param("endTime") LocalDateTime endTime);
 
+
+    @Select("<script>" +
+            "SELECT * FROM tbl_Login_Audit_Log " +
+            "<where>" +
+            "<if test='username != null and username != \"\"'>AND username LIKE CONCAT('%', #{username}, '%') </if>" +
+            "<if test='realIp != null and realIp != \"\"'>AND realIp LIKE CONCAT('%', #{realIp}, '%') </if>" +
+            "<if test='loginResult != null'>AND loginResult = #{loginResult} </if>" +
+            "<if test='twoFactorType != null and twoFactorType != \"\"'>AND twoFactorType = #{twoFactorType} </if>" +
+            "<if test='startTime != null'>AND loginTime &gt;= #{startTime} </if>" +
+            "<if test='endTime != null'>AND loginTime &lt;= #{endTime} </if>" +
+            "</where>" +
+            "ORDER BY loginTime DESC</script>")
+    List<LoginAuditLog> selectForExport(@Param("username") String username,
+                                        @Param("realIp") String realIp,
+                                        @Param("loginResult") Integer loginResult,
+                                        @Param("twoFactorType") String twoFactorType,
+                                        @Param("startTime") LocalDateTime startTime,
+                                        @Param("endTime") LocalDateTime endTime);
+
     // ====================== 统计接口 ======================
     @Select("SELECT COUNT(*) as totalCount, SUM(CASE WHEN loginResult = 1 THEN 1 ELSE 0 END) as successCount, " +
             "SUM(CASE WHEN loginResult = 0 THEN 1 ELSE 0 END) as failCount " +
@@ -108,7 +127,7 @@ public interface LoginAuditLogMapper {
             "FROM tbl_Login_Audit_Log WHERE DATE(loginTime) = CURDATE() GROUP BY HOUR(loginTime) ORDER BY hour")
     List<Map<String, Object>> getTodayHourlyDistribution();
 
-    @Select("SELECT COUNT(DISTINCT username) FROM tbl_Login_Audit_Log WHERE DATE(loginTime) = CURDATE()")
+    @Select("SELECT COUNT(DISTINCT username) FROM tbl_Login_Audit_Log WHERE DATE(loginTime) = CURDATE() AND loginResult = 1")
     int getTodayActiveUsers();
 
     @Select("SELECT realIp, COUNT(*) as failCount FROM tbl_Login_Audit_Log " +
@@ -119,6 +138,12 @@ public interface LoginAuditLogMapper {
             "SUM(CASE WHEN twoFaResult = 1 THEN 1 ELSE 0 END) as successCount " +
             "FROM tbl_Login_Audit_Log WHERE DATE(loginTime) = CURDATE() AND twoFactorType IS NOT NULL GROUP BY twoFactorType")
     List<Map<String, Object>> getTodayTwoFactorStats();
+
+    @Select("SELECT DISTINCT username FROM tbl_Login_Audit_Log WHERE DATE(loginTime) = CURDATE() AND loginResult = 1 ORDER BY username")
+    List<String> getTodayActiveUserList();
+
+    @Select("SELECT * FROM tbl_Login_Audit_Log WHERE id = #{id}")
+    LoginAuditLog selectById(@Param("id") Long id);
 
     @Delete("DELETE FROM tbl_Login_Audit_Log WHERE loginTime < #{beforeTime}")
     int deleteByTime(@Param("beforeTime") LocalDateTime beforeTime);

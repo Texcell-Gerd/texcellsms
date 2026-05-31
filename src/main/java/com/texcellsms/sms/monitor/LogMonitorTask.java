@@ -203,7 +203,7 @@ public class LogMonitorTask {
         return false;
     }
 
-    @Scheduled(fixedRate = 10000)
+    @Scheduled(fixedRate = 30000)
     public void scanBusinessLog() {
         try {
             File logFile = new File(BUSINESS_LOG_PATH);
