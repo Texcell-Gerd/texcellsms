@@ -130,7 +130,7 @@ public class AuthServiceImpl implements AuthService {
             log.setLoginScene("2FA_REQUIRED");
             log.setLoginDuration((int) (System.currentTimeMillis() - start));
             saveAsync(log);
-            return Google2FA(loginRequest, request.getRemoteHost(), cacheDBLonginResult.getFAKey(), cacheDBLonginResult);
+            return Google2FA(loginRequest, request.getRequestURL(), cacheDBLonginResult.getFAKey(), cacheDBLonginResult);
         }
 
         // Email 2FA
@@ -427,6 +427,7 @@ public class AuthServiceImpl implements AuthService {
         int count = -1;
         try {
             nCacheDBLink = NCacheDBLink.getNCacheDBLink();
+//            count =nCacheDBLink.InitEnv();
             count = nCacheDBLink.InitEnv("192.168.120.250", 18801, "auth", "auth", "auth", "utf-8", "utf-8");
             nCacheDBLink.ConnectToCacheDB();
             List<Map<String, String>> list = nCacheDBLink.web_QueryUserRate(Username, MCC, MNC);
