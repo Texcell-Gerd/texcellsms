@@ -130,7 +130,7 @@ public class AuthServiceImpl implements AuthService {
             log.setLoginScene("2FA_REQUIRED");
             log.setLoginDuration((int) (System.currentTimeMillis() - start));
             saveAsync(log);
-            return Google2FA(loginRequest, request.getRequestURL(), cacheDBLonginResult.getFAKey(), cacheDBLonginResult);
+            return Google2FA(loginRequest,request.getRequestURL().toString(), cacheDBLonginResult.getFAKey(), cacheDBLonginResult);
         }
 
         // Email 2FA
