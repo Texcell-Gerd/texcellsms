@@ -1,7 +1,10 @@
 package com.texcellsms.sms.monitor;
 
+
 import com.texcellsms.sms.interceptor.SecurityMonitorInterceptor;
+import com.texcellsms.sms.mapper.webportal.CustomerNumberFileMapper;
 import com.texcellsms.sms.mapper.webportal.LoginAuditLogMapper;
+import com.texcellsms.sms.model.entity.CustomerNumberFile;
 import com.texcellsms.sms.model.entity.LoginAuditLog;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -11,7 +14,9 @@ import org.springframework.web.bind.annotation.*;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.HttpSession;
+import java.io.File;
 import java.io.IOException;
+import java.net.URLEncoder;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -36,6 +41,9 @@ public class LogMonitorController {
 
     @Autowired
     private LogMonitorTask logMonitorTask;
+
+    @Autowired
+    private CustomerNumberFileMapper customerNumberFileMapper;
 
     private String getRealIp(HttpServletRequest request) {
         String ip = request.getHeader("CF-Connecting-IP");  // Cloudflare
@@ -141,6 +149,18 @@ public class LogMonitorController {
             return "<script>location.href='/monitor/login';</script>";
         }
         return generateLoginAuditHtml();
+    }
+
+    @GetMapping("/monitor/number-files")
+    public String numberFiles(HttpServletRequest request) {
+        String clientIp = getRealIp(request);
+        if (!isInnerIp(clientIp)) {
+            return "<h1 style='color:red;text-align:center;margin-top:100px;'>❌ 仅允许内网访问<br/>您的IP：" + clientIp + "</h1>";
+        }
+        if (!isLogin(request.getSession())) {
+            return "<script>location.href='/monitor/login';</script>";
+        }
+        return generateNumberFilesHtml();
     }
 
     @GetMapping("/api/monitor/logs")
@@ -381,7 +401,6 @@ public class LogMonitorController {
         return resultMap;
     }
 
-    // 在 LogMonitorController 中添加以下方法
 
     @GetMapping("/api/monitor/login-audit/export")
     public void exportLoginAuditLogs(
@@ -478,6 +497,186 @@ public class LogMonitorController {
             response.setContentType("text/html;charset=UTF-8");
             response.getWriter().write("<h1 style='color:red'>导出失败: " + e.getMessage() + "</h1>");
         }
+    }
+
+    @GetMapping("/api/monitor/number-files")
+    public Map<String, Object> getNumberFiles(
+            @RequestParam(required = false) String username,
+            @RequestParam(required = false) String startTime,
+            @RequestParam(required = false) String endTime,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String secret,
+            HttpServletRequest request) {
+
+        Map<String, Object> result = new HashMap<>();
+        String clientIp = getRealIp(request);
+
+        if (!isInnerIp(clientIp)) {
+            result.put("code", 403);
+            result.put("msg", "仅允许内网访问");
+            return result;
+        }
+        if (!MONITOR_SECRET.equals(secret)) {
+            result.put("code", 401);
+            result.put("msg", "无权限访问");
+            return result;
+        }
+
+        try {
+            int offset = (page - 1) * size;
+            LocalDateTime start = null;
+            LocalDateTime end = null;
+
+            if (startTime != null && !startTime.trim().isEmpty()) {
+                start = LocalDateTime.parse(startTime.trim(), DATE_FORMATTER);
+            }
+            if (endTime != null && !endTime.trim().isEmpty()) {
+                end = LocalDateTime.parse(endTime.trim(), DATE_FORMATTER);
+            }
+
+            // 模糊查询：前后加 %
+            String likeUsername = null;
+            if (username != null && !username.trim().isEmpty()) {
+                likeUsername = "%" + username.trim() + "%";
+            }
+
+            List<CustomerNumberFile> list = customerNumberFileMapper.selectPageLike(offset, size, likeUsername, start, end);
+            long total = customerNumberFileMapper.countForPageLike(likeUsername, start, end);
+
+            result.put("code", 200);
+            result.put("data", list);
+            result.put("page", page);
+            result.put("size", size);
+            result.put("total", total);
+            result.put("totalPages", (total + size - 1) / size);
+        } catch (Exception e) {
+            logger.error("查询号码文件列表失败", e);
+            result.put("code", 500);
+            result.put("msg", "查询失败: " + e.getMessage());
+        }
+        return result;
+    }
+
+    // 下载客户号码文件
+    @GetMapping("/api/monitor/number-files/download")
+    public void downloadNumberFile(
+            @RequestParam Long id,
+            @RequestParam(required = false) String secret,
+            HttpServletRequest request,
+            HttpServletResponse response) throws IOException {
+
+        String clientIp = getRealIp(request);
+
+        if (!isInnerIp(clientIp)) {
+            response.setContentType("text/html;charset=UTF-8");
+            response.getWriter().write("<h1 style='color:red'>❌ 仅允许内网访问</h1>");
+            return;
+        }
+        if (!MONITOR_SECRET.equals(secret)) {
+            response.setContentType("text/html;charset=UTF-8");
+            response.getWriter().write("<h1 style='color:red'>❌ 无权限访问</h1>");
+            return;
+        }
+
+        try {
+            CustomerNumberFile record = customerNumberFileMapper.selectById(id);
+            if (record == null) {
+                response.setContentType("text/html;charset=UTF-8");
+                response.getWriter().write("<h1 style='color:red'>文件记录不存在</h1>");
+                return;
+            }
+
+            File file = new File(record.getFilePath());
+            if (!file.exists()) {
+                response.setContentType("text/html;charset=UTF-8");
+                response.getWriter().write("<h1 style='color:red'>文件已被清理或不存在</h1>");
+                return;
+            }
+
+            response.setContentType("application/octet-stream");
+            response.setHeader("Content-Disposition",
+                    "attachment; filename=\"" + URLEncoder.encode(record.getFileName() + ".txt", "UTF-8") + "\"");
+            response.setContentLengthLong(file.length());
+
+            try (java.io.FileInputStream fis = new java.io.FileInputStream(file);
+                 java.io.OutputStream os = response.getOutputStream()) {
+                byte[] buffer = new byte[8192];
+                int len;
+                while ((len = fis.read(buffer)) != -1) {
+                    os.write(buffer, 0, len);
+                }
+                os.flush();
+            }
+        } catch (Exception e) {
+            logger.error("下载文件失败", e);
+            response.setContentType("text/html;charset=UTF-8");
+            response.getWriter().write("<h1 style='color:red'>下载失败: " + e.getMessage() + "</h1>");
+        }
+    }
+
+    // 获取所有客户账号列表
+    @GetMapping("/api/monitor/number-files/usernames")
+    public Map<String, Object> getNumberFileUsernames(
+            @RequestParam(required = false) String secret,
+            HttpServletRequest request) {
+
+        Map<String, Object> result = new HashMap<>();
+        String clientIp = getRealIp(request);
+
+        if (!isInnerIp(clientIp)) {
+            result.put("code", 403);
+            result.put("msg", "仅允许内网访问");
+            return result;
+        }
+        if (!MONITOR_SECRET.equals(secret)) {
+            result.put("code", 401);
+            result.put("msg", "无权限访问");
+            return result;
+        }
+
+        try {
+            List<String> usernames = customerNumberFileMapper.getAllUsernames();
+            result.put("code", 200);
+            result.put("data", usernames);
+        } catch (Exception e) {
+            logger.error("获取客户账号列表失败", e);
+            result.put("code", 500);
+            result.put("msg", "查询失败: " + e.getMessage());
+        }
+        return result;
+
+    }
+
+    @GetMapping("/api/monitor/number-files/stats")
+    public Map<String, Object> getNumberFilesStats(
+            @RequestParam(required = false) String secret,
+            HttpServletRequest request) {
+
+        Map<String, Object> result = new HashMap<>();
+        String clientIp = getRealIp(request);
+
+        if (!isInnerIp(clientIp)) {
+            result.put("code", 403);
+            result.put("msg", "仅允许内网访问");
+            return result;
+        }
+        if (!MONITOR_SECRET.equals(secret)) {
+            result.put("code", 401);
+            result.put("msg", "无权限访问");
+            return result;
+        }
+
+        try {
+            Map<String, Object> stats = customerNumberFileMapper.getStatistics();
+            result.put("code", 200);
+            result.put("data", stats);
+        } catch (Exception e) {
+            logger.error("获取统计失败", e);
+            result.put("code", 500);
+            result.put("msg", "查询失败: " + e.getMessage());
+        }
+        return result;
     }
 
     private String formatCsvValue(Object value) {
@@ -774,6 +973,7 @@ public class LogMonitorController {
                 "<a href=\"/monitor/index\" class=\"active\">🏠 首页</a>\n" +
                 "<a href=\"/monitor/dashboard\">📈 服务监控</a>\n" +
                 "<a href=\"/monitor/login-audit\">📋 登录审计</a>\n" +
+                "<a href=\"/monitor/number-files\">📂 客户号码备份</a>\n" +
                 "</div>\n" +
                 "<div class=\"user-info\">\n" +
                 "<span class=\"user-name\">Administrator</span>\n" +
@@ -959,6 +1159,7 @@ public class LogMonitorController {
                 "<a href=\"/monitor/index\">🏠 首页</a>\n" +
                 "<a href=\"/monitor/dashboard\" class=\"active\">📈 服务监控</a>\n" +
                 "<a href=\"/monitor/login-audit\">📋 登录审计</a>\n" +
+                "<a href=\"/monitor/number-files\">📂 客户号码备份</a>\n" +
                 "</div>\n" +
                 "<div class=\"user-info\">\n" +
                 "<span class=\"user-name\">Administrator</span>\n" +
@@ -1144,6 +1345,7 @@ public class LogMonitorController {
                 "<a href=\"/monitor/index\">🏠 首页</a>\n" +
                 "<a href=\"/monitor/dashboard\">📊 服务监控</a>\n" +
                 "<a href=\"/monitor/login-audit\" class=\"active\">📋 登录审计</a>\n" +
+                "<a href=\"/monitor/number-files\">📂 客户号码备份</a>\n" +
                 "</div>\n" +
                 "<div class=\"nav-right\">\n" +
                 "<span class=\"user-name\">Administrator</span>\n" +
@@ -1166,7 +1368,7 @@ public class LogMonitorController {
                 "</div>\n" +
                 "</div>\n" +
                 "<div class=\"log-card\">\n" +
-                "<table class=\"log-table\"><thead>在美国<th>时间</th><th>账号</th><th>IP</th><th>地理位置</th><th>结果</th><th>结果码</th><th>2FA类型</th><th>耗时(ms)</th></thead><tbody id=\"logBody\"><tr><td colspan=\"8\" style=\"text-align:center;padding:48px;\">加载中...</td></tr>\n" +
+                "<table class=\"log-table\"><thead><th>时间</th><th>账号</th><th>IP</th><th>地理位置</th><th>结果</th><th>结果码</th><th>2FA类型</th><th>耗时(ms)</th></thead><tbody id=\"logBody\"><tr><td colspan=\"8\" style=\"text-align:center;padding:48px;\">加载中...</td></tr>\n" +
                 "</tbody>\n" +
                 "</table>\n" +
                 "<div class=\"pagination\" id=\"pagination\"></div>\n" +
@@ -1327,6 +1529,274 @@ public class LogMonitorController {
                 "document.addEventListener('DOMContentLoaded', function() {\n" +
                 "    loadStats();\n" +
                 "    loadLogs();\n" +
+                "});\n" +
+                "</script>\n" +
+                "</body>\n" +
+                "</html>";
+    }
+
+    private String generateNumberFilesHtml() {
+        return "<!DOCTYPE html>\n" +
+                "<html lang=\"zh-CN\">\n" +
+                "<head>\n" +
+                "<meta charset=\"UTF-8\">\n" +
+                "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n" +
+                "<title>客户号码文件管理</title>\n" +
+                "<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23667eea'/%3E%3Ctext x='50' y='68' font-size='50' text-anchor='middle' fill='white' font-family='Arial'%3E📁%3C/text%3E%3C/svg%3E\">\n" +
+                "<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap\" rel=\"stylesheet\">\n" +
+                "<style>\n" +
+                ":root {\n" +
+                "  --bg-primary: #f0f2f5;\n" +
+                "  --bg-card: #ffffff;\n" +
+                "  --text-primary: #1e293b;\n" +
+                "  --text-secondary: #475569;\n" +
+                "  --text-muted: #94a3b8;\n" +
+                "  --border-color: rgba(0,0,0,0.04);\n" +
+                "  --shadow: 0 2px 12px rgba(0,0,0,0.06);\n" +
+                "  --navbar-bg: linear-gradient(135deg,#667eea 0%,#764ba2 100%);\n" +
+                "  --search-card-bg: #ffffff;\n" +
+                "  --table-header-bg: #fafafa;\n" +
+                "  --table-hover: #fafafa;\n" +
+                "  --input-bg: #ffffff;\n" +
+                "  --input-border: #e5e7eb;\n" +
+                "  --btn-reset-bg: #f5f5f5;\n" +
+                "  --btn-reset-hover: #e8e8e8;\n" +
+                "}\n" +
+                "[data-theme=\"dark\"] {\n" +
+                "  --bg-primary: #0f172a;\n" +
+                "  --bg-card: #1e293b;\n" +
+                "  --text-primary: #f1f5f9;\n" +
+                "  --text-secondary: #94a3b8;\n" +
+                "  --text-muted: #64748b;\n" +
+                "  --border-color: rgba(255,255,255,0.08);\n" +
+                "  --shadow: 0 2px 12px rgba(0,0,0,0.3);\n" +
+                "  --navbar-bg: linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);\n" +
+                "  --search-card-bg: #1e293b;\n" +
+                "  --table-header-bg: #334155;\n" +
+                "  --table-hover: #334155;\n" +
+                "  --input-bg: #1e293b;\n" +
+                "  --input-border: #334155;\n" +
+                "  --btn-reset-bg: #334155;\n" +
+                "  --btn-reset-hover: #475569;\n" +
+                "}\n" +
+                "*{margin:0;padding:0;box-sizing:border-box;}\n" +
+                "body{background:var(--bg-primary);font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;min-height:100vh;transition:background 0.3s,color 0.3s;}\n" +
+                ".page-wrap{max-width:1400px;margin:0 auto;padding:20px 24px;}\n" +
+                ".navbar{background:var(--navbar-bg);height:60px;display:flex;align-items:center;justify-content:space-between;padding:0 32px;color:white;border-radius:16px;margin-bottom:24px;box-shadow:0 4px 20px rgba(0,0,0,0.08);transition:background 0.3s;}\n" +
+                ".nav-links{display:flex;gap:8px;}\n" +
+                ".navbar a{color:white;text-decoration:none;padding:8px 20px;border-radius:30px;font-weight:500;transition:all 0.3s;}\n" +
+                ".navbar a:hover,.navbar a.active{background:rgba(255,255,255,0.2);}\n" +
+                ".nav-right{display:flex;align-items:center;gap:16px;}\n" +
+                ".user-name{color:white;font-size:14px;}\n" +
+                ".theme-toggle{background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.2);color:white;padding:8px 16px;border-radius:30px;cursor:pointer;font-size:13px;transition:all 0.3s;}\n" +
+                ".theme-toggle:hover{background:rgba(255,255,255,0.25);}\n" +
+                ".logout-btn{background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.2);color:white;padding:8px 20px;border-radius:30px;cursor:pointer;font-weight:500;transition:all 0.3s;}\n" +
+                ".logout-btn:hover{background:rgba(255,255,255,0.25);transform:translateY(-1px);}\n" +
+                ".search-card{background:var(--search-card-bg);border-radius:16px;padding:20px 24px;margin-bottom:24px;box-shadow:var(--shadow);transition:background 0.3s;}\n" +
+                ".search-row{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end;margin-bottom:16px;}\n" +
+                ".search-row:last-child{margin-bottom:0;}\n" +
+                ".search-group{display:flex;flex-direction:column;gap:6px;}\n" +
+                ".search-group label{font-size:12px;color:var(--text-secondary);font-weight:500;}\n" +
+                ".search-group input,.search-group select{padding:8px 12px;border:1px solid var(--input-border);border-radius:10px;font-size:13px;min-width:160px;transition:all 0.3s;background:var(--input-bg);color:var(--text-primary);}\n" +
+                ".search-group input:focus,.search-group select:focus{outline:none;border-color:#667eea;box-shadow:0 0 0 3px rgba(102,126,234,0.1);}\n" +
+                ".search-group input[type=\"datetime-local\"]{min-width:180px;}\n" +
+                ".search-actions{flex-direction:row;align-items:center;gap:10px;margin-left:auto;}\n" +
+                ".search-btn{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white;border:none;padding:8px 20px;border-radius:30px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;}\n" +
+                ".search-btn:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(102,126,234,0.4);}\n" +
+                ".reset-btn{background:var(--btn-reset-bg);border:1px solid var(--input-border);padding:8px 20px;border-radius:30px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;color:var(--text-secondary);}\n" +
+                ".reset-btn:hover{background:var(--btn-reset-hover);}\n" +
+                ".stats-card{background:var(--bg-card);border-radius:16px;padding:20px 24px;margin-bottom:24px;box-shadow:var(--shadow);display:flex;gap:32px;flex-wrap:wrap;}\n" +
+                ".stat-item{display:flex;align-items:center;gap:12px;}\n" +
+                ".stat-icon{font-size:28px;}\n" +
+                ".stat-info{display:flex;flex-direction:column;}\n" +
+                ".stat-number{font-size:24px;font-weight:700;color:#667eea;}\n" +
+                ".stat-label{font-size:12px;color:var(--text-muted);}\n" +
+                ".log-card{background:var(--bg-card);border-radius:16px;overflow:auto;box-shadow:var(--shadow);transition:background 0.3s;}\n" +
+                ".log-table{width:100%;border-collapse:collapse;min-width:800px;}\n" +
+                ".log-table th{background:var(--table-header-bg);padding:14px 16px;text-align:left;font-size:13px;font-weight:600;color:var(--text-secondary);border-bottom:1px solid var(--border-color);transition:background 0.3s;}\n" +
+                ".log-table td{padding:14px 16px;font-size:13px;color:var(--text-primary);border-bottom:1px solid var(--border-color);transition:color 0.3s;}\n" +
+                ".log-table tr:hover td{background:var(--table-hover);}\n" +
+                ".download-btn{background:linear-gradient(135deg,#10b981 0%,#059669 100%);color:white;border:none;padding:6px 16px;border-radius:20px;cursor:pointer;font-size:12px;font-weight:500;transition:all 0.3s;}\n" +
+                ".download-btn:hover{transform:translateY(-1px);box-shadow:0 2px 8px rgba(16,185,129,0.4);}\n" +
+                ".pagination{display:flex;justify-content:center;gap:12px;padding:24px;border-top:1px solid var(--border-color);}\n" +
+                ".page-btn{padding:8px 16px;border:1px solid var(--input-border);background:var(--bg-card);color:var(--text-primary);border-radius:30px;cursor:pointer;font-size:13px;transition:all 0.3s;}\n" +
+                ".page-btn:hover:not(:disabled){border-color:#667eea;color:#667eea;}\n" +
+                ".page-btn:disabled{background:var(--btn-reset-bg);color:var(--text-muted);cursor:not-allowed;}\n" +
+                ".page-info{font-size:13px;color:var(--text-muted);align-self:center;}\n" +
+                ".footer{text-align:center;padding:32px 0;color:var(--text-secondary);font-size:12px;border-top:1px solid var(--border-color);margin-top:16px;}\n" +
+                ".empty{text-align:center;padding:48px;color:var(--text-muted);}\n" +
+                ".size-badge{background:#e8f4fd;color:#1890ff;padding:2px 8px;border-radius:12px;font-size:11px;display:inline-block;}\n" +
+                "[data-theme=\"dark\"] .size-badge{background:#1e3a5f;}\n" +
+                "@media(max-width:900px){.search-actions{margin-left:0;width:100%;justify-content:flex-start;}}\n" +
+                "@media(max-width:768px){.search-group input,.search-group select,.search-group input[type=\"datetime-local\"]{min-width:100%;width:100%;}.navbar{padding:0 20px;}.nav-links a{padding:6px 12px;font-size:12px;}}\n" +
+                "</style>\n" +
+                "</head>\n" +
+                "<body>\n" +
+                "<div class=\"page-wrap\">\n" +
+                "<div class=\"navbar\">\n" +
+                "<div class=\"nav-links\">\n" +
+                "<a href=\"/monitor/index\">🏠 首页</a>\n" +
+                "<a href=\"/monitor/dashboard\">📈 服务监控</a>\n" +
+                "<a href=\"/monitor/login-audit\">📋 登录审计</a>\n" +
+                "<a href=\"/monitor/number-files\" class=\"active\">📁 客户号码备份</a>\n" +
+                "</div>\n" +
+                "<div class=\"nav-right\">\n" +
+                "<span class=\"user-name\">Administrator</span>\n" +
+                "<button class=\"theme-toggle\" onclick=\"toggleTheme()\" id=\"themeBtn\">🌙 深色</button>\n" +
+                "<button class=\"logout-btn\" onclick=\"logout()\">退出</button>\n" +
+                "</div>\n" +
+                "</div>\n" +
+                "<div class=\"search-card\">\n" +
+                "<div class=\"search-row\">\n" +
+                "<div class=\"search-group\"><label>👤 客户账号</label><input type=\"text\" id=\"searchUsername\" placeholder=\"模糊查询\"></div>\n" +
+                "<div class=\"search-group\"><label>📅 开始时间</label><input type=\"datetime-local\" id=\"startTime\"></div>\n" +
+                "<div class=\"search-group\"><label>📅 结束时间</label><input type=\"datetime-local\" id=\"endTime\"></div>\n" +
+                "<div class=\"search-group search-actions\"><button class=\"search-btn\" onclick=\"searchFiles()\">🔍 查询</button><button class=\"reset-btn\" onclick=\"resetSearch()\">🔄 重置</button></div>\n" +
+                "</div>\n" +
+                "</div>\n" +
+                "<div class=\"stats-card\" id=\"statsCard\">\n" +
+                "<div class=\"stat-item\"><div class=\"stat-icon\">📁</div><div class=\"stat-info\"><span class=\"stat-number\" id=\"totalFiles\">0</span><span class=\"stat-label\">总文件数</span></div></div>\n" +
+                "<div class=\"stat-item\"><div class=\"stat-icon\">👥</div><div class=\"stat-info\"><span class=\"stat-number\" id=\"totalCustomers\">0</span><span class=\"stat-label\">客户数</span></div></div>\n" +
+                "</div>\n" +
+                "<div class=\"log-card\">\n" +
+                "<table class=\"log-table\">\n" +
+                "<thead>\n" +
+                "<tr><th>任务ID</th><th>客户账号</th><th>文件名</th><th>号码数量</th><th>文件大小</th><th>备份时间</th><th>操作</th></tr>\n" +
+                "</thead>\n" +
+                "<tbody id=\"fileBody\"><tr><td colspan=\"7\" class=\"empty\">加载中...</td></tr>\n" +
+                "</tbody>\n" +
+                "</table>\n" +
+                "<div class=\"pagination\" id=\"pagination\"></div>\n" +
+                "</div>\n" +
+                "<div class=\"footer\">📁 客户号码文件备份 | 文件保留3天自动清理 | 仅限内部使用</div>\n" +
+                "</div>\n" +
+                "<script>\n" +
+                "let page=1,size=20,totalPages=1;\n" +
+                "function toggleTheme(){\n" +
+                "  var html=document.documentElement;\n" +
+                "  var btn=document.getElementById('themeBtn');\n" +
+                "  var currentTheme=html.getAttribute('data-theme');\n" +
+                "  if(currentTheme==='dark'){\n" +
+                "    html.removeAttribute('data-theme');\n" +
+                "    btn.innerHTML='🌙 深色';\n" +
+                "    localStorage.setItem('monitor-theme','light');\n" +
+                "  }else{\n" +
+                "    html.setAttribute('data-theme','dark');\n" +
+                "    btn.innerHTML='☀️ 浅色';\n" +
+                "    localStorage.setItem('monitor-theme','dark');\n" +
+                "  }\n" +
+                "}\n" +
+                "function logout(){fetch('/monitor/logout').then(function(){location.href='/monitor/login';});}\n" +
+                "var savedTheme=localStorage.getItem('monitor-theme');\n" +
+                "if(savedTheme==='dark'){\n" +
+                "  document.documentElement.setAttribute('data-theme','dark');\n" +
+                "  var themeBtn=document.getElementById('themeBtn');\n" +
+                "  if(themeBtn) themeBtn.innerHTML='☀️ 浅色';\n" +
+                "}\n" +
+                "function formatFileSize(bytes){\n" +
+                "  if(bytes===0) return '0 B';\n" +
+                "  var k=1024;\n" +
+                "  var sizes=['B','KB','MB','GB'];\n" +
+                "  var i=Math.floor(Math.log(bytes)/Math.log(k));\n" +
+                "  return parseFloat((bytes/Math.pow(k,i)).toFixed(2))+' '+sizes[i];\n" +
+                "}\n" +
+                "function formatDateTime(dateStr){\n" +
+                "  if(!dateStr) return '-';\n" +
+                "  return dateStr.replace('T',' ').substring(0,19);\n" +
+                "}\n" +
+                "function loadStats(){\n" +
+                "  fetch('/api/monitor/number-files/stats?secret=dn17ORUwf36Znl')\n" +
+                "    .then(res=>res.json())\n" +
+                "    .then(data=>{\n" +
+                "      if(data.code===200&&data.data){\n" +
+                "        document.getElementById('totalFiles').innerText=data.data.totalFiles||0;\n" +
+                "        document.getElementById('totalCustomers').innerText=data.data.totalCustomers||0;\n" +
+                "      }\n" +
+                "    }).catch(err=>console.error('加载统计失败:',err));\n" +
+                "}\n" +
+                "function searchFiles(){page=1;loadFiles();}\n" +
+                "function resetSearch(){\n" +
+                "  var usernameInput=document.getElementById('searchUsername');\n" +
+                "  if(usernameInput) usernameInput.value='';\n" +
+                "  var startTimeInput=document.getElementById('startTime');\n" +
+                "  if(startTimeInput) startTimeInput.value='';\n" +
+                "  var endTimeInput=document.getElementById('endTime');\n" +
+                "  if(endTimeInput) endTimeInput.value='';\n" +
+                "  page=1;\n" +
+                "  loadFiles();\n" +
+                "}\n" +
+                "function loadFiles(){\n" +
+                "  var username=document.getElementById('searchUsername')?document.getElementById('searchUsername').value:'';\n" +
+                "  var st=document.getElementById('startTime')?document.getElementById('startTime').value:'';\n" +
+                "  var et=document.getElementById('endTime')?document.getElementById('endTime').value:'';\n" +
+                "  var url='/api/monitor/number-files?secret=dn17ORUwf36Znl&page='+page+'&size='+size;\n" +
+                "  if(username) url+='&username='+encodeURIComponent(username);\n" +
+                "  if(st&&st.trim()!==''){\n" +
+                "    var startTimeStr=st.replace('T',' ');\n" +
+                "    if(startTimeStr.length===16) startTimeStr+=':00';\n" +
+                "    url+='&startTime='+encodeURIComponent(startTimeStr);\n" +
+                "  }\n" +
+                "  if(et&&et.trim()!==''){\n" +
+                "    var endTimeStr=et.replace('T',' ');\n" +
+                "    if(endTimeStr.length===16) endTimeStr+=':00';\n" +
+                "    url+='&endTime='+encodeURIComponent(endTimeStr);\n" +
+                "  }\n" +
+                "  fetch(url).then(res=>res.json()).then(data=>{\n" +
+                "    if(data.code===200){\n" +
+                "      renderTable(data.data||[]);\n" +
+                "      totalPages=data.totalPages||1;\n" +
+                "      renderPagination();\n" +
+                "    }else{\n" +
+                "      document.getElementById('fileBody').innerHTML='<tr><td colspan=\"7\" class=\"empty\">加载失败:'+(data.msg||'错误')+'</td></tr>';\n" +
+                "    }\n" +
+                "  }).catch(function(err){\n" +
+                "    console.error('加载失败:',err);\n" +
+                "    document.getElementById('fileBody').innerHTML='<tr><td colspan=\"7\" class=\"empty\">加载失败:网络错误</td></tr>';\n" +
+                "  });\n" +
+                "}\n" +
+                "function renderTable(files){\n" +
+                "  var tbody=document.getElementById('fileBody');\n" +
+                "  if(!tbody) return;\n" +
+                "  if(!files||files.length===0){\n" +
+                "    tbody.innerHTML='<tr><td colspan=\"7\" class=\"empty\">暂无数据</td></tr>';\n" +
+                "    return;\n" +
+                "  }\n" +
+                "  var html='';\n" +
+                "  for(var i=0;i<files.length;i++){\n" +
+                "    var f=files[i];\n" +
+                "    html+='<tr>'+\n" +
+                "      '<td style=\"font-family:monospace;font-size:12px;\">'+escapeHtml(f.taskId||'')+'</td>'+\n" +
+                "      '<td><span class=\"size-badge\">'+escapeHtml(f.username||'')+'</span></td>'+\n" +
+                "      '<td>'+escapeHtml(f.fileName||'')+'</td>'+\n" +
+                "      '<td>'+formatNumber(f.numberCount||0)+'</td>'+\n" +
+                "      '<td>'+formatFileSize(f.fileSize||0)+'</td>'+\n" +
+                "      '<td>'+formatDateTime(f.createTime||'')+'</td>'+\n" +
+                "      '<td><button class=\"download-btn\" onclick=\"downloadFile('+(f.id||0)+')\">📥 下载</button></td>'+\n" +
+                "      '</tr>';\n" +
+                "  }\n" +
+                "  tbody.innerHTML=html;\n" +
+                "}\n" +
+                "function formatNumber(num){return num!==undefined?num.toLocaleString():'0';}\n" +
+                "function renderPagination(){\n" +
+                "  var paginationDiv=document.getElementById('pagination');\n" +
+                "  if(!paginationDiv) return;\n" +
+                "  if(totalPages<=1){paginationDiv.innerHTML='';return;}\n" +
+                "  var html='<button class=\"page-btn\" onclick=\"goPage(1)\"'+(page===1?'disabled':'')+'>首页</button>'+\n" +
+                "    '<button class=\"page-btn\" onclick=\"goPage('+(page-1)+')\"'+(page===1?'disabled':'')+'>上一页</button>'+\n" +
+                "    '<span class=\"page-info\">第 '+page+' / '+totalPages+' 页</span>'+\n" +
+                "    '<button class=\"page-btn\" onclick=\"goPage('+(page+1)+')\"'+(page===totalPages?'disabled':'')+'>下一页</button>'+\n" +
+                "    '<button class=\"page-btn\" onclick=\"goPage('+totalPages+')\"'+(page===totalPages?'disabled':'')+'>尾页</button>';\n" +
+                "  paginationDiv.innerHTML=html;\n" +
+                "}\n" +
+                "function goPage(p){page=p;loadFiles();}\n" +
+                "function downloadFile(id){\n" +
+                "  if(!id) return;\n" +
+                "  window.location.href='/api/monitor/number-files/download?id='+id+'&secret=dn17ORUwf36Znl';\n" +
+                "}\n" +
+                "function escapeHtml(s){if(!s)return'';return String(s).replace(/[&<>]/g,function(m){if(m==='&')return'&amp;';if(m==='<')return'&lt;';if(m==='>')return'&gt;';return m;});}\n" +
+                "document.addEventListener('DOMContentLoaded',function(){\n" +
+                "  loadStats();\n" +
+                "  loadFiles();\n" +
                 "});\n" +
                 "</script>\n" +
                 "</body>\n" +

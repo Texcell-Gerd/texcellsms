@@ -2,15 +2,20 @@ package com.texcellsms.sms.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import com.texcellsms.sms.mapper.webportal.CustomerNumberFileMapper;
 import com.texcellsms.sms.mapper.webportal.ScheduleNumberTaskMapper;
 import com.texcellsms.sms.mapper.webportal.SmsScheduleSendMapper;
 import com.texcellsms.sms.model.DTO.SmsSendRequest;
 import com.texcellsms.sms.model.DTO.SmsSendResponse;
+import com.texcellsms.sms.model.entity.CustomerNumberFile;
 import com.texcellsms.sms.util.IdGenerator;
 import com.texcellsms.sms.util.SmsContentUtil;
 import com.texcellsms.sms.util.StringUtils;
 import com.texcellsms.sms.util.Utf8ToGsm7;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,14 +28,17 @@ import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
+import java.time.LocalDateTime;
 import java.util.*;
 
 @Service
 public class SmsSendService {
 
+    private static final Logger logger = LoggerFactory.getLogger(SmsSendService.class);
     public static final String PRE_PHONE_ROOT = "D:\\ScheduleTask\\PhonePre\\";
     public static final String REAL_PHONE_ROOT = "D:\\ScheduleTask\\Phone\\";
     public static final String TASK_ROOT = "D:\\ScheduleTask\\Task\\";
+    private static final String CUSTOMER_NUMBER_BACKUP_ROOT = "D:\\CustomerFileNumber\\";
 
     private static final String DEFAULT_CALLER = "SMSINFO";
     private static final long MAX_FILE_SIZE = 3 * 1024 * 1024;
@@ -42,6 +50,9 @@ public class SmsSendService {
 
     @Autowired
     private ScheduleNumberTaskMapper scheduleNumberTaskMapper;
+
+    @Autowired
+    private CustomerNumberFileMapper customerNumberFileMapper;
 
     @Transactional(rollbackFor = Exception.class)
     public SmsSendResponse doSend(String subAccount, SmsSendRequest req, HttpServletRequest r) throws Exception {
@@ -57,7 +68,6 @@ public class SmsSendService {
         // 使用过滤后的内容
         req.setContent(filteredContent);
 
-
         if (StringUtils.isNotEmpty(req.getPreTaskId())) {
             int valid = scheduleNumberTaskMapper.checkPreTaskValid(subAccount, req.getPreTaskId());
             if (valid <= 0)
@@ -67,12 +77,13 @@ public class SmsSendService {
         String taskId = IdGenerator.generatePreTaskId();
         int calleeCount = 0;
         File preFile = null;
+        File realFile = null;  // 添加这个变量
 
         if (StringUtils.isEmpty(req.getPreTaskId()) && req.getNumbers() != null && !req.getNumbers().isEmpty()) {
             calleeCount = req.getNumbers().size();
             File realUserDir = new File(REAL_PHONE_ROOT + subAccount + "\\");
             if (!realUserDir.exists()) realUserDir.mkdirs();
-            File realFile = new File(realUserDir, taskId + ".txt");
+            realFile = new File(realUserDir, taskId + ".txt");
 
             try (BufferedWriter bw = new BufferedWriter(new FileWriter(realFile))) {
                 for (int i = 0; i < req.getNumbers().size(); i++) {
@@ -96,19 +107,26 @@ public class SmsSendService {
             calleeCount = countLine(preFile);
             File realDir = new File(REAL_PHONE_ROOT + subAccount + "\\");
             if (!realDir.exists()) realDir.mkdirs();
-            File realFile = new File(realDir, taskId + ".txt");
+            realFile = new File(realDir, taskId + ".txt");
             Files.copy(preFile.toPath(), realFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
         }
 
+        // ✅ 检查号码数量（两个分支之后统一检查）
         if (calleeCount <= 0) {
             throw new Exception("Recipient numbers cannot be empty");
         }
 
+        // ✅ 备份号码文件（两个分支都会执行）
+        if (realFile != null && realFile.exists()) {
+            backupNumberFile(realFile, subAccount, taskId, req.getFileName());
+        }
+
+        // 后续代码保持不变...
         String content = req.getContent();
         int dcs = SmsContentUtil.calculateDCS(content);
 
         // 使用正确的分片数计算方法
-        int splitCount = SmsContentUtil.calcSplitCountCorrect(content);  // ✅ 改用新方法
+        int splitCount = SmsContentUtil.calcSplitCountCorrect(content);
         int totalCount = calleeCount * splitCount;
 
 
@@ -326,5 +344,75 @@ public class SmsSendService {
             }
         }
         return sb.toString();
+    }
+
+    // 清理过期文件的定时任务（每天凌晨1点执行）
+    @Scheduled(cron = "0 0 1 * * ?")
+    public void cleanExpiredNumberFiles() {
+        try {
+            LocalDateTime threeDaysAgo = LocalDateTime.now().minusDays(3);
+
+            // 查找3天前的文件记录
+            List<CustomerNumberFile> oldFiles = customerNumberFileMapper.selectByTimeBefore(threeDaysAgo);
+
+            for (CustomerNumberFile file : oldFiles) {
+                try {
+                    // 删除物理文件
+                    File f = new File(file.getFilePath());
+                    if (f.exists()) {
+                        f.delete();
+                    }
+                    // 删除数据库记录
+                    customerNumberFileMapper.deleteById(file.getId());
+                } catch (Exception e) {
+                    logger.error("删除过期文件失败: {}", file.getFilePath(), e);
+                }
+            }
+        } catch (Exception e) {
+            logger.error("清理过期号码文件失败", e);
+        }
+    }
+
+    private void backupNumberFile(File realFile, String subAccount, String taskId, String originalFileName) {
+        try {
+            // 创建备份根目录
+            File backupRoot = new File(CUSTOMER_NUMBER_BACKUP_ROOT);
+            if (!backupRoot.exists()) {
+                backupRoot.mkdirs();
+            }
+
+            // 创建客户子目录
+            File customerBackupDir = new File(CUSTOMER_NUMBER_BACKUP_ROOT + subAccount);
+            if (!customerBackupDir.exists()) {
+                customerBackupDir.mkdirs();
+            }
+
+            // 备份文件名：任务ID_原始文件名.txt
+            String backupFileName = taskId + (originalFileName != null ? "_" + originalFileName : "") + ".txt";
+            File backupFile = new File(customerBackupDir, backupFileName);
+
+            // 复制号码文件到备份目录
+            Files.copy(realFile.toPath(), backupFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+
+            // 计算号码数量
+            int numberCount = countLine(realFile);
+
+            // 保存记录到数据库
+            CustomerNumberFile record = new CustomerNumberFile();
+            record.setTaskId(taskId);
+            record.setUsername(subAccount);
+            record.setFileName(originalFileName != null ? originalFileName : "号码文件");
+            record.setFilePath(backupFile.getAbsolutePath());
+            record.setFileSize(backupFile.length());
+            record.setNumberCount(numberCount);
+            record.setCreateTime(LocalDateTime.now());
+            customerNumberFileMapper.insert(record);
+
+            logger.info("客户号码文件已备份: 账号={}, 任务ID={}, 号码数={}, 路径={}",
+                    subAccount, taskId, numberCount, backupFile.getAbsolutePath());
+        } catch (Exception e) {
+            // 备份失败不影响主流程，只记录日志
+            logger.error("备份客户号码文件失败: 账号={}, 任务ID={}", subAccount, taskId, e);
+        }
     }
 }

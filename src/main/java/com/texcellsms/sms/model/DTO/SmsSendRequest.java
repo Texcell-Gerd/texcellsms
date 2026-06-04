@@ -15,4 +15,5 @@ public class SmsSendRequest {
     private String username;
     private String timestamp;
     private String sign;
+    private String fileName;     // 原始文件名（可选）
 }
