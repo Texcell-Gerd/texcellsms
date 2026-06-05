@@ -1,6 +1,7 @@
 package com.texcellsms.sms.service.impl;
 
 import CacheDB.NCacheDBLink;
+import com.texcellsms.sms.config.NCacheDBProperties;
 import com.texcellsms.sms.controller.AuthController;
 import com.texcellsms.sms.mapper.webportal.LoginAuditLogMapper;
 import com.texcellsms.sms.model.entity.LoginAuditLog;
@@ -44,6 +45,9 @@ public class AuthServiceImpl implements AuthService {
 
     @Resource
     private EmailUtil EmailUtil;
+
+    @Autowired
+    private NCacheDBProperties nCacheDBProperties;
 
     // ====================== 原 login 方法（只加日志）======================
     @Override
@@ -373,7 +377,8 @@ public class AuthServiceImpl implements AuthService {
         if ("".equals(key)|| key==null){
             return AjaxResult.error(BIND2AT.getCode(), BIND2AT.getMessage());
         }
-        boolean isValid = gAuth.authorize(key, Integer.parseInt(userProvidedCode));
+        logger.info("Verify key{} code{}",key,Integer.parseInt(userProvidedCode));
+        boolean isValid = gAuth.authorize(key,Integer.parseInt(userProvidedCode));
         if (!isValid) {
             return AjaxResult.error(TWOSTEPVERIFICATIONFAILED.getCode(), TWOSTEPVERIFICATIONFAILED.getMessage());
         }
@@ -427,8 +432,16 @@ public class AuthServiceImpl implements AuthService {
         int count = -1;
         try {
             nCacheDBLink = NCacheDBLink.getNCacheDBLink();
-//            count =nCacheDBLink.InitEnv();
-            count = nCacheDBLink.InitEnv("192.168.120.250", 18801, "auth", "auth", "auth", "utf-8", "utf-8");
+            NCacheDBProperties.Connection rateQuery = nCacheDBProperties.getRateQuery();
+            count = nCacheDBLink.InitEnv(
+                    rateQuery.getServer(),
+                    rateQuery.getPort(),
+                    rateQuery.getUserName(),
+                    rateQuery.getPassword(),
+                    rateQuery.getDb(),
+                    rateQuery.getPageCoding(),
+                    rateQuery.getDbCoding()
+            );
             nCacheDBLink.ConnectToCacheDB();
             List<Map<String, String>> list = nCacheDBLink.web_QueryUserRate(Username, MCC, MNC);
             return AjaxResult.success(list);

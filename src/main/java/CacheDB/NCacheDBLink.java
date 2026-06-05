@@ -18,7 +18,7 @@ public class NCacheDBLink {
 
 	private static final int connections = 10;
 
-	private static final String sServer ="192.168.120.250";
+	private static String sServer ="192.168.120.250";
 
 	private static int nPort = 11781;
 
@@ -31,6 +31,18 @@ public class NCacheDBLink {
 	private static String sPageCoding ="utf-8";
 
 	private static String sDBCoding ="utf-8";
+
+	public static void configure(String server, int port, String userName, String password, String db, String pageCoding, String dbCoding) {
+		sServer = server;
+		nPort = port;
+		sUserName = userName;
+		sPassword = password;
+		sDB = db;
+		sPageCoding = pageCoding;
+		sDBCoding = dbCoding;
+		logger.info("CacheDB配置加载完成 sServer: {} nPort: {} sUserName: {} sDB: {} sPageCoding: {} sDBCoding: {}",
+				sServer, nPort, sUserName, sDB, sPageCoding, sDBCoding);
+	}
 
 	public  static NCacheDBLink getNCacheDBLink(){
 //		if (plist.isEmpty()||plist==null){
