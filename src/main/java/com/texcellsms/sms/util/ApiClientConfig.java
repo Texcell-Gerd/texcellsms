@@ -1,15 +1,15 @@
 package com.texcellsms.sms.util;
 
+import com.texcellsms.sms.mapper.webportal.CustomerApiClientMapper;
+import com.texcellsms.sms.model.entity.CustomerApiClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.core.io.ClassPathResource;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
-import java.io.BufferedReader;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
+import javax.annotation.PostConstruct;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 @Component
@@ -17,38 +17,29 @@ public class ApiClientConfig {
     private static final Logger logger = LoggerFactory.getLogger(ApiClientConfig.class);
     private final Map<String, String> clientMap = new HashMap<>();
 
-    public ApiClientConfig() {
-        loadClientConfig();
+    @Autowired
+    private CustomerApiClientMapper customerApiClientMapper;
+
+    @PostConstruct
+    public void init() {
+        loadFromDatabase();
     }
 
     /**
-     * 加载配置文件中的客户信息
+     * 从数据库加载客户配置
      */
-    private void loadClientConfig() {
+    private void loadFromDatabase() {
         try {
-            ClassPathResource resource = new ClassPathResource("api-clients.txt");
-            InputStream is = resource.getInputStream();
-            BufferedReader reader = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8));
-
-            String line;
-            while ((line = reader.readLine()) != null) {
-                line = line.trim();
-                // 跳过空行和注释（以#开头）
-                if (line.isEmpty() || line.startsWith("#")) {
-                    continue;
-                }
-                String[] parts = line.split(":", 2);
-                if (parts.length == 2) {
-                    String username = parts[0].trim();
-                    String password = parts[1].trim();
-                    clientMap.put(username, password);
-                    logger.info("加载客户配置: {} = {}", username, password);
+            List<CustomerApiClient> clients = customerApiClientMapper.selectAllActive();
+            clientMap.clear();
+            for (CustomerApiClient client : clients) {
+                if (client.getStatus() == 1) {
+                    clientMap.put(client.getUsername(), client.getPassword());
                 }
             }
-            reader.close();
-            logger.info("客户配置文件加载完成，共 {} 个客户", clientMap.size());
+            logger.info("从数据库加载客户配置完成，共 {} 个客户", clientMap.size());
         } catch (Exception e) {
-            logger.error("加载客户配置文件失败", e);
+            logger.error("从数据库加载客户配置失败", e);
         }
     }
 
@@ -60,9 +51,10 @@ public class ApiClientConfig {
     }
 
     /**
-     * 新增客户（运行时动态添加，可选）
+     * 刷新配置（重新从数据库加载）
      */
-    public void addClient(String username, String password) {
-        clientMap.put(username, password);
+    public void refresh() {
+        loadFromDatabase();
+        logger.info("客户配置已刷新，当前共 {} 个客户", clientMap.size());
     }
 }

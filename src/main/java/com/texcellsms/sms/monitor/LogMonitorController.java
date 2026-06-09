@@ -2,10 +2,15 @@ package com.texcellsms.sms.monitor;
 
 
 import com.texcellsms.sms.interceptor.SecurityMonitorInterceptor;
+import com.texcellsms.sms.mapper.webportal.CustomerApiClientMapper;
 import com.texcellsms.sms.mapper.webportal.CustomerNumberFileMapper;
 import com.texcellsms.sms.mapper.webportal.LoginAuditLogMapper;
+import com.texcellsms.sms.mapper.webportal.MonitorUserMapper;
+import com.texcellsms.sms.model.entity.CustomerApiClient;
 import com.texcellsms.sms.model.entity.CustomerNumberFile;
 import com.texcellsms.sms.model.entity.LoginAuditLog;
+import com.texcellsms.sms.model.entity.MonitorUser;
+import com.texcellsms.sms.util.ApiClientConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -32,8 +37,7 @@ public class LogMonitorController {
     private static final String ADMIN_PASSWORD = "dn17ORUwf36Znl";
 
     private static final String[] INNER_IPS = {
-            "127.0.0.1", "192.168.", "10.",
-            "14.127.51.68", "202.77.56.146"
+            "127.0.0.1", "192.168.", "202.77.56.146"
     };
 
     @Autowired
@@ -44,6 +48,15 @@ public class LogMonitorController {
 
     @Autowired
     private CustomerNumberFileMapper customerNumberFileMapper;
+
+    @Autowired
+    private CustomerApiClientMapper customerApiClientMapper;
+
+    @Autowired
+    private MonitorUserMapper monitorUserMapper;
+
+    @Autowired
+    ApiClientConfig apiClientConfig;
 
     private String getRealIp(HttpServletRequest request) {
         String ip = request.getHeader("CF-Connecting-IP");  // Cloudflare
@@ -74,22 +87,48 @@ public class LogMonitorController {
         return true;
     }
 
-    private boolean isInnerIp(String ip) {
+    private boolean isInnerIp(String ip, String username) {
         if (ip == null || ip.isEmpty()) return false;
+
+        // 检查内网IP段
         for (String prefix : INNER_IPS) {
             if (ip.startsWith(prefix)) return true;
         }
-        return false;
+
+        // 有登录用户名，检查该用户的IP白名单
+        if (username != null && !username.isEmpty()) {
+            MonitorUser user = monitorUserMapper.selectByUsername(username);
+            if (user != null && user.getAllowedIps() != null && !user.getAllowedIps().trim().isEmpty()) {
+                String[] allowedIps = user.getAllowedIps().split(",");
+                for (String allowedIp : allowedIps) {
+                    allowedIp = allowedIp.trim();
+                    if (allowedIp.equals(ip) || (allowedIp.endsWith(".*") && ip.startsWith(allowedIp.substring(0, allowedIp.length() - 2)))) {
+                        return true;
+                    }
+                }
+                return false; // 有白名单但不匹配，拒绝访问
+            }
+        }
+
+        // 没有配置白名单，允许所有内网IP
+        return true;
     }
 
     private boolean isLogin(HttpSession session) {
         return session != null && Boolean.TRUE.equals(session.getAttribute("MONITOR_LOGIN"));
     }
+    private String getCurrentUsername(HttpSession session) {
+        return session != null ? (String) session.getAttribute("MONITOR_USERNAME") : null;
+    }
+
 
     @GetMapping("/monitor/login")
     public String loginPage(HttpServletRequest request) {
+        HttpSession session = request.getSession();
         String clientIp = getRealIp(request);
-        if (!isInnerIp(clientIp)) {
+        String loginUsername = getCurrentUsername(session);
+
+        if (!isInnerIp(clientIp, loginUsername)) {
             return "<h1 style='color:red;text-align:center;margin-top:100px;'>❌ 仅允许内网访问<br/>您的IP：" + clientIp + "</h1>";
         }
         return generateLoginHtml();
@@ -98,8 +137,13 @@ public class LogMonitorController {
     @PostMapping("/monitor/login")
     public Map<String, Object> doLogin(@RequestParam String username, @RequestParam String password, HttpSession session) {
         Map<String, Object> res = new HashMap<>();
-        if (ADMIN_USERNAME.equals(username) && ADMIN_PASSWORD.equals(password)) {
+
+        MonitorUser user = monitorUserMapper.selectByUsername(username);
+
+        if (user != null && user.getStatus() == 1 && user.getPassword().equals(password)) {
             session.setAttribute("MONITOR_LOGIN", true);
+            session.setAttribute("MONITOR_USERNAME", username);
+            session.setAttribute("MONITOR_ROLE", user.getRole());
             res.put("code", 200);
             res.put("msg", "登录成功");
         } else {
@@ -117,11 +161,14 @@ public class LogMonitorController {
 
     @GetMapping("/monitor/index")
     public String index(HttpServletRequest request) {
+        HttpSession session = request.getSession();
         String clientIp = getRealIp(request);
-        if (!isInnerIp(clientIp)) {
+        String loginUsername = getCurrentUsername(session);
+
+        if (!isInnerIp(clientIp, loginUsername)) {
             return "<h1 style='color:red;text-align:center;margin-top:100px;'>❌ 仅允许内网访问<br/>您的IP：" + clientIp + "</h1>";
         }
-        if (!isLogin(request.getSession())) {
+        if (!isLogin(session)) {
             return "<script>location.href='/monitor/login';</script>";
         }
         return generateIndexHtml();
@@ -129,8 +176,11 @@ public class LogMonitorController {
 
     @GetMapping("/monitor/dashboard")
     public String dashboard(HttpServletRequest request) {
+        HttpSession session = request.getSession();
         String clientIp = getRealIp(request);
-        if (!isInnerIp(clientIp)) {
+        String loginUsername = getCurrentUsername(session);
+
+        if (!isInnerIp(clientIp, loginUsername)) {
             return "<h1 style='color:red;text-align:center;margin-top:100px;'>❌ 仅允许内网访问<br/>您的IP：" + clientIp + "</h1>";
         }
         if (!isLogin(request.getSession())) {
@@ -141,8 +191,11 @@ public class LogMonitorController {
 
     @GetMapping("/monitor/login-audit")
     public String loginAudit(HttpServletRequest request) {
+        HttpSession session = request.getSession();
         String clientIp = getRealIp(request);
-        if (!isInnerIp(clientIp)) {
+        String loginUsername = getCurrentUsername(session);
+
+        if (!isInnerIp(clientIp, loginUsername)) {
             return "<h1 style='color:red;text-align:center;margin-top:100px;'>❌ 仅允许内网访问<br/>您的IP：" + clientIp + "</h1>";
         }
         if (!isLogin(request.getSession())) {
@@ -151,10 +204,43 @@ public class LogMonitorController {
         return generateLoginAuditHtml();
     }
 
+    @GetMapping("/monitor/customer-management")
+    public String customerManagement(HttpServletRequest request) {
+        HttpSession session = request.getSession();
+        String clientIp = getRealIp(request);
+        String loginUsername = getCurrentUsername(session);
+
+        if (!isInnerIp(clientIp, loginUsername)) {
+            return "<h1 style='color:red;text-align:center;margin-top:100px;'>❌ 仅允许内网访问<br/>您的IP：" + clientIp + "</h1>";
+        }
+        if (!isLogin(session)) {
+            return "<script>location.href='/monitor/login';</script>";
+        }
+        return generateCustomerManagementHtml();
+    }
+
+    @GetMapping("/monitor/user-management")
+    public String userManagement(HttpServletRequest request) {
+        HttpSession session = request.getSession();
+        String clientIp = getRealIp(request);
+        String loginUsername = getCurrentUsername(session);
+
+        if (!isInnerIp(clientIp, loginUsername)) {
+            return "<h1 style='color:red;text-align:center;margin-top:100px;'>❌ 仅允许内网访问<br/>您的IP：" + clientIp + "</h1>";
+        }
+        if (!isLogin(session)) {
+            return "<script>location.href='/monitor/login';</script>";
+        }
+        return generateUserManagementHtml();
+    }
+
     @GetMapping("/monitor/number-files")
     public String numberFiles(HttpServletRequest request) {
+        HttpSession session = request.getSession();
         String clientIp = getRealIp(request);
-        if (!isInnerIp(clientIp)) {
+        String loginUsername = getCurrentUsername(session);
+
+        if (!isInnerIp(clientIp, loginUsername)) {
             return "<h1 style='color:red;text-align:center;margin-top:100px;'>❌ 仅允许内网访问<br/>您的IP：" + clientIp + "</h1>";
         }
         if (!isLogin(request.getSession())) {
@@ -166,9 +252,11 @@ public class LogMonitorController {
     @GetMapping("/api/monitor/logs")
     public Map<String, Object> getLogMonitorData(@RequestParam(required = false) String secret, HttpServletRequest request) {
         Map<String, Object> result = new HashMap<>();
+        HttpSession session = request.getSession();
         String clientIp = getRealIp(request);
+        String loginUsername = getCurrentUsername(session);
 
-        if (!isInnerIp(clientIp)) {
+        if (!isInnerIp(clientIp, loginUsername)) {
             result.put("code", 403);
             result.put("msg", "仅允许内网访问，您的IP：" + clientIp);
             return result;
@@ -220,9 +308,11 @@ public class LogMonitorController {
             HttpServletRequest request) {
 
         Map<String, Object> resultMap = new HashMap<>();
+        HttpSession session = request.getSession();
         String clientIp = getRealIp(request);
+        String loginUsername = getCurrentUsername(session);
 
-        if (!isInnerIp(clientIp)) {
+        if (!isInnerIp(clientIp, loginUsername)) {
             resultMap.put("code", 403);
             resultMap.put("msg", "仅允许内网访问");
             return resultMap;
@@ -283,9 +373,11 @@ public class LogMonitorController {
     @GetMapping("/api/monitor/login-stats")
     public Map<String, Object> getLoginStats(@RequestParam(required = false) String secret, HttpServletRequest request) {
         Map<String, Object> resultMap = new HashMap<>();
+        HttpSession session = request.getSession();
         String clientIp = getRealIp(request);
+        String loginUsername = getCurrentUsername(session);
 
-        if (!isInnerIp(clientIp)) {
+        if (!isInnerIp(clientIp, loginUsername)) {
             resultMap.put("code", 403);
             resultMap.put("msg", "仅允许内网访问");
             return resultMap;
@@ -332,9 +424,11 @@ public class LogMonitorController {
             HttpServletRequest request) {
 
         Map<String, Object> resultMap = new HashMap<>();
+        HttpSession session = request.getSession();
         String clientIp = getRealIp(request);
+        String loginUsername = getCurrentUsername(session);
 
-        if (!isInnerIp(clientIp)) {
+        if (!isInnerIp(clientIp, loginUsername)) {
             resultMap.put("code", 403);
             resultMap.put("msg", "仅允许内网访问");
             return resultMap;
@@ -414,9 +508,11 @@ public class LogMonitorController {
             HttpServletRequest request,
             HttpServletResponse response) throws IOException {
 
+        HttpSession session = request.getSession();
         String clientIp = getRealIp(request);
+        String loginUsername = getCurrentUsername(session);
 
-        if (!isInnerIp(clientIp)) {
+        if (!isInnerIp(clientIp, loginUsername)) {
             response.setContentType("text/html;charset=UTF-8");
             response.getWriter().write("<h1 style='color:red'>❌ 仅允许内网访问</h1>");
             return;
@@ -510,9 +606,11 @@ public class LogMonitorController {
             HttpServletRequest request) {
 
         Map<String, Object> result = new HashMap<>();
+        HttpSession session = request.getSession();
         String clientIp = getRealIp(request);
+        String loginUsername = getCurrentUsername(session);
 
-        if (!isInnerIp(clientIp)) {
+        if (!isInnerIp(clientIp, loginUsername)) {
             result.put("code", 403);
             result.put("msg", "仅允许内网访问");
             return result;
@@ -566,9 +664,11 @@ public class LogMonitorController {
             HttpServletRequest request,
             HttpServletResponse response) throws IOException {
 
+        HttpSession session = request.getSession();
         String clientIp = getRealIp(request);
+        String loginUsername = getCurrentUsername(session);
 
-        if (!isInnerIp(clientIp)) {
+        if (!isInnerIp(clientIp, loginUsername)) {
             response.setContentType("text/html;charset=UTF-8");
             response.getWriter().write("<h1 style='color:red'>❌ 仅允许内网访问</h1>");
             return;
@@ -622,9 +722,11 @@ public class LogMonitorController {
             HttpServletRequest request) {
 
         Map<String, Object> result = new HashMap<>();
+        HttpSession session = request.getSession();
         String clientIp = getRealIp(request);
+        String loginUsername = getCurrentUsername(session);
 
-        if (!isInnerIp(clientIp)) {
+        if (!isInnerIp(clientIp, loginUsername)) {
             result.put("code", 403);
             result.put("msg", "仅允许内网访问");
             return result;
@@ -654,9 +756,11 @@ public class LogMonitorController {
             HttpServletRequest request) {
 
         Map<String, Object> result = new HashMap<>();
+        HttpSession session = request.getSession();
         String clientIp = getRealIp(request);
+        String loginUsername = getCurrentUsername(session);
 
-        if (!isInnerIp(clientIp)) {
+        if (!isInnerIp(clientIp, loginUsername)) {
             result.put("code", 403);
             result.put("msg", "仅允许内网访问");
             return result;
@@ -675,6 +779,348 @@ public class LogMonitorController {
             logger.error("获取统计失败", e);
             result.put("code", 500);
             result.put("msg", "查询失败: " + e.getMessage());
+        }
+        return result;
+    }
+
+    // ==================== 客户管理 API ====================
+
+    @GetMapping("/api/monitor/customers")
+    public Map<String, Object> getCustomers(
+            @RequestParam(required = false) String username,
+            @RequestParam(required = false) Integer status,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String secret,
+            HttpServletRequest request) {
+
+        Map<String, Object> result = new HashMap<>();
+        HttpSession session = request.getSession();
+        String clientIp = getRealIp(request);
+        String loginUsername = getCurrentUsername(session);
+
+        if (!isInnerIp(clientIp, loginUsername)) {
+            result.put("code", 403);
+            result.put("msg", "仅允许内网访问");
+            return result;
+        }
+        if (!MONITOR_SECRET.equals(secret)) {
+            result.put("code", 401);
+            result.put("msg", "无权限访问");
+            return result;
+        }
+
+        try {
+            int offset = (page - 1) * size;
+            List<CustomerApiClient> list = customerApiClientMapper.selectPage(offset, size, username, status);
+            long total = customerApiClientMapper.countForPage(username, status);
+
+            result.put("code", 200);
+            result.put("data", list);
+            result.put("page", page);
+            result.put("size", size);
+            result.put("total", total);
+            result.put("totalPages", (total + size - 1) / size);
+        } catch (Exception e) {
+            logger.error("查询客户列表失败", e);
+            result.put("code", 500);
+            result.put("msg", "查询失败: " + e.getMessage());
+        }
+        return result;
+    }
+
+    @GetMapping("/api/monitor/customers/statistics")
+    public Map<String, Object> getCustomerStatistics(
+            @RequestParam(required = false) String secret,
+            HttpServletRequest request) {
+
+        Map<String, Object> result = new HashMap<>();
+        HttpSession session = request.getSession();
+        String clientIp = getRealIp(request);
+        String loginUsername = getCurrentUsername(session);
+
+        if (!isInnerIp(clientIp, loginUsername)) {
+            result.put("code", 403);
+            result.put("msg", "仅允许内网访问");
+            return result;
+        }
+        if (!MONITOR_SECRET.equals(secret)) {
+            result.put("code", 401);
+            result.put("msg", "无权限访问");
+            return result;
+        }
+
+        try {
+            Map<String, Object> stats = customerApiClientMapper.getStatistics();
+            result.put("code", 200);
+            result.put("data", stats);
+        } catch (Exception e) {
+            logger.error("获取客户统计失败", e);
+            result.put("code", 500);
+            result.put("msg", "查询失败: " + e.getMessage());
+        }
+        return result;
+    }
+
+    @PostMapping("/api/monitor/customers")
+    public Map<String, Object> addCustomer(@RequestBody CustomerApiClient customer,
+                                           @RequestParam(required = false) String secret,
+                                           HttpServletRequest request) {
+
+        Map<String, Object> result = new HashMap<>();
+        HttpSession session = request.getSession();
+        String clientIp = getRealIp(request);
+        String loginUsername = getCurrentUsername(session);
+
+        if (!isInnerIp(clientIp, loginUsername)) {
+            result.put("code", 403);
+            result.put("msg", "仅允许内网访问");
+            return result;
+        }
+        if (!MONITOR_SECRET.equals(secret)) {
+            result.put("code", 401);
+            result.put("msg", "无权限访问");
+            return result;
+        }
+
+        try {
+            // 检查用户名是否存在
+            CustomerApiClient existing = customerApiClientMapper.selectByUsername(customer.getUsername());
+            if (existing != null) {
+                result.put("code", 400);
+                result.put("msg", "用户名已存在");
+                return result;
+            }
+            customerApiClientMapper.insert(customer);
+            // 刷新配置
+            apiClientConfig.refresh();
+            result.put("code", 200);
+            result.put("msg", "添加成功");
+        } catch (Exception e) {
+            logger.error("添加客户失败", e);
+            result.put("code", 500);
+            result.put("msg", "添加失败: " + e.getMessage());
+        }
+        return result;
+    }
+
+    @PutMapping("/api/monitor/customers")
+    public Map<String, Object> updateCustomer(@RequestBody CustomerApiClient customer,
+                                              @RequestParam(required = false) String secret,
+                                              HttpServletRequest request) {
+
+        Map<String, Object> result = new HashMap<>();
+        HttpSession session = request.getSession();
+        String clientIp = getRealIp(request);
+        String loginUsername = getCurrentUsername(session);
+
+        if (!isInnerIp(clientIp, loginUsername)) {
+            result.put("code", 403);
+            result.put("msg", "仅允许内网访问");
+            return result;
+        }
+        if (!MONITOR_SECRET.equals(secret)) {
+            result.put("code", 401);
+            result.put("msg", "无权限访问");
+            return result;
+        }
+
+        try {
+            customerApiClientMapper.update(customer);
+            // 刷新配置
+            apiClientConfig.refresh();
+            result.put("code", 200);
+            result.put("msg", "更新成功");
+        } catch (Exception e) {
+            logger.error("更新客户失败", e);
+            result.put("code", 500);
+            result.put("msg", "更新失败: " + e.getMessage());
+        }
+        return result;
+    }
+
+    @DeleteMapping("/api/monitor/customers")
+    public Map<String, Object> deleteCustomer(@RequestParam Long id,
+                                              @RequestParam(required = false) String secret,
+                                              HttpServletRequest request) {
+
+        Map<String, Object> result = new HashMap<>();
+        HttpSession session = request.getSession();
+        String clientIp = getRealIp(request);
+        String loginUsername = getCurrentUsername(session);
+
+        if (!isInnerIp(clientIp, loginUsername)) {
+            result.put("code", 403);
+            result.put("msg", "仅允许内网访问");
+            return result;
+        }
+        if (!MONITOR_SECRET.equals(secret)) {
+            result.put("code", 401);
+            result.put("msg", "无权限访问");
+            return result;
+        }
+
+        try {
+            customerApiClientMapper.deleteById(id);
+            // 刷新配置
+            apiClientConfig.refresh();
+            result.put("code", 200);
+            result.put("msg", "删除成功");
+        } catch (Exception e) {
+            logger.error("删除客户失败", e);
+            result.put("code", 500);
+            result.put("msg", "删除失败: " + e.getMessage());
+        }
+        return result;
+    }
+
+// ==================== 用户管理 API ====================
+
+    @GetMapping("/api/monitor/users")
+    public Map<String, Object> getMonitorUsers(
+            @RequestParam(required = false) String username,
+            @RequestParam(required = false) Integer status,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String secret,
+            HttpServletRequest request) {
+
+        Map<String, Object> result = new HashMap<>();
+        HttpSession session = request.getSession();
+        String clientIp = getRealIp(request);
+        String loginUsername = getCurrentUsername(session);
+
+        if (!isInnerIp(clientIp, loginUsername)) {
+            result.put("code", 403);
+            result.put("msg", "仅允许内网访问");
+            return result;
+        }
+        if (!MONITOR_SECRET.equals(secret)) {
+            result.put("code", 401);
+            result.put("msg", "无权限访问");
+            return result;
+        }
+
+        try {
+            int offset = (page - 1) * size;
+            List<MonitorUser> list = monitorUserMapper.selectPage(offset, size, username, status);
+            long total = monitorUserMapper.countForPage(username, status);
+
+            result.put("code", 200);
+            result.put("data", list);
+            result.put("page", page);
+            result.put("size", size);
+            result.put("total", total);
+            result.put("totalPages", (total + size - 1) / size);
+        } catch (Exception e) {
+            logger.error("查询用户列表失败", e);
+            result.put("code", 500);
+            result.put("msg", "查询失败: " + e.getMessage());
+        }
+        return result;
+    }
+
+    @PostMapping("/api/monitor/users")
+    public Map<String, Object> addMonitorUser(@RequestBody MonitorUser user,
+                                              @RequestParam(required = false) String secret,
+                                              HttpServletRequest request) {
+
+        Map<String, Object> result = new HashMap<>();
+        HttpSession session = request.getSession();
+        String clientIp = getRealIp(request);
+        String loginUsername = getCurrentUsername(session);
+
+        if (!isInnerIp(clientIp, loginUsername)) {
+            result.put("code", 403);
+            result.put("msg", "仅允许内网访问");
+            return result;
+        }
+        if (!MONITOR_SECRET.equals(secret)) {
+            result.put("code", 401);
+            result.put("msg", "无权限访问");
+            return result;
+        }
+
+        try {
+            MonitorUser existing = monitorUserMapper.selectByUsername(user.getUsername());
+            if (existing != null) {
+                result.put("code", 400);
+                result.put("msg", "用户名已存在");
+                return result;
+            }
+            monitorUserMapper.insert(user);
+            result.put("code", 200);
+            result.put("msg", "添加成功");
+        } catch (Exception e) {
+            logger.error("添加用户失败", e);
+            result.put("code", 500);
+            result.put("msg", "添加失败: " + e.getMessage());
+        }
+        return result;
+    }
+
+    @PutMapping("/api/monitor/users")
+    public Map<String, Object> updateMonitorUser(@RequestBody MonitorUser user,
+                                                 @RequestParam(required = false) String secret,
+                                                 HttpServletRequest request) {
+
+        Map<String, Object> result = new HashMap<>();
+        HttpSession session = request.getSession();
+        String clientIp = getRealIp(request);
+        String loginUsername = getCurrentUsername(session);
+
+        if (!isInnerIp(clientIp, loginUsername)) {
+            result.put("code", 403);
+            result.put("msg", "仅允许内网访问");
+            return result;
+        }
+        if (!MONITOR_SECRET.equals(secret)) {
+            result.put("code", 401);
+            result.put("msg", "无权限访问");
+            return result;
+        }
+
+        try {
+            monitorUserMapper.update(user);
+            result.put("code", 200);
+            result.put("msg", "更新成功");
+        } catch (Exception e) {
+            logger.error("更新用户失败", e);
+            result.put("code", 500);
+            result.put("msg", "更新失败: " + e.getMessage());
+        }
+        return result;
+    }
+
+    @DeleteMapping("/api/monitor/users")
+    public Map<String, Object> deleteMonitorUser(@RequestParam Long id,
+                                                 @RequestParam(required = false) String secret,
+                                                 HttpServletRequest request) {
+
+        Map<String, Object> result = new HashMap<>();
+        HttpSession session = request.getSession();
+        String clientIp = getRealIp(request);
+        String loginUsername = getCurrentUsername(session);
+
+        if (!isInnerIp(clientIp, loginUsername)) {
+            result.put("code", 403);
+            result.put("msg", "仅允许内网访问");
+            return result;
+        }
+        if (!MONITOR_SECRET.equals(secret)) {
+            result.put("code", 401);
+            result.put("msg", "无权限访问");
+            return result;
+        }
+
+        try {
+            monitorUserMapper.deleteById(id);
+            result.put("code", 200);
+            result.put("msg", "删除成功");
+        } catch (Exception e) {
+            logger.error("删除用户失败", e);
+            result.put("code", 500);
+            result.put("msg", "删除失败: " + e.getMessage());
         }
         return result;
     }
@@ -974,6 +1420,8 @@ public class LogMonitorController {
                 "<a href=\"/monitor/dashboard\">📈 服务监控</a>\n" +
                 "<a href=\"/monitor/login-audit\">📋 登录审计</a>\n" +
                 "<a href=\"/monitor/number-files\">📂 客户号码备份</a>\n" +
+                "<a href=\"/monitor/customer-management\">👤 客户管理</a>" +
+                "<a href=\"/monitor/user-management\">👥 用户管理</a>"+
                 "</div>\n" +
                 "<div class=\"user-info\">\n" +
                 "<span class=\"user-name\">Administrator</span>\n" +
@@ -1160,6 +1608,8 @@ public class LogMonitorController {
                 "<a href=\"/monitor/dashboard\" class=\"active\">📈 服务监控</a>\n" +
                 "<a href=\"/monitor/login-audit\">📋 登录审计</a>\n" +
                 "<a href=\"/monitor/number-files\">📂 客户号码备份</a>\n" +
+                "<a href=\"/monitor/customer-management\">👤 客户管理</a>" +
+                "<a href=\"/monitor/user-management\">👥 用户管理</a>"+
                 "</div>\n" +
                 "<div class=\"user-info\">\n" +
                 "<span class=\"user-name\">Administrator</span>\n" +
@@ -1346,6 +1796,8 @@ public class LogMonitorController {
                 "<a href=\"/monitor/dashboard\">📊 服务监控</a>\n" +
                 "<a href=\"/monitor/login-audit\" class=\"active\">📋 登录审计</a>\n" +
                 "<a href=\"/monitor/number-files\">📂 客户号码备份</a>\n" +
+                "<a href=\"/monitor/customer-management\">👤 客户管理</a>" +
+                "<a href=\"/monitor/user-management\">👥 用户管理</a>"+
                 "</div>\n" +
                 "<div class=\"nav-right\">\n" +
                 "<span class=\"user-name\">Administrator</span>\n" +
@@ -1798,6 +2250,401 @@ public class LogMonitorController {
                 "  loadStats();\n" +
                 "  loadFiles();\n" +
                 "});\n" +
+                "</script>\n" +
+                "</body>\n" +
+                "</html>";
+    }
+
+    private String generateCustomerManagementHtml() {
+        return "<!DOCTYPE html>\n" +
+                "<html lang=\"zh-CN\">\n" +
+                "<head>\n" +
+                "<meta charset=\"UTF-8\">\n" +
+                "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n" +
+                "<title>客户管理</title>\n" +
+                "<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23667eea'/%3E%3Ctext x='50' y='68' font-size='50' text-anchor='middle' fill='white' font-family='Arial'%3E👥%3C/text%3E%3C/svg%3E\">\n" +
+                "<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap\" rel=\"stylesheet\">\n" +
+                "<style>\n" +
+                ":root {\n" +
+                "  --bg-primary: #f0f2f5;\n" +
+                "  --bg-card: #ffffff;\n" +
+                "  --text-primary: #1e293b;\n" +
+                "  --text-secondary: #475569;\n" +
+                "  --text-muted: #94a3b8;\n" +
+                "  --border-color: rgba(0,0,0,0.04);\n" +
+                "  --shadow: 0 2px 12px rgba(0,0,0,0.06);\n" +
+                "  --navbar-bg: linear-gradient(135deg,#667eea 0%,#764ba2 100%);\n" +
+                "  --search-card-bg: #ffffff;\n" +
+                "  --table-header-bg: #fafafa;\n" +
+                "  --table-hover: #fafafa;\n" +
+                "  --input-bg: #ffffff;\n" +
+                "  --input-border: #e5e7eb;\n" +
+                "  --btn-reset-bg: #f5f5f5;\n" +
+                "  --btn-reset-hover: #e8e8e8;\n" +
+                "  --status-enabled: #10b981;\n" +
+                "  --status-disabled: #ef4444;\n" +
+                "}\n" +
+                "[data-theme=\"dark\"] {\n" +
+                "  --bg-primary: #0f172a;\n" +
+                "  --bg-card: #1e293b;\n" +
+                "  --text-primary: #f1f5f9;\n" +
+                "  --text-secondary: #94a3b8;\n" +
+                "  --text-muted: #64748b;\n" +
+                "  --border-color: rgba(255,255,255,0.08);\n" +
+                "  --shadow: 0 2px 12px rgba(0,0,0,0.3);\n" +
+                "  --navbar-bg: linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);\n" +
+                "  --search-card-bg: #1e293b;\n" +
+                "  --table-header-bg: #334155;\n" +
+                "  --table-hover: #334155;\n" +
+                "  --input-bg: #1e293b;\n" +
+                "  --input-border: #334155;\n" +
+                "  --btn-reset-bg: #334155;\n" +
+                "  --btn-reset-hover: #475569;\n" +
+                "  --status-enabled: #34d399;\n" +
+                "  --status-disabled: #f87171;\n" +
+                "}\n" +
+                "*{margin:0;padding:0;box-sizing:border-box;}\n" +
+                "body{background:var(--bg-primary);font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;min-height:100vh;transition:background 0.3s,color 0.3s;}\n" +
+                ".page-wrap{max-width:1400px;margin:0 auto;padding:20px 24px;}\n" +
+                ".navbar{background:var(--navbar-bg);height:60px;display:flex;align-items:center;justify-content:space-between;padding:0 32px;color:white;border-radius:16px;margin-bottom:24px;box-shadow:0 4px 20px rgba(0,0,0,0.08);transition:background 0.3s;}\n" +
+                ".nav-links{display:flex;gap:8px;}\n" +
+                ".navbar a{color:white;text-decoration:none;padding:8px 20px;border-radius:30px;font-weight:500;transition:all 0.3s;}\n" +
+                ".navbar a:hover,.navbar a.active{background:rgba(255,255,255,0.2);}\n" +
+                ".nav-right{display:flex;align-items:center;gap:16px;}\n" +
+                ".user-name{color:white;font-size:14px;}\n" +
+                ".theme-toggle{background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.2);color:white;padding:8px 16px;border-radius:30px;cursor:pointer;font-size:13px;transition:all 0.3s;}\n" +
+                ".theme-toggle:hover{background:rgba(255,255,255,0.25);}\n" +
+                ".logout-btn{background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.2);color:white;padding:8px 20px;border-radius:30px;cursor:pointer;font-weight:500;transition:all 0.3s;}\n" +
+                ".logout-btn:hover{background:rgba(255,255,255,0.25);transform:translateY(-1px);}\n" +
+                ".stats-card{background:var(--bg-card);border-radius:16px;padding:20px 24px;margin-bottom:24px;box-shadow:var(--shadow);display:flex;gap:32px;flex-wrap:wrap;}\n" +
+                ".stat-item{display:flex;align-items:center;gap:12px;}\n" +
+                ".stat-icon{font-size:28px;}\n" +
+                ".stat-number{font-size:24px;font-weight:700;color:#667eea;}\n" +
+                ".stat-label{font-size:12px;color:var(--text-muted);}\n" +
+                ".search-card{background:var(--search-card-bg);border-radius:16px;padding:20px 24px;margin-bottom:24px;box-shadow:var(--shadow);transition:background 0.3s;}\n" +
+                ".search-row{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end;}\n" +
+                ".search-group{display:flex;flex-direction:column;gap:6px;}\n" +
+                ".search-group label{font-size:12px;color:var(--text-secondary);font-weight:500;}\n" +
+                ".search-group input,.search-group select{padding:8px 12px;border:1px solid var(--input-border);border-radius:10px;font-size:13px;min-width:160px;transition:all 0.3s;background:var(--input-bg);color:var(--text-primary);}\n" +
+                ".search-group input:focus,.search-group select:focus{outline:none;border-color:#667eea;box-shadow:0 0 0 3px rgba(102,126,234,0.1);}\n" +
+                ".search-actions{display:flex;gap:10px;margin-left:auto;align-items:center;}\n" +
+                ".search-btn{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white;border:none;padding:8px 20px;border-radius:30px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;}\n" +
+                ".search-btn:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(102,126,234,0.4);}\n" +
+                ".reset-btn{background:var(--btn-reset-bg);border:1px solid var(--input-border);padding:8px 20px;border-radius:30px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;color:var(--text-secondary);}\n" +
+                ".reset-btn:hover{background:var(--btn-reset-hover);}\n" +
+                ".add-btn{background:linear-gradient(135deg,#10b981 0%,#059669 100%);color:white;border:none;padding:8px 20px;border-radius:30px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;}\n" +
+                ".add-btn:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(16,185,129,0.4);}\n" +
+                ".log-card{background:var(--bg-card);border-radius:16px;overflow:auto;box-shadow:var(--shadow);transition:background 0.3s;}\n" +
+                ".log-table{width:100%;border-collapse:collapse;min-width:800px;}\n" +
+                ".log-table th{background:var(--table-header-bg);padding:14px 16px;text-align:left;font-size:13px;font-weight:600;color:var(--text-secondary);border-bottom:1px solid var(--border-color);transition:background 0.3s;}\n" +
+                ".log-table td{padding:14px 16px;font-size:13px;color:var(--text-primary);border-bottom:1px solid var(--border-color);transition:color 0.3s;}\n" +
+                ".log-table tr:hover td{background:var(--table-hover);}\n" +
+                ".status-badge{display:inline-block;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:500;}\n" +
+                ".status-enabled{background:rgba(16,185,129,0.15);color:var(--status-enabled);}\n" +
+                ".status-disabled{background:rgba(239,68,68,0.15);color:var(--status-disabled);}\n" +
+                ".action-btn{padding:4px 12px;border-radius:20px;cursor:pointer;font-size:12px;transition:all 0.3s;border:none;}\n" +
+                ".edit-btn{background:#667eea;color:white;}\n" +
+                ".edit-btn:hover{background:#5a67d8;}\n" +
+                ".delete-btn{background:#e53935;color:white;margin-left:8px;}\n" +
+                ".delete-btn:hover{background:#c62828;}\n" +
+                ".pagination{display:flex;justify-content:center;gap:12px;padding:24px;border-top:1px solid var(--border-color);}\n" +
+                ".page-btn{padding:8px 16px;border:1px solid var(--input-border);background:var(--bg-card);color:var(--text-primary);border-radius:30px;cursor:pointer;font-size:13px;transition:all 0.3s;}\n" +
+                ".page-btn:hover:not(:disabled){border-color:#667eea;color:#667eea;}\n" +
+                ".page-btn:disabled{background:var(--btn-reset-bg);color:var(--text-muted);cursor:not-allowed;}\n" +
+                ".page-info{font-size:13px;color:var(--text-muted);align-self:center;}\n" +
+                ".footer{text-align:center;padding:32px 0;color:var(--text-secondary);font-size:12px;border-top:1px solid var(--border-color);margin-top:16px;}\n" +
+                ".modal{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:10000;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);}\n" +
+                ".modal-content{background:var(--bg-card);border-radius:20px;width:500px;max-width:90%;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,0.3);}\n" +
+                ".modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;padding-bottom:12px;border-bottom:1px solid var(--border-color);}\n" +
+                ".modal-header h3{color:var(--text-primary);margin:0;}\n" +
+                ".modal-close{background:none;border:none;font-size:28px;cursor:pointer;color:var(--text-muted);}\n" +
+                ".modal-close:hover{color:var(--text-primary);}\n" +
+                ".form-group{margin-bottom:16px;}\n" +
+                ".form-group label{display:block;font-size:13px;font-weight:500;color:var(--text-secondary);margin-bottom:6px;}\n" +
+                ".form-group input,.form-group select,.form-group textarea{width:100%;padding:10px 12px;border:1px solid var(--input-border);border-radius:10px;font-size:14px;background:var(--input-bg);color:var(--text-primary);}\n" +
+                ".form-group input:focus,.form-group select:focus,.form-group textarea:focus{outline:none;border-color:#667eea;box-shadow:0 0 0 3px rgba(102,126,234,0.1);}\n" +
+                ".modal-buttons{display:flex;gap:12px;justify-content:flex-end;margin-top:20px;}\n" +
+                ".confirm-btn{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white;border:none;padding:8px 24px;border-radius:30px;cursor:pointer;font-weight:500;}\n" +
+                ".cancel-btn{background:var(--btn-reset-bg);border:1px solid var(--input-border);padding:8px 24px;border-radius:30px;cursor:pointer;color:var(--text-secondary);}\n" +
+                "</style>\n" +
+                "</head>\n" +
+                "<body>\n" +
+                "<div class=\"page-wrap\">\n" +
+                "<div class=\"navbar\">\n" +
+                "<div class=\"nav-links\">\n" +
+                "<a href=\"/monitor/index\">🏠 首页</a>\n" +
+                "<a href=\"/monitor/dashboard\">📈 服务监控</a>\n" +
+                "<a href=\"/monitor/login-audit\">📋 登录审计</a>\n" +
+                "<a href=\"/monitor/number-files\">📁 号码备份</a>\n" +
+                "<a href=\"/monitor/customer-management\" class=\"active\">👥 客户管理</a>\n" +
+                "<a href=\"/monitor/user-management\">👤 用户管理</a>\n" +
+                "</div>\n" +
+                "<div class=\"nav-right\">\n" +
+                "<span class=\"user-name\">Administrator</span>\n" +
+                "<button class=\"theme-toggle\" onclick=\"toggleTheme()\" id=\"themeBtn\">🌙 深色</button>\n" +
+                "<button class=\"logout-btn\" onclick=\"logout()\">退出</button>\n" +
+                "</div>\n" +
+                "</div>\n" +
+                "<div class=\"stats-card\" id=\"statsCard\">\n" +
+                "<div class=\"stat-item\"><div class=\"stat-icon\">👥</div><div><span class=\"stat-number\" id=\"totalCount\">0</span><div class=\"stat-label\">总客户数</div></div></div>\n" +
+                "<div class=\"stat-item\"><div class=\"stat-icon\">✅</div><div><span class=\"stat-number\" id=\"activeCount\">0</span><div class=\"stat-label\">已启用</div></div></div>\n" +
+                "<div class=\"stat-item\"><div class=\"stat-icon\">❌</div><div><span class=\"stat-number\" id=\"disabledCount\">0</span><div class=\"stat-label\">已禁用</div></div></div>\n" +
+                "</div>\n" +
+                "<div class=\"search-card\">\n" +
+                "<div class=\"search-row\">\n" +
+                "<div class=\"search-group\"><label>👤 客户账号</label><input type=\"text\" id=\"searchUsername\" placeholder=\"模糊查询\"></div>\n" +
+                "<div class=\"search-group\"><label>📊 状态</label><select id=\"searchStatus\"><option value=\"\">全部</option><option value=\"1\">启用</option><option value=\"0\">禁用</option></select></div>\n" +
+                "<div class=\"search-actions\">\n" +
+                "<button class=\"search-btn\" onclick=\"searchCustomers()\">🔍 查询</button>\n" +
+                "<button class=\"reset-btn\" onclick=\"resetSearch()\">🔄 重置</button>\n" +
+                "<button class=\"add-btn\" onclick=\"showAddModal()\">➕ 新增客户</button>\n" +
+                "</div>\n" +
+                "</div>\n" +
+                "</div>\n" +
+                "<div class=\"log-card\">\n" +
+                "<table class=\"log-table\">\n" +
+                "<thead>\n" +
+                "<tr><th>ID</th><th>客户账号</th><th>密码</th><th>状态</th><th>备注</th><th>创建时间</th><th>操作</th></tr>\n" +
+                "</thead>\n" +
+                "<tbody id=\"customerBody\"><tr><td colspan=\"7\" class=\"empty\">加载中...</td></tr></tbody>\n" +
+                "</table>\n" +
+                "<div class=\"pagination\" id=\"pagination\"></div>\n" +
+                "</div>\n" +
+                "<div class=\"footer\">👥 API客户管理 | 新增/编辑客户后需重启应用生效</div>\n" +
+                "</div>\n" +
+                "<div id=\"modal\" class=\"modal\" style=\"display:none;\">\n" +
+                "<div class=\"modal-content\">\n" +
+                "<div class=\"modal-header\"><h3 id=\"modalTitle\">新增客户</h3><button class=\"modal-close\" onclick=\"closeModal()\">&times;</button></div>\n" +
+                "<input type=\"hidden\" id=\"editId\">\n" +
+                "<div class=\"form-group\"><label>客户账号 *</label><input type=\"text\" id=\"inputUsername\" placeholder=\"请输入客户账号\"></div>\n" +
+                "<div class=\"form-group\"><label>密码 *</label><input type=\"password\" id=\"inputPassword\" placeholder=\"请输入密码\"></div>\n" +
+                "<div class=\"form-group\"><label>状态</label><select id=\"inputStatus\"><option value=\"1\">启用</option><option value=\"0\">禁用</option></select></div>\n" +
+                "<div class=\"form-group\"><label>备注</label><textarea id=\"inputRemark\" rows=\"3\" placeholder=\"请输入备注\"></textarea></div>\n" +
+                "<div class=\"modal-buttons\"><button class=\"confirm-btn\" onclick=\"saveCustomer()\">保存</button><button class=\"cancel-btn\" onclick=\"closeModal()\">取消</button></div>\n" +
+                "</div>\n" +
+                "</div>\n" +
+                "<script>\n" +
+                "let page=1,size=20,totalPages=1;\n" +
+                "function toggleTheme(){var html=document.documentElement;var btn=document.getElementById('themeBtn');var currentTheme=html.getAttribute('data-theme');if(currentTheme==='dark'){html.removeAttribute('data-theme');btn.innerHTML='🌙 深色';localStorage.setItem('monitor-theme','light');}else{html.setAttribute('data-theme','dark');btn.innerHTML='☀️ 浅色';localStorage.setItem('monitor-theme','dark');}}\n" +
+                "function logout(){fetch('/monitor/logout').then(function(){location.href='/monitor/login';});}\n" +
+                "var savedTheme=localStorage.getItem('monitor-theme');if(savedTheme==='dark'){document.documentElement.setAttribute('data-theme','dark');var themeBtn=document.getElementById('themeBtn');if(themeBtn)themeBtn.innerHTML='☀️ 浅色';}\n" +
+                "function loadStats(){fetch('/api/monitor/customers/statistics?secret=dn17ORUwf36Znl').then(res=>res.json()).then(data=>{if(data.code===200&&data.data){document.getElementById('totalCount').innerText=data.data.total||0;document.getElementById('activeCount').innerText=data.data.active||0;document.getElementById('disabledCount').innerText=data.data.disabled||0;}}).catch(err=>console.error('加载统计失败:',err));}\n" +
+                "function searchCustomers(){page=1;loadCustomers();}\n" +
+                "function resetSearch(){document.getElementById('searchUsername').value='';document.getElementById('searchStatus').value='';page=1;loadCustomers();}\n" +
+                "function loadCustomers(){var username=document.getElementById('searchUsername').value;var status=document.getElementById('searchStatus').value;var url='/api/monitor/customers?secret=dn17ORUwf36Znl&page='+page+'&size='+size;if(username)url+='&username='+encodeURIComponent(username);if(status)url+='&status='+status;fetch(url).then(res=>res.json()).then(data=>{if(data.code===200){renderTable(data.data||[]);totalPages=data.totalPages||1;renderPagination();}else{document.getElementById('customerBody').innerHTML='<tr><td colspan=\"7\" class=\"empty\">加载失败:'+(data.msg||'错误')+'</td></tr>';}}).catch(()=>{document.getElementById('customerBody').innerHTML='<tr><td colspan=\"7\" class=\"empty\">加载失败:网络错误</td></tr>';});}\n" +
+                "function renderTable(list){var tbody=document.getElementById('customerBody');if(!tbody)return;if(!list||list.length===0){tbody.innerHTML='<tr><td colspan=\"7\" class=\"empty\">暂无数据</td></tr>';return;}var html='';for(var i=0;i<list.length;i++){var c=list[i];var statusClass=c.status===1?'status-enabled':'status-disabled';var statusText=c.status===1?'启用':'禁用';html+='<tr>'+\n" +
+                "'<td>'+c.id+'</td>'+\n" +
+                "'<td>'+escapeHtml(c.username||'')+'</td>'+\n" +
+                "'<td>******</td>'+\n" +
+                "'<td><span class=\"status-badge '+statusClass+'\">'+statusText+'</span></td>'+\n" +
+                "'<td>'+escapeHtml(c.remark||'')+'</td>'+\n" +
+                "'<td>'+formatDateTime(c.createTime||'')+'</td>'+\n" +
+                "'<td><button class=\"action-btn edit-btn\" onclick=\"editCustomer('+c.id+')\">编辑</button><button class=\"action-btn delete-btn\" onclick=\"deleteCustomer('+c.id+')\">删除</button></td>'+\n" +
+                "'</tr>';}tbody.innerHTML=html;}\n" +
+                "function formatDateTime(dateStr){if(!dateStr)return'-';return dateStr.replace('T',' ').substring(0,19);}\n" +
+                "function renderPagination(){var div=document.getElementById('pagination');if(!div)return;if(totalPages<=1){div.innerHTML='';return;}var html='<button class=\"page-btn\" onclick=\"goPage(1)\"'+(page===1?'disabled':'')+'>首页</button><button class=\"page-btn\" onclick=\"goPage('+(page-1)+')\"'+(page===1?'disabled':'')+'>上一页</button><span class=\"page-info\">第 '+page+' / '+totalPages+' 页</span><button class=\"page-btn\" onclick=\"goPage('+(page+1)+')\"'+(page===totalPages?'disabled':'')+'>下一页</button><button class=\"page-btn\" onclick=\"goPage('+totalPages+')\"'+(page===totalPages?'disabled':'')+'>尾页</button>';div.innerHTML=html;}\n" +
+                "function goPage(p){page=p;loadCustomers();}\n" +
+                "function showAddModal(){document.getElementById('modalTitle').innerText='新增客户';document.getElementById('editId').value='';document.getElementById('inputUsername').value='';document.getElementById('inputPassword').value='';document.getElementById('inputStatus').value='1';document.getElementById('inputRemark').value='';document.getElementById('modal').style.display='flex';}\n" +
+                "function editCustomer(id){fetch('/api/monitor/customers?secret=dn17ORUwf36Znl&page=1&size=9999').then(res=>res.json()).then(data=>{if(data.code===200){var customer=data.data.find(c=>c.id===id);if(customer){document.getElementById('modalTitle').innerText='编辑客户';document.getElementById('editId').value=customer.id;document.getElementById('inputUsername').value=customer.username;document.getElementById('inputPassword').value='';document.getElementById('inputStatus').value=customer.status;document.getElementById('inputRemark').value=customer.remark||'';document.getElementById('modal').style.display='flex';}}});}\n" +
+                "function saveCustomer(){var id=document.getElementById('editId').value;var username=document.getElementById('inputUsername').value.trim();var password=document.getElementById('inputPassword').value;var status=document.getElementById('inputStatus').value;var remark=document.getElementById('inputRemark').value;if(!username){alert('请输入客户账号');return;}if(!id && !password){alert('请输入密码');return;}var data={username:username,status:parseInt(status),remark:remark};if(id)data.id=parseInt(id);if(password)data.password=password;var url=id?'/api/monitor/customers':'/api/monitor/customers';var method=id?'PUT':'POST';fetch(url+'?secret=dn17ORUwf36Znl',{method:method,headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}).then(res=>res.json()).then(data=>{if(data.code===200){closeModal();loadCustomers();loadStats();}else{alert(data.msg||'操作失败');}}).catch(err=>{alert('操作失败:'+err.message);});}\n" +
+                "function deleteCustomer(id){if(!confirm('确定要删除该客户吗？删除后无法恢复！'))return;fetch('/api/monitor/customers?id='+id+'&secret=dn17ORUwf36Znl',{method:'DELETE'}).then(res=>res.json()).then(data=>{if(data.code===200){loadCustomers();loadStats();}else{alert(data.msg||'删除失败');}}).catch(err=>{alert('删除失败:'+err.message);});}\n" +
+                "function closeModal(){document.getElementById('modal').style.display='none';}\n" +
+                "function escapeHtml(s){if(!s)return'';return String(s).replace(/[&<>]/g,function(m){if(m==='&')return'&amp;';if(m==='<')return'&lt;';if(m==='>')return'&gt;';return m;});}\n" +
+                "loadStats();loadCustomers();\n" +
+                "</script>\n" +
+                "</body>\n" +
+                "</html>";
+    }
+
+    private String generateUserManagementHtml() {
+        return "<!DOCTYPE html>\n" +
+                "<html lang=\"zh-CN\">\n" +
+                "<head>\n" +
+                "<meta charset=\"UTF-8\">\n" +
+                "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n" +
+                "<title>用户管理</title>\n" +
+                "<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23667eea'/%3E%3Ctext x='50' y='68' font-size='50' text-anchor='middle' fill='white' font-family='Arial'%3E👤%3C/text%3E%3C/svg%3E\">\n" +
+                "<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap\" rel=\"stylesheet\">\n" +
+                "<style>\n" +
+                ":root {\n" +
+                "  --bg-primary: #f0f2f5;\n" +
+                "  --bg-card: #ffffff;\n" +
+                "  --text-primary: #1e293b;\n" +
+                "  --text-secondary: #475569;\n" +
+                "  --text-muted: #94a3b8;\n" +
+                "  --border-color: rgba(0,0,0,0.04);\n" +
+                "  --shadow: 0 2px 12px rgba(0,0,0,0.06);\n" +
+                "  --navbar-bg: linear-gradient(135deg,#667eea 0%,#764ba2 100%);\n" +
+                "  --search-card-bg: #ffffff;\n" +
+                "  --table-header-bg: #fafafa;\n" +
+                "  --table-hover: #fafafa;\n" +
+                "  --input-bg: #ffffff;\n" +
+                "  --input-border: #e5e7eb;\n" +
+                "  --btn-reset-bg: #f5f5f5;\n" +
+                "  --btn-reset-hover: #e8e8e8;\n" +
+                "  --status-enabled: #10b981;\n" +
+                "  --status-disabled: #ef4444;\n" +
+                "}\n" +
+                "[data-theme=\"dark\"] {\n" +
+                "  --bg-primary: #0f172a;\n" +
+                "  --bg-card: #1e293b;\n" +
+                "  --text-primary: #f1f5f9;\n" +
+                "  --text-secondary: #94a3b8;\n" +
+                "  --text-muted: #64748b;\n" +
+                "  --border-color: rgba(255,255,255,0.08);\n" +
+                "  --shadow: 0 2px 12px rgba(0,0,0,0.3);\n" +
+                "  --navbar-bg: linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);\n" +
+                "  --search-card-bg: #1e293b;\n" +
+                "  --table-header-bg: #334155;\n" +
+                "  --table-hover: #334155;\n" +
+                "  --input-bg: #1e293b;\n" +
+                "  --input-border: #334155;\n" +
+                "  --btn-reset-bg: #334155;\n" +
+                "  --btn-reset-hover: #475569;\n" +
+                "  --status-enabled: #34d399;\n" +
+                "  --status-disabled: #f87171;\n" +
+                "}\n" +
+                "*{margin:0;padding:0;box-sizing:border-box;}\n" +
+                "body{background:var(--bg-primary);font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;min-height:100vh;transition:background 0.3s,color 0.3s;}\n" +
+                ".page-wrap{max-width:1400px;margin:0 auto;padding:20px 24px;}\n" +
+                ".navbar{background:var(--navbar-bg);height:60px;display:flex;align-items:center;justify-content:space-between;padding:0 32px;color:white;border-radius:16px;margin-bottom:24px;box-shadow:0 4px 20px rgba(0,0,0,0.08);transition:background 0.3s;}\n" +
+                ".nav-links{display:flex;gap:8px;}\n" +
+                ".navbar a{color:white;text-decoration:none;padding:8px 20px;border-radius:30px;font-weight:500;transition:all 0.3s;}\n" +
+                ".navbar a:hover,.navbar a.active{background:rgba(255,255,255,0.2);}\n" +
+                ".nav-right{display:flex;align-items:center;gap:16px;}\n" +
+                ".user-name{color:white;font-size:14px;}\n" +
+                ".theme-toggle{background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.2);color:white;padding:8px 16px;border-radius:30px;cursor:pointer;font-size:13px;transition:all 0.3s;}\n" +
+                ".theme-toggle:hover{background:rgba(255,255,255,0.25);}\n" +
+                ".logout-btn{background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.2);color:white;padding:8px 20px;border-radius:30px;cursor:pointer;font-weight:500;transition:all 0.3s;}\n" +
+                ".logout-btn:hover{background:rgba(255,255,255,0.25);transform:translateY(-1px);}\n" +
+                ".search-card{background:var(--search-card-bg);border-radius:16px;padding:20px 24px;margin-bottom:24px;box-shadow:var(--shadow);transition:background 0.3s;}\n" +
+                ".search-row{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end;}\n" +
+                ".search-group{display:flex;flex-direction:column;gap:6px;}\n" +
+                ".search-group label{font-size:12px;color:var(--text-secondary);font-weight:500;}\n" +
+                ".search-group input,.search-group select{padding:8px 12px;border:1px solid var(--input-border);border-radius:10px;font-size:13px;min-width:160px;transition:all 0.3s;background:var(--input-bg);color:var(--text-primary);}\n" +
+                ".search-group input:focus,.search-group select:focus{outline:none;border-color:#667eea;box-shadow:0 0 0 3px rgba(102,126,234,0.1);}\n" +
+                ".search-actions{display:flex;gap:10px;margin-left:auto;align-items:center;}\n" +
+                ".search-btn{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white;border:none;padding:8px 20px;border-radius:30px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;}\n" +
+                ".search-btn:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(102,126,234,0.4);}\n" +
+                ".reset-btn{background:var(--btn-reset-bg);border:1px solid var(--input-border);padding:8px 20px;border-radius:30px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;color:var(--text-secondary);}\n" +
+                ".reset-btn:hover{background:var(--btn-reset-hover);}\n" +
+                ".add-btn{background:linear-gradient(135deg,#10b981 0%,#059669 100%);color:white;border:none;padding:8px 20px;border-radius:30px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;}\n" +
+                ".add-btn:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(16,185,129,0.4);}\n" +
+                ".log-card{background:var(--bg-card);border-radius:16px;overflow:auto;box-shadow:var(--shadow);transition:background 0.3s;}\n" +
+                ".log-table{width:100%;border-collapse:collapse;min-width:800px;}\n" +
+                ".log-table th{background:var(--table-header-bg);padding:14px 16px;text-align:left;font-size:13px;font-weight:600;color:var(--text-secondary);border-bottom:1px solid var(--border-color);transition:background 0.3s;}\n" +
+                ".log-table td{padding:14px 16px;font-size:13px;color:var(--text-primary);border-bottom:1px solid var(--border-color);transition:color 0.3s;}\n" +
+                ".log-table tr:hover td{background:var(--table-hover);}\n" +
+                ".status-badge{display:inline-block;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:500;}\n" +
+                ".status-enabled{background:rgba(16,185,129,0.15);color:var(--status-enabled);}\n" +
+                ".status-disabled{background:rgba(239,68,68,0.15);color:var(--status-disabled);}\n" +
+                ".action-btn{padding:4px 12px;border-radius:20px;cursor:pointer;font-size:12px;transition:all 0.3s;border:none;}\n" +
+                ".edit-btn{background:#667eea;color:white;}\n" +
+                ".edit-btn:hover{background:#5a67d8;}\n" +
+                ".delete-btn{background:#e53935;color:white;margin-left:8px;}\n" +
+                ".delete-btn:hover{background:#c62828;}\n" +
+                ".pagination{display:flex;justify-content:center;gap:12px;padding:24px;border-top:1px solid var(--border-color);}\n" +
+                ".page-btn{padding:8px 16px;border:1px solid var(--input-border);background:var(--bg-card);color:var(--text-primary);border-radius:30px;cursor:pointer;font-size:13px;transition:all 0.3s;}\n" +
+                ".page-btn:hover:not(:disabled){border-color:#667eea;color:#667eea;}\n" +
+                ".page-btn:disabled{background:var(--btn-reset-bg);color:var(--text-muted);cursor:not-allowed;}\n" +
+                ".page-info{font-size:13px;color:var(--text-muted);align-self:center;}\n" +
+                ".footer{text-align:center;padding:32px 0;color:var(--text-secondary);font-size:12px;border-top:1px solid var(--border-color);margin-top:16px;}\n" +
+                ".modal{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:10000;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);}\n" +
+                ".modal-content{background:var(--bg-card);border-radius:20px;width:500px;max-width:90%;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,0.3);}\n" +
+                ".modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;padding-bottom:12px;border-bottom:1px solid var(--border-color);}\n" +
+                ".modal-header h3{color:var(--text-primary);margin:0;}\n" +
+                ".modal-close{background:none;border:none;font-size:28px;cursor:pointer;color:var(--text-muted);}\n" +
+                ".modal-close:hover{color:var(--text-primary);}\n" +
+                ".form-group{margin-bottom:16px;}\n" +
+                ".form-group label{display:block;font-size:13px;font-weight:500;color:var(--text-secondary);margin-bottom:6px;}\n" +
+                ".form-group input,.form-group select,.form-group textarea{width:100%;padding:10px 12px;border:1px solid var(--input-border);border-radius:10px;font-size:14px;background:var(--input-bg);color:var(--text-primary);}\n" +
+                ".form-group input:focus,.form-group select:focus,.form-group textarea:focus{outline:none;border-color:#667eea;box-shadow:0 0 0 3px rgba(102,126,234,0.1);}\n" +
+                ".modal-buttons{display:flex;gap:12px;justify-content:flex-end;margin-top:20px;}\n" +
+                ".confirm-btn{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white;border:none;padding:8px 24px;border-radius:30px;cursor:pointer;font-weight:500;}\n" +
+                ".cancel-btn{background:var(--btn-reset-bg);border:1px solid var(--input-border);padding:8px 24px;border-radius:30px;cursor:pointer;color:var(--text-secondary);}\n" +
+                "</style>\n" +
+                "</head>\n" +
+                "<body>\n" +
+                "<div class=\"page-wrap\">\n" +
+                "<div class=\"navbar\">\n" +
+                "<div class=\"nav-links\">\n" +
+                "<a href=\"/monitor/index\">🏠 首页</a>\n" +
+                "<a href=\"/monitor/dashboard\">📈 服务监控</a>\n" +
+                "<a href=\"/monitor/login-audit\">📋 登录审计</a>\n" +
+                "<a href=\"/monitor/number-files\">📁 号码备份</a>\n" +
+                "<a href=\"/monitor/customer-management\">👥 客户管理</a>\n" +
+                "<a href=\"/monitor/user-management\" class=\"active\">👤 用户管理</a>\n" +
+                "</div>\n" +
+                "<div class=\"nav-right\">\n" +
+                "<span class=\"user-name\">Administrator</span>\n" +
+                "<button class=\"theme-toggle\" onclick=\"toggleTheme()\" id=\"themeBtn\">🌙 深色</button>\n" +
+                "<button class=\"logout-btn\" onclick=\"logout()\">退出</button>\n" +
+                "</div>\n" +
+                "</div>\n" +
+                "<div class=\"search-card\">\n" +
+                "<div class=\"search-row\">\n" +
+                "<div class=\"search-group\"><label>👤 用户名</label><input type=\"text\" id=\"searchUsername\" placeholder=\"模糊查询\"></div>\n" +
+                "<div class=\"search-group\"><label>📊 状态</label><select id=\"searchStatus\"><option value=\"\">全部</option><option value=\"1\">启用</option><option value=\"0\">禁用</option></select></div>\n" +
+                "<div class=\"search-actions\">\n" +
+                "<button class=\"search-btn\" onclick=\"searchUsers()\">🔍 查询</button>\n" +
+                "<button class=\"reset-btn\" onclick=\"resetSearch()\">🔄 重置</button>\n" +
+                "<button class=\"add-btn\" onclick=\"showAddModal()\">➕ 新增用户</button>\n" +
+                "</div>\n" +
+                "</div>\n" +
+                "</div>\n" +
+                "<div class=\"log-card\">\n" +
+                "<table class=\"log-table\">\n" +
+                "<thead>\n" +
+                "<tr><th>ID</th><th>用户名</th><th>密码</th><th>角色</th><th>状态</th><th>允许IP</th><th>备注</th><th>创建时间</th><th>操作</th></tr>\n" +
+                "</thead>\n" +
+                "<tbody id=\"userBody\"><tr><td colspan=\"9\" class=\"empty\">加载中...</tr></tbody>\n" +
+                "</table>\n" +
+                "<div class=\"pagination\" id=\"pagination\"></div>\n" +
+                "</div>\n" +
+                "<div class=\"footer\">👤 监控系统用户管理 | 支持多IP配置，逗号分隔</div>\n" +
+                "</div>\n" +
+                "<div id=\"modal\" class=\"modal\" style=\"display:none;\">\n" +
+                "<div class=\"modal-content\">\n" +
+                "<div class=\"modal-header\"><h3 id=\"modalTitle\">新增用户</h3><button class=\"modal-close\" onclick=\"closeModal()\">&times;</button></div>\n" +
+                "<input type=\"hidden\" id=\"editId\">\n" +
+                "<div class=\"form-group\"><label>用户名 *</label><input type=\"text\" id=\"inputUsername\" placeholder=\"请输入用户名\"></div>\n" +
+                "<div class=\"form-group\"><label>密码 *</label><input type=\"password\" id=\"inputPassword\" placeholder=\"请输入密码\"></div>\n" +
+                "<div class=\"form-group\"><label>角色</label><select id=\"inputRole\"><option value=\"ADMIN\">管理员</option></select></div>\n" +
+                "<div class=\"form-group\"><label>状态</label><select id=\"inputStatus\"><option value=\"1\">启用</option><option value=\"0\">禁用</option></select></div>\n" +
+                "<div class=\"form-group\"><label>允许IP</label><input type=\"text\" id=\"inputAllowedIps\" placeholder=\"多个IP用逗号分隔，留空则允许所有内网IP\"></div>\n" +
+                "<div class=\"form-group\"><label>备注</label><textarea id=\"inputRemark\" rows=\"2\" placeholder=\"请输入备注\"></textarea></div>\n" +
+                "<div class=\"modal-buttons\"><button class=\"confirm-btn\" onclick=\"saveUser()\">保存</button><button class=\"cancel-btn\" onclick=\"closeModal()\">取消</button></div>\n" +
+                "</div>\n" +
+                "</div>\n" +
+                "<script>\n" +
+                "let page=1,size=20,totalPages=1;\n" +
+                "function toggleTheme(){var html=document.documentElement;var btn=document.getElementById('themeBtn');var currentTheme=html.getAttribute('data-theme');if(currentTheme==='dark'){html.removeAttribute('data-theme');btn.innerHTML='🌙 深色';localStorage.setItem('monitor-theme','light');}else{html.setAttribute('data-theme','dark');btn.innerHTML='☀️ 浅色';localStorage.setItem('monitor-theme','dark');}}\n" +
+                "function logout(){fetch('/monitor/logout').then(function(){location.href='/monitor/login';});}\n" +
+                "var savedTheme=localStorage.getItem('monitor-theme');if(savedTheme==='dark'){document.documentElement.setAttribute('data-theme','dark');var themeBtn=document.getElementById('themeBtn');if(themeBtn)themeBtn.innerHTML='☀️ 浅色';}\n" +
+                "function searchUsers(){page=1;loadUsers();}\n" +
+                "function resetSearch(){document.getElementById('searchUsername').value='';document.getElementById('searchStatus').value='';page=1;loadUsers();}\n" +
+                "function loadUsers(){var username=document.getElementById('searchUsername').value;var status=document.getElementById('searchStatus').value;var url='/api/monitor/users?secret=dn17ORUwf36Znl&page='+page+'&size='+size;if(username)url+='&username='+encodeURIComponent(username);if(status)url+='&status='+status;fetch(url).then(res=>res.json()).then(data=>{if(data.code===200){renderTable(data.data||[]);totalPages=data.totalPages||1;renderPagination();}else{document.getElementById('userBody').innerHTML='<tr><td colspan=\"9\" class=\"empty\">加载失败:'+(data.msg||'错误')+'</tr>';}}).catch(()=>{document.getElementById('userBody').innerHTML='<tr><td colspan=\"9\" class=\"empty\">加载失败:网络错误</tr>';});}\n" +
+                "function renderTable(list){var tbody=document.getElementById('userBody');if(!tbody)return;if(!list||list.length===0){tbody.innerHTML='<tr><td colspan=\"9\" class=\"empty\">暂无数据</tr>';return;}var html='';for(var i=0;i<list.length;i++){var u=list[i];var statusClass=u.status===1?'status-enabled':'status-disabled';var statusText=u.status===1?'启用':'禁用';html+='<tr>'+\n" +
+                "'<td>'+u.id+'</td>'+\n" +
+                "'<td>'+escapeHtml(u.username||'')+'</td>'+\n" +
+                "'<td>******</td>'+\n" +
+                "'<td>'+escapeHtml(u.role||'ADMIN')+'</td>'+\n" +
+                "'<td><span class=\"status-badge '+statusClass+'\">'+statusText+'</span></td>'+\n" +
+                "'<td>'+escapeHtml(u.allowedIps||'-')+'</td>'+\n" +
+                "'<td>'+escapeHtml(u.remark||'')+'</td>'+\n" +
+                "'<td>'+formatDateTime(u.createTime||'')+'</td>'+\n" +
+                "'<td><button class=\"action-btn edit-btn\" onclick=\"editUser('+u.id+')\">编辑</button><button class=\"action-btn delete-btn\" onclick=\"deleteUser('+u.id+')\">删除</button></td>'+\n" +
+                "'<tr>';}tbody.innerHTML=html;}\n" +
+                "function formatDateTime(dateStr){if(!dateStr)return'-';return dateStr.replace('T',' ').substring(0,19);}\n" +
+                "function renderPagination(){var div=document.getElementById('pagination');if(!div)return;if(totalPages<=1){div.innerHTML='';return;}var html='<button class=\"page-btn\" onclick=\"goPage(1)\"'+(page===1?'disabled':'')+'>首页</button><button class=\"page-btn\" onclick=\"goPage('+(page-1)+')\"'+(page===1?'disabled':'')+'>上一页</button><span class=\"page-info\">第 '+page+' / '+totalPages+' 页</span><button class=\"page-btn\" onclick=\"goPage('+(page+1)+')\"'+(page===totalPages?'disabled':'')+'>下一页</button><button class=\"page-btn\" onclick=\"goPage('+totalPages+')\"'+(page===totalPages?'disabled':'')+'>尾页</button>';div.innerHTML=html;}\n" +
+                "function goPage(p){page=p;loadUsers();}\n" +
+                "function showAddModal(){document.getElementById('modalTitle').innerText='新增用户';document.getElementById('editId').value='';document.getElementById('inputUsername').value='';document.getElementById('inputPassword').value='';document.getElementById('inputRole').value='ADMIN';document.getElementById('inputStatus').value='1';document.getElementById('inputAllowedIps').value='';document.getElementById('inputRemark').value='';document.getElementById('modal').style.display='flex';}\n" +
+                "function editUser(id){fetch('/api/monitor/users?secret=dn17ORUwf36Znl&page=1&size=9999').then(res=>res.json()).then(data=>{if(data.code===200){var user=data.data.find(u=>u.id===id);if(user){document.getElementById('modalTitle').innerText='编辑用户';document.getElementById('editId').value=user.id;document.getElementById('inputUsername').value=user.username;document.getElementById('inputPassword').value='';document.getElementById('inputRole').value=user.role||'ADMIN';document.getElementById('inputStatus').value=user.status;document.getElementById('inputAllowedIps').value=user.allowedIps||'';document.getElementById('inputRemark').value=user.remark||'';document.getElementById('modal').style.display='flex';}}});}\n" +
+                "function saveUser(){var id=document.getElementById('editId').value;var username=document.getElementById('inputUsername').value.trim();var password=document.getElementById('inputPassword').value;var role=document.getElementById('inputRole').value;var status=document.getElementById('inputStatus').value;var allowedIps=document.getElementById('inputAllowedIps').value;var remark=document.getElementById('inputRemark').value;if(!username){alert('请输入用户名');return;}if(!id && !password){alert('请输入密码');return;}var data={username:username,role:role,status:parseInt(status),allowedIps:allowedIps,remark:remark};if(id)data.id=parseInt(id);if(password)data.password=password;var url=id?'/api/monitor/users':'/api/monitor/users';var method=id?'PUT':'POST';fetch(url+'?secret=dn17ORUwf36Znl',{method:method,headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}).then(res=>res.json()).then(data=>{if(data.code===200){closeModal();loadUsers();}else{alert(data.msg||'操作失败');}}).catch(err=>{alert('操作失败:'+err.message);});}\n" +
+                "function deleteUser(id){if(!confirm('确定要删除该用户吗？删除后无法恢复！'))return;fetch('/api/monitor/users?id='+id+'&secret=dn17ORUwf36Znl',{method:'DELETE'}).then(res=>res.json()).then(data=>{if(data.code===200){loadUsers();}else{alert(data.msg||'删除失败');}}).catch(err=>{alert('删除失败:'+err.message);});}\n" +
+                "function closeModal(){document.getElementById('modal').style.display='none';}\n" +
+                "function escapeHtml(s){if(!s)return'';return String(s).replace(/[&<>]/g,function(m){if(m==='&')return'&amp;';if(m==='<')return'&lt;';if(m==='>')return'&gt;';return m;});}\n" +
+                "loadUsers();\n" +
                 "</script>\n" +
                 "</body>\n" +
                 "</html>";
