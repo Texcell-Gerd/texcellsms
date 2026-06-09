@@ -863,6 +863,70 @@ public class NCacheDBLink {
 		return list;
 	}
 
+	/**
+	 * 解锁账户或解锁IP
+	 * @param subAccount 子账号（解锁IP时传IP地址，解锁账号时传用户名）
+	 * @param operator 操作员
+	 * @param opType 类型：0=解除账号锁，1=解除IP锁
+	 * @return 执行结果
+	 */
+	public Map<String, Object> prc_ResumeWEBAccountByStaff(String subAccount, String operator, String opType) {
+
+		int nParaCount = 3;
+		CADBPROCPARA[] pPara = new CADBPROCPARA[3];
+		String strSQL = "prc_ResumeWEBAccountByStaff";
+
+		// 参数1：子账号/IP
+		pPara[0] = new CADBPROCPARA();
+		pPara[0].nDataType = 12; // GString
+		pPara[0].nParaType = 0; // input
+		pPara[0].sName = "SubAccount";
+		pPara[0].sInput = subAccount;
+		pPara[0].nSize = pPara[0].sInput.length();
+		pPara[0].sOutput = "";
+
+		// 参数2：操作员
+		pPara[1] = new CADBPROCPARA();
+		pPara[1].nDataType = 12;
+		pPara[1].nParaType = 0;
+		pPara[1].sName = "Operator";
+		pPara[1].sInput = operator;
+		pPara[1].nSize = pPara[1].sInput.length();
+		pPara[1].sOutput = "";
+
+		// 参数3：操作类型（0=解锁账号，1=解锁IP）
+		pPara[2] = new CADBPROCPARA();
+		pPara[2].nDataType = 12;
+		pPara[2].nParaType = 0;
+		pPara[2].sName = "OpType";
+		pPara[2].sInput = opType;
+		pPara[2].nSize = pPara[2].sInput.length();
+		pPara[2].sOutput = "";
+
+		String pResultS = Client.ExecProc(pClient, strSQL, nParaCount, pPara);
+		Gson parser = new Gson();
+		ProcResult pResult = parser.fromJson(pResultS, ProcResult.class);
+
+		String decodeErr = "";
+		if (pResult.getnRet() > -90) {
+			byte[] bErr = Base64Util.decode(pResult.getsError());
+			decodeErr = new String(bErr);
+		} else {
+			decodeErr = pResult.getsError();
+		}
+
+		logger.info(strSQL + "调用开始 subAccount:{} operator:{} opType:{}", subAccount, operator, opType);
+		logger.info("Ret={} sError={}", pResult.getnRet(), decodeErr);
+
+		Map<String, Object> map = new HashMap<String, Object>();
+		map.put("sError", decodeErr);
+		map.put("Result", pResult.getnRet());
+		map.put("SubAccount", subAccount);
+		map.put("Operator", operator);
+		map.put("OpType", opType.equals("0") ? "解锁账号" : "解锁IP");
+
+		return map;
+	}
 
 	public int GetConnectStatus()
 	{

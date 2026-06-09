@@ -1,6 +1,7 @@
 package com.texcellsms.sms.monitor;
 
 
+import CacheDB.NCacheDBLink;
 import com.texcellsms.sms.interceptor.SecurityMonitorInterceptor;
 import com.texcellsms.sms.mapper.webportal.CustomerApiClientMapper;
 import com.texcellsms.sms.mapper.webportal.CustomerNumberFileMapper;
@@ -33,8 +34,8 @@ public class LogMonitorController {
     private static final String MONITOR_SECRET = "dn17ORUwf36Znl";
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
-    private static final String ADMIN_USERNAME = "Administrator";
-    private static final String ADMIN_PASSWORD = "dn17ORUwf36Znl";
+//    private static final String ADMIN_USERNAME = "Administrator";
+//    private static final String ADMIN_PASSWORD = "dn17ORUwf36Znl";
 
     private static final String[] INNER_IPS = {
             "127.0.0.1", "192.168.", "202.77.56.146"
@@ -247,6 +248,21 @@ public class LogMonitorController {
             return "<script>location.href='/monitor/login';</script>";
         }
         return generateNumberFilesHtml();
+    }
+
+    @GetMapping("/monitor/ops-management")
+    public String opsManagement(HttpServletRequest request) {
+        HttpSession session = request.getSession();
+        String clientIp = getRealIp(request);
+        String loginUsername = getCurrentUsername(session);
+
+        if (!isInnerIp(clientIp, loginUsername)) {
+            return "<h1 style='color:red;text-align:center;margin-top:100px;'>❌ 仅允许内网访问<br/>您的IP：" + clientIp + "</h1>";
+        }
+        if (!isLogin(session)) {
+            return "<script>location.href='/monitor/login';</script>";
+        }
+        return generateOpsManagementHtml();
     }
 
     @GetMapping("/api/monitor/logs")
@@ -926,6 +942,13 @@ public class LogMonitorController {
         }
 
         try {
+            // 如果密码为空，先查询原密码
+            if (customer.getPassword() == null || customer.getPassword().trim().isEmpty()) {
+                CustomerApiClient existing = customerApiClientMapper.selectById(customer.getId());
+                if (existing != null) {
+                    customer.setPassword(existing.getPassword());
+                }
+            }
             customerApiClientMapper.update(customer);
             // 刷新配置
             apiClientConfig.refresh();
@@ -1081,6 +1104,13 @@ public class LogMonitorController {
         }
 
         try {
+            // 如果密码为空，先查询原密码
+            if (user.getPassword() == null || user.getPassword().trim().isEmpty()) {
+                MonitorUser existing = monitorUserMapper.selectById(user.getId());
+                if (existing != null) {
+                    user.setPassword(existing.getPassword());
+                }
+            }
             monitorUserMapper.update(user);
             result.put("code", 200);
             result.put("msg", "更新成功");
@@ -1121,6 +1151,206 @@ public class LogMonitorController {
             logger.error("删除用户失败", e);
             result.put("code", 500);
             result.put("msg", "删除失败: " + e.getMessage());
+        }
+        return result;
+    }
+
+    // ==================== 解除限制 API ====================
+
+    // ==================== 运维管理 API ====================
+
+    /**
+     * 重置2FA（解绑2FA）
+     */
+    @PostMapping("/api/monitor/ops/reset-2fa")
+    public Map<String, Object> reset2FA(@RequestParam String username,
+                                        @RequestParam(required = false) String secret,
+                                        HttpServletRequest request) {
+        Map<String, Object> result = new HashMap<>();
+        HttpSession session = request.getSession();
+        String clientIp = getRealIp(request);
+        String loginUsername = getCurrentUsername(session);
+
+        if (!isInnerIp(clientIp, loginUsername)) {
+            result.put("code", 403);
+            result.put("msg", "仅允许内网访问");
+            return result;
+        }
+        if (!MONITOR_SECRET.equals(secret)) {
+            result.put("code", 401);
+            result.put("msg", "无权限访问");
+            return result;
+        }
+
+        NCacheDBLink db = null;
+        try {
+            db = NCacheDBLink.getNCacheDBLink();
+            db.InitEnv();
+            db.ConnectToCacheDB();
+            // 调用重置2FA存储过程，返回 Map<String, Object>
+            Map<String, Object> ret = db.prc_Set2FAKeyForCompanyId("", username);
+            db.Disconnect();
+
+            result.put("code", 200);
+            result.put("msg", "重置2FA成功");
+            result.put("data", ret);
+            logger.info("运维操作: 重置2FA, 操作人={}, 目标账号={}", loginUsername, username);
+        } catch (Exception e) {
+            logger.error("重置2FA失败", e);
+            result.put("code", 500);
+            result.put("msg", "重置2FA失败: " + e.getMessage());
+        } finally {
+            if (db != null) {
+                try { db.Disconnect(); } catch (Exception ignored) {}
+                try { db.Destroy(); } catch (Exception ignored) {}
+            }
+        }
+        return result;
+    }
+
+    /**
+     * 解除2FA
+     */
+    @PostMapping("/api/monitor/ops/disable-2fa")
+    public Map<String, Object> disable2FA(@RequestParam String username,
+                                          @RequestParam(required = false) String secret,
+                                          HttpServletRequest request) {
+        Map<String, Object> result = new HashMap<>();
+        HttpSession session = request.getSession();
+        String clientIp = getRealIp(request);
+        String loginUsername = getCurrentUsername(session);
+
+        if (!isInnerIp(clientIp, loginUsername)) {
+            result.put("code", 403);
+            result.put("msg", "仅允许内网访问");
+            return result;
+        }
+        if (!MONITOR_SECRET.equals(secret)) {
+            result.put("code", 401);
+            result.put("msg", "无权限访问");
+            return result;
+        }
+
+        NCacheDBLink db = null;
+        try {
+            db = NCacheDBLink.getNCacheDBLink();
+            db.InitEnv();
+            db.ConnectToCacheDB();
+            // opType = "1" 表示解除2FA，返回 Map<String, Object>
+            Map<String, Object> ret = db.prc_SetCompany2FA_Condition(username, "", "", "1");
+            db.Disconnect();
+
+            result.put("code", 200);
+            result.put("msg", "解除2FA成功");
+            result.put("data", ret);
+            logger.info("运维操作: 解除2FA, 操作人={}, 目标账号={}", loginUsername, username);
+        } catch (Exception e) {
+            logger.error("解除2FA失败", e);
+            result.put("code", 500);
+            result.put("msg", "解除2FA失败: " + e.getMessage());
+        } finally {
+            if (db != null) {
+                try { db.Disconnect(); } catch (Exception ignored) {}
+                try { db.Destroy(); } catch (Exception ignored) {}
+            }
+        }
+        return result;
+    }
+
+    /**
+     * 解锁账户（需要先实现存储过程）
+     */
+    @PostMapping("/api/monitor/ops/unlock-account")
+    public Map<String, Object> unlockAccount(@RequestParam String username,
+                                             @RequestParam(required = false) String secret,
+                                             HttpServletRequest request) {
+        Map<String, Object> result = new HashMap<>();
+        HttpSession session = request.getSession();
+        String clientIp = getRealIp(request);
+        String loginUsername = getCurrentUsername(session);
+
+        if (!isInnerIp(clientIp, loginUsername)) {
+            result.put("code", 403);
+            result.put("msg", "仅允许内网访问");
+            return result;
+        }
+        if (!MONITOR_SECRET.equals(secret)) {
+            result.put("code", 401);
+            result.put("msg", "无权限访问");
+            return result;
+        }
+
+        NCacheDBLink db = null;
+        try {
+            db = NCacheDBLink.getNCacheDBLink();
+            db.InitEnv();
+            db.ConnectToCacheDB();
+            // opType = "0" 表示解除账号锁定
+            Map<String, Object> ret = db.prc_ResumeWEBAccountByStaff(username, loginUsername, "0");
+            db.Disconnect();
+
+            result.put("code", 200);
+            result.put("msg", "解锁账户成功");
+            result.put("data", ret);
+            logger.info("运维操作: 解锁账户, 操作人={}, 目标账号={}", loginUsername, username);
+        } catch (Exception e) {
+            logger.error("解锁账户失败", e);
+            result.put("code", 500);
+            result.put("msg", "解锁账户失败: " + e.getMessage());
+        } finally {
+            if (db != null) {
+                try { db.Disconnect(); } catch (Exception ignored) {}
+                try { db.Destroy(); } catch (Exception ignored) {}
+            }
+        }
+        return result;
+    }
+
+    /**
+     * 解锁IP（需要先实现存储过程）
+     */
+    @PostMapping("/api/monitor/ops/unlock-ip")
+    public Map<String, Object> unlockIp(@RequestParam String username,
+                                        @RequestParam(required = false) String secret,
+                                        HttpServletRequest request) {
+        Map<String, Object> result = new HashMap<>();
+        HttpSession session = request.getSession();
+        String clientIp = getRealIp(request);
+        String loginUsername = getCurrentUsername(session);
+
+        if (!isInnerIp(clientIp, loginUsername)) {
+            result.put("code", 403);
+            result.put("msg", "仅允许内网访问");
+            return result;
+        }
+        if (!MONITOR_SECRET.equals(secret)) {
+            result.put("code", 401);
+            result.put("msg", "无权限访问");
+            return result;
+        }
+
+        NCacheDBLink db = null;
+        try {
+            db = NCacheDBLink.getNCacheDBLink();
+            db.InitEnv();
+            db.ConnectToCacheDB();
+            // opType = "1" 表示解除IP锁定
+            Map<String, Object> ret = db.prc_ResumeWEBAccountByStaff(username, loginUsername, "1");
+            db.Disconnect();
+
+            result.put("code", 200);
+            result.put("msg", "解锁IP成功");
+            result.put("data", ret);
+            logger.info("运维操作: 解锁IP, 操作人={}, 目标账号={}", loginUsername, username);
+        } catch (Exception e) {
+            logger.error("解锁IP失败", e);
+            result.put("code", 500);
+            result.put("msg", "解锁IP失败: " + e.getMessage());
+        } finally {
+            if (db != null) {
+                try { db.Disconnect(); } catch (Exception ignored) {}
+                try { db.Destroy(); } catch (Exception ignored) {}
+            }
         }
         return result;
     }
@@ -1416,12 +1646,13 @@ public class LogMonitorController {
                 "<div class=\"logo-sub\">v2.0</div>\n" +
                 "</div>\n" +
                 "<div class=\"menu\">\n" +
-                "<a href=\"/monitor/index\" class=\"active\">🏠 首页</a>\n" +
-                "<a href=\"/monitor/dashboard\">📈 服务监控</a>\n" +
-                "<a href=\"/monitor/login-audit\">📋 登录审计</a>\n" +
-                "<a href=\"/monitor/number-files\">📂 客户号码备份</a>\n" +
-                "<a href=\"/monitor/customer-management\">👤 客户管理</a>" +
-                "<a href=\"/monitor/user-management\">👥 用户管理</a>"+
+                "<a href=\"/monitor/index\" class=\"active\">首页</a>\n" +
+                "<a href=\"/monitor/dashboard\">服务监控</a>\n" +
+                "<a href=\"/monitor/login-audit\">登录审计</a>\n" +
+                "<a href=\"/monitor/number-files\">号码备份</a>\n" +
+                "<a href=\"/monitor/customer-management\">客户管理</a>\n" +
+                "<a href=\"/monitor/user-management\">登录账户管理</a>\n" +
+                "<a href=\"/monitor/ops-management\">运维管理</a>\n" +
                 "</div>\n" +
                 "<div class=\"user-info\">\n" +
                 "<span class=\"user-name\">Administrator</span>\n" +
@@ -1604,12 +1835,13 @@ public class LogMonitorController {
                 "<div class=\"navbar\">\n" +
                 "<div class=\"logo\">📊 TexCell SMS 监控系统</div>\n" +
                 "<div class=\"menu\">\n" +
-                "<a href=\"/monitor/index\">🏠 首页</a>\n" +
-                "<a href=\"/monitor/dashboard\" class=\"active\">📈 服务监控</a>\n" +
-                "<a href=\"/monitor/login-audit\">📋 登录审计</a>\n" +
-                "<a href=\"/monitor/number-files\">📂 客户号码备份</a>\n" +
-                "<a href=\"/monitor/customer-management\">👤 客户管理</a>" +
-                "<a href=\"/monitor/user-management\">👥 用户管理</a>"+
+                "<a href=\"/monitor/index\" class=\"active\">首页</a>\n" +
+                "<a href=\"/monitor/dashboard\">服务监控</a>\n" +
+                "<a href=\"/monitor/login-audit\">登录审计</a>\n" +
+                "<a href=\"/monitor/number-files\">号码备份</a>\n" +
+                "<a href=\"/monitor/customer-management\">客户管理</a>\n" +
+                "<a href=\"/monitor/user-management\">登录账户管理</a>\n" +
+                "<a href=\"/monitor/ops-management\">运维管理</a>\n" +
                 "</div>\n" +
                 "<div class=\"user-info\">\n" +
                 "<span class=\"user-name\">Administrator</span>\n" +
@@ -1792,12 +2024,13 @@ public class LogMonitorController {
                 "<div class=\"page-wrap\">\n" +
                 "<div class=\"navbar\">\n" +
                 "<div class=\"nav-links\">\n" +
-                "<a href=\"/monitor/index\">🏠 首页</a>\n" +
-                "<a href=\"/monitor/dashboard\">📊 服务监控</a>\n" +
-                "<a href=\"/monitor/login-audit\" class=\"active\">📋 登录审计</a>\n" +
-                "<a href=\"/monitor/number-files\">📂 客户号码备份</a>\n" +
-                "<a href=\"/monitor/customer-management\">👤 客户管理</a>" +
-                "<a href=\"/monitor/user-management\">👥 用户管理</a>"+
+                "<a href=\"/monitor/index\" class=\"active\">首页</a>\n" +
+                "<a href=\"/monitor/dashboard\">服务监控</a>\n" +
+                "<a href=\"/monitor/login-audit\">登录审计</a>\n" +
+                "<a href=\"/monitor/number-files\">号码备份</a>\n" +
+                "<a href=\"/monitor/customer-management\">客户管理</a>\n" +
+                "<a href=\"/monitor/user-management\">登录账户管理</a>\n" +
+                "<a href=\"/monitor/ops-management\">运维管理</a>\n" +
                 "</div>\n" +
                 "<div class=\"nav-right\">\n" +
                 "<span class=\"user-name\">Administrator</span>\n" +
@@ -2087,10 +2320,13 @@ public class LogMonitorController {
                 "<div class=\"page-wrap\">\n" +
                 "<div class=\"navbar\">\n" +
                 "<div class=\"nav-links\">\n" +
-                "<a href=\"/monitor/index\">🏠 首页</a>\n" +
-                "<a href=\"/monitor/dashboard\">📈 服务监控</a>\n" +
-                "<a href=\"/monitor/login-audit\">📋 登录审计</a>\n" +
-                "<a href=\"/monitor/number-files\" class=\"active\">📁 客户号码备份</a>\n" +
+                "<a href=\"/monitor/index\" class=\"active\">首页</a>\n" +
+                "<a href=\"/monitor/dashboard\">服务监控</a>\n" +
+                "<a href=\"/monitor/login-audit\">登录审计</a>\n" +
+                "<a href=\"/monitor/number-files\">号码备份</a>\n" +
+                "<a href=\"/monitor/customer-management\">客户管理</a>\n" +
+                "<a href=\"/monitor/user-management\">登录账户管理</a>\n" +
+                "<a href=\"/monitor/ops-management\">运维管理</a>\n" +
                 "</div>\n" +
                 "<div class=\"nav-right\">\n" +
                 "<span class=\"user-name\">Administrator</span>\n" +
@@ -2372,12 +2608,13 @@ public class LogMonitorController {
                 "<div class=\"page-wrap\">\n" +
                 "<div class=\"navbar\">\n" +
                 "<div class=\"nav-links\">\n" +
-                "<a href=\"/monitor/index\">🏠 首页</a>\n" +
-                "<a href=\"/monitor/dashboard\">📈 服务监控</a>\n" +
-                "<a href=\"/monitor/login-audit\">📋 登录审计</a>\n" +
-                "<a href=\"/monitor/number-files\">📁 号码备份</a>\n" +
-                "<a href=\"/monitor/customer-management\" class=\"active\">👥 客户管理</a>\n" +
-                "<a href=\"/monitor/user-management\">👤 用户管理</a>\n" +
+                "<a href=\"/monitor/index\">首页</a>\n" +
+                "<a href=\"/monitor/dashboard\">服务监控</a>\n" +
+                "<a href=\"/monitor/login-audit\">登录审计</a>\n" +
+                "<a href=\"/monitor/number-files\">号码备份</a>\n" +
+                "<a href=\"/monitor/customer-management\">客户管理</a>\n" +
+                "<a href=\"/monitor/user-management\">登录账户管理</a>\n" +
+                "<a href=\"/monitor/ops-management\">运维管理</a>\n" +
                 "</div>\n" +
                 "<div class=\"nav-right\">\n" +
                 "<span class=\"user-name\">Administrator</span>\n" +
@@ -2568,12 +2805,13 @@ public class LogMonitorController {
                 "<div class=\"page-wrap\">\n" +
                 "<div class=\"navbar\">\n" +
                 "<div class=\"nav-links\">\n" +
-                "<a href=\"/monitor/index\">🏠 首页</a>\n" +
-                "<a href=\"/monitor/dashboard\">📈 服务监控</a>\n" +
-                "<a href=\"/monitor/login-audit\">📋 登录审计</a>\n" +
-                "<a href=\"/monitor/number-files\">📁 号码备份</a>\n" +
-                "<a href=\"/monitor/customer-management\">👥 客户管理</a>\n" +
-                "<a href=\"/monitor/user-management\" class=\"active\">👤 用户管理</a>\n" +
+                "<a href=\"/monitor/index\" class=\"active\">首页</a>\n" +
+                "<a href=\"/monitor/dashboard\">服务监控</a>\n" +
+                "<a href=\"/monitor/login-audit\">登录审计</a>\n" +
+                "<a href=\"/monitor/number-files\">号码备份</a>\n" +
+                "<a href=\"/monitor/customer-management\">客户管理</a>\n" +
+                "<a href=\"/monitor/user-management\">登录账户管理</a>\n" +
+                "<a href=\"/monitor/ops-management\">运维管理</a>\n" +
                 "</div>\n" +
                 "<div class=\"nav-right\">\n" +
                 "<span class=\"user-name\">Administrator</span>\n" +
@@ -2645,6 +2883,155 @@ public class LogMonitorController {
                 "function closeModal(){document.getElementById('modal').style.display='none';}\n" +
                 "function escapeHtml(s){if(!s)return'';return String(s).replace(/[&<>]/g,function(m){if(m==='&')return'&amp;';if(m==='<')return'&lt;';if(m==='>')return'&gt;';return m;});}\n" +
                 "loadUsers();\n" +
+                "</script>\n" +
+                "</body>\n" +
+                "</html>";
+    }
+
+    private String generateOpsManagementHtml() {
+        return "<!DOCTYPE html>\n" +
+                "<html lang=\"zh-CN\">\n" +
+                "<head>\n" +
+                "<meta charset=\"UTF-8\">\n" +
+                "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n" +
+                "<title>运维管理</title>\n" +
+                "<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23667eea'/%3E%3Ctext x='50' y='68' font-size='50' text-anchor='middle' fill='white' font-family='Arial'%3E🔧%3C/text%3E%3C/svg%3E\">\n" +
+                "<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap\" rel=\"stylesheet\">\n" +
+                "<style>\n" +
+                ":root {\n" +
+                "  --bg-primary: #f0f2f5;\n" +
+                "  --bg-card: #ffffff;\n" +
+                "  --text-primary: #1e293b;\n" +
+                "  --text-secondary: #475569;\n" +
+                "  --text-muted: #94a3b8;\n" +
+                "  --border-color: rgba(0,0,0,0.04);\n" +
+                "  --shadow: 0 2px 12px rgba(0,0,0,0.06);\n" +
+                "  --navbar-bg: linear-gradient(135deg,#667eea 0%,#764ba2 100%);\n" +
+                "  --search-card-bg: #ffffff;\n" +
+                "  --input-bg: #ffffff;\n" +
+                "  --input-border: #e5e7eb;\n" +
+                "  --btn-reset-bg: #f5f5f5;\n" +
+                "  --btn-reset-hover: #e8e8e8;\n" +
+                "  --card-hover: #f5f5f5;\n" +
+                "}\n" +
+                "[data-theme=\"dark\"] {\n" +
+                "  --bg-primary: #0f172a;\n" +
+                "  --bg-card: #1e293b;\n" +
+                "  --text-primary: #f1f5f9;\n" +
+                "  --text-secondary: #94a3b8;\n" +
+                "  --text-muted: #64748b;\n" +
+                "  --border-color: rgba(255,255,255,0.08);\n" +
+                "  --shadow: 0 2px 12px rgba(0,0,0,0.3);\n" +
+                "  --navbar-bg: linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);\n" +
+                "  --search-card-bg: #1e293b;\n" +
+                "  --input-bg: #1e293b;\n" +
+                "  --input-border: #334155;\n" +
+                "  --btn-reset-bg: #334155;\n" +
+                "  --btn-reset-hover: #475569;\n" +
+                "  --card-hover: #334155;\n" +
+                "}\n" +
+                "*{margin:0;padding:0;box-sizing:border-box;}\n" +
+                "body{background:var(--bg-primary);font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;min-height:100vh;transition:background 0.3s,color 0.3s;}\n" +
+                ".page-wrap{max-width:1200px;margin:0 auto;padding:20px 24px;}\n" +
+                ".navbar{background:var(--navbar-bg);height:60px;display:flex;align-items:center;justify-content:space-between;padding:0 32px;color:white;border-radius:16px;margin-bottom:24px;box-shadow:0 4px 20px rgba(0,0,0,0.08);transition:background 0.3s;}\n" +
+                ".nav-links{display:flex;gap:8px;}\n" +
+                ".navbar a{color:white;text-decoration:none;padding:8px 20px;border-radius:30px;font-weight:500;transition:all 0.3s;}\n" +
+                ".navbar a:hover,.navbar a.active{background:rgba(255,255,255,0.2);}\n" +
+                ".nav-right{display:flex;align-items:center;gap:16px;}\n" +
+                ".user-name{color:white;font-size:14px;}\n" +
+                ".theme-toggle{background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.2);color:white;padding:8px 16px;border-radius:30px;cursor:pointer;font-size:13px;transition:all 0.3s;}\n" +
+                ".theme-toggle:hover{background:rgba(255,255,255,0.25);}\n" +
+                ".logout-btn{background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.2);color:white;padding:8px 20px;border-radius:30px;cursor:pointer;font-weight:500;transition:all 0.3s;}\n" +
+                ".logout-btn:hover{background:rgba(255,255,255,0.25);transform:translateY(-1px);}\n" +
+                ".title{font-size:20px;font-weight:700;color:var(--text-primary);margin-bottom:20px;display:flex;align-items:center;gap:10px;}\n" +
+                ".title-icon{font-size:28px;}\n" +
+                ".cards-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:24px;margin-bottom:32px;}\n" +
+                ".card{background:var(--bg-card);border-radius:20px;padding:24px;box-shadow:var(--shadow);border:1px solid var(--border-color);transition:all 0.3s;}\n" +
+                ".card:hover{transform:translateY(-4px);box-shadow:0 12px 30px -12px rgba(0,0,0,0.2);border-color:rgba(102,126,234,0.3);}\n" +
+                ".card-header{display:flex;align-items:center;gap:12px;margin-bottom:20px;padding-bottom:12px;border-bottom:1px solid var(--border-color);}\n" +
+                ".card-icon{font-size:32px;}\n" +
+                ".card-title{font-size:18px;font-weight:700;color:var(--text-primary);}\n" +
+                ".card-desc{font-size:13px;color:var(--text-muted);margin-top:4px;}\n" +
+                ".form-group{margin-bottom:16px;}\n" +
+                ".form-group label{display:block;font-size:13px;font-weight:500;color:var(--text-secondary);margin-bottom:6px;}\n" +
+                ".form-group input{width:100%;padding:10px 12px;border:1px solid var(--input-border);border-radius:10px;font-size:14px;background:var(--input-bg);color:var(--text-primary);}\n" +
+                ".form-group input:focus{outline:none;border-color:#667eea;box-shadow:0 0 0 3px rgba(102,126,234,0.1);}\n" +
+                ".card-btn{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white;border:none;padding:10px 20px;border-radius:30px;cursor:pointer;font-weight:600;font-size:14px;transition:all 0.3s;width:100%;margin-top:8px;}\n" +
+                ".card-btn:hover{transform:translateY(-2px);box-shadow:0 6px 14px rgba(102,126,234,0.4);}\n" +
+                ".card-btn.danger{background:linear-gradient(135deg,#f59e0b 0%,#e53935 100%);}\n" +
+                ".card-btn.warning{background:linear-gradient(135deg,#f59e0b 0%,#d97706 100%);}\n" +
+                ".card-btn.danger:hover{box-shadow:0 6px 14px rgba(229,57,53,0.4);}\n" +
+                ".result-area{margin-top:16px;padding:12px;background:var(--btn-reset-bg);border-radius:10px;font-size:13px;color:var(--text-secondary);display:none;}\n" +
+                ".result-area.show{display:block;}\n" +
+                ".result-success{color:#10b981;}\n" +
+                ".result-error{color:#e53935;}\n" +
+                ".loading{opacity:0.6;pointer-events:none;}\n" +
+                ".footer{text-align:center;padding:32px 0;color:var(--text-secondary);font-size:12px;border-top:1px solid var(--border-color);margin-top:16px;}\n" +
+                "@media(max-width:768px){.cards-grid{grid-template-columns:1fr;}.navbar{padding:0 20px;}.nav-links a{padding:6px 12px;font-size:12px;}}\n" +
+                "</style>\n" +
+                "</head>\n" +
+                "<body>\n" +
+                "<div class=\"page-wrap\">\n" +
+                "<div class=\"navbar\">\n" +
+                "<div class=\"nav-links\">\n" +
+                "<a href=\"/monitor/index\">首页</a>\n" +
+                "<a href=\"/monitor/dashboard\">服务监控</a>\n" +
+                "<a href=\"/monitor/login-audit\">登录审计</a>\n" +
+                "<a href=\"/monitor/number-files\">号码备份</a>\n" +
+                "<a href=\"/monitor/customer-management\">客户管理</a>\n" +
+                "<a href=\"/monitor/user-management\">登录账户管理</a>\n" +
+                "<a href=\"/monitor/ops-management\" class=\"active\">运维管理</a>\n" +
+                "</div>\n" +
+                "<div class=\"nav-right\">\n" +
+                "<span class=\"user-name\">Administrator</span>\n" +
+                "<button class=\"theme-toggle\" onclick=\"toggleTheme()\" id=\"themeBtn\">🌙 深色</button>\n" +
+                "<button class=\"logout-btn\" onclick=\"logout()\">退出</button>\n" +
+                "</div>\n" +
+                "</div>\n" +
+                "<div class=\"title\"><span class=\"title-icon\">🔧</span> 运维管理工具</div>\n" +
+                "<div class=\"cards-grid\">\n" +
+                "<!-- 卡片1：重置2FA -->\n" +
+                "<div class=\"card\">\n" +
+                "<div class=\"card-header\"><span class=\"card-icon\">🔐</span><div><div class=\"card-title\">重置2FA</div><div class=\"card-desc\">解绑用户的Google验证器，重置后用户需重新绑定</div></div></div>\n" +
+                "<div class=\"form-group\"><label>客户账号</label><input type=\"text\" id=\"reset2faUsername\" placeholder=\"请输入客户账号\"></div>\n" +
+                "<button class=\"card-btn\" onclick=\"reset2FA()\">🔄 重置2FA</button>\n" +
+                "<div id=\"reset2faResult\" class=\"result-area\"></div>\n" +
+                "</div>\n" +
+                "<!-- 卡片2：解除2FA -->\n" +
+                "<div class=\"card\">\n" +
+                "<div class=\"card-header\"><span class=\"card-icon\">🔓</span><div><div class=\"card-title\">解除2FA</div><div class=\"card-desc\">解除用户的二次验证，用户将不再需要2FA验证</div></div></div>\n" +
+                "<div class=\"form-group\"><label>客户账号</label><input type=\"text\" id=\"disable2faUsername\" placeholder=\"请输入客户账号\"></div>\n" +
+                "<button class=\"card-btn warning\" onclick=\"disable2FA()\">🔓 解除2FA</button>\n" +
+                "<div id=\"disable2faResult\" class=\"result-area\"></div>\n" +
+                "</div>\n" +
+                "<!-- 卡片3：解锁账户 -->\n" +
+                "<div class=\"card\">\n" +
+                "<div class=\"card-header\"><span class=\"card-icon\">👤</span><div><div class=\"card-title\">解锁账户</div><div class=\"card-desc\">解除因多次登录失败被锁定的账户</div></div></div>\n" +
+                "<div class=\"form-group\"><label>客户账号</label><input type=\"text\" id=\"unlockAccountUsername\" placeholder=\"请输入客户账号\"></div>\n" +
+                "<button class=\"card-btn\" onclick=\"unlockAccount()\">🔓 解锁账户</button>\n" +
+                "<div id=\"unlockAccountResult\" class=\"result-area\"></div>\n" +
+                "</div>\n" +
+                "<!-- 卡片4：解锁IP -->\n" +
+                "<div class=\"card\">\n" +
+                "<div class=\"card-header\"><span class=\"card-icon\">🌐</span><div><div class=\"card-title\">解锁IP</div><div class=\"card-desc\">解除因多次登录失败被锁定的IP</div></div></div>\n" +
+                "<div class=\"form-group\"><label>IP地址或账号</label><input type=\"text\" id=\"unlockIpUsername\" placeholder=\"请输入IP地址\"></div>\n" +
+                "<button class=\"card-btn danger\" onclick=\"unlockIp()\">🔓 解锁IP</button>\n" +
+                "<div id=\"unlockIpResult\" class=\"result-area\"></div>\n" +
+                "</div>\n" +
+                "</div>\n" +
+                "<div class=\"footer\">🔧 运维管理工具 | 操作请谨慎，所有操作均有日志记录 | 仅限内部使用</div>\n" +
+                "</div>\n" +
+                "<script>\n" +
+                "function toggleTheme(){var html=document.documentElement;var btn=document.getElementById('themeBtn');var currentTheme=html.getAttribute('data-theme');if(currentTheme==='dark'){html.removeAttribute('data-theme');btn.innerHTML='🌙 深色';localStorage.setItem('monitor-theme','light');}else{html.setAttribute('data-theme','dark');btn.innerHTML='☀️ 浅色';localStorage.setItem('monitor-theme','dark');}}\n" +
+                "function logout(){fetch('/monitor/logout').then(function(){location.href='/monitor/login';});}\n" +
+                "var savedTheme=localStorage.getItem('monitor-theme');if(savedTheme==='dark'){document.documentElement.setAttribute('data-theme','dark');var themeBtn=document.getElementById('themeBtn');if(themeBtn)themeBtn.innerHTML='☀️ 浅色';}\n" +
+                "function showResult(elementId, success, message){var el=document.getElementById(elementId);if(!el)return;el.innerHTML='<span class=\"'+(success?'result-success':'result-error')+'\">'+(success?'✅ ':'❌ ')+escapeHtml(message)+'</span>';el.classList.add('show');setTimeout(function(){el.classList.remove('show');},5000);}\n" +
+                "function setLoading(btn, loading){if(loading){btn.classList.add('loading');btn.disabled=true;}else{btn.classList.remove('loading');btn.disabled=false;}}\n" +
+                "function reset2FA(){var username=document.getElementById('reset2faUsername').value.trim();if(!username){alert('请输入客户账号');return;}var btn=event.target;setLoading(btn,true);fetch('/api/monitor/ops/reset-2fa?username='+encodeURIComponent(username)+'&secret=dn17ORUwf36Znl',{method:'POST'}).then(res=>res.json()).then(data=>{setLoading(btn,false);if(data.code===200){showResult('reset2faResult',true,'重置2FA成功');document.getElementById('reset2faUsername').value='';}else{showResult('reset2faResult',false,'操作失败: '+(data.msg||'未知错误'));}}).catch(err=>{setLoading(btn,false);showResult('reset2faResult',false,'网络错误: '+err.message);});}\n" +
+                "function disable2FA(){var username=document.getElementById('disable2faUsername').value.trim();if(!username){alert('请输入客户账号');return;}var btn=event.target;setLoading(btn,true);fetch('/api/monitor/ops/disable-2fa?username='+encodeURIComponent(username)+'&secret=dn17ORUwf36Znl',{method:'POST'}).then(res=>res.json()).then(data=>{setLoading(btn,false);if(data.code===200){showResult('disable2faResult',true,'解除2FA成功');document.getElementById('disable2faUsername').value='';}else{showResult('disable2faResult',false,'操作失败: '+(data.msg||'未知错误'));}}).catch(err=>{setLoading(btn,false);showResult('disable2faResult',false,'网络错误: '+err.message);});}\n" +
+                "function unlockAccount(){var username=document.getElementById('unlockAccountUsername').value.trim();if(!username){alert('请输入客户账号');return;}var btn=event.target;setLoading(btn,true);fetch('/api/monitor/ops/unlock-account?username='+encodeURIComponent(username)+'&secret=dn17ORUwf36Znl',{method:'POST'}).then(res=>res.json()).then(data=>{setLoading(btn,false);if(data.code===200){showResult('unlockAccountResult',true,'解锁账户成功');document.getElementById('unlockAccountUsername').value='';}else{showResult('unlockAccountResult',false,'操作失败: '+(data.msg||'未知错误'));}}).catch(err=>{setLoading(btn,false);showResult('unlockAccountResult',false,'网络错误: '+err.message);});}\n" +
+                "function unlockIp(){var username=document.getElementById('unlockIpUsername').value.trim();if(!username){alert('请输入IP地址或账号');return;}var btn=event.target;setLoading(btn,true);fetch('/api/monitor/ops/unlock-ip?username='+encodeURIComponent(username)+'&secret=dn17ORUwf36Znl',{method:'POST'}).then(res=>res.json()).then(data=>{setLoading(btn,false);if(data.code===200){showResult('unlockIpResult',true,'解锁IP成功');document.getElementById('unlockIpUsername').value='';}else{showResult('unlockIpResult',false,'操作失败: '+(data.msg||'未知错误'));}}).catch(err=>{setLoading(btn,false);showResult('unlockIpResult',false,'网络错误: '+err.message);});}\n" +
+                "function escapeHtml(s){if(!s)return'';return String(s).replace(/[&<>]/g,function(m){if(m==='&')return'&amp;';if(m==='<')return'&lt;';if(m==='>')return'&gt;';return m;});}\n" +
                 "</script>\n" +
                 "</body>\n" +
                 "</html>";

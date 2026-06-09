@@ -208,6 +208,58 @@ public class CustomerSmsApiController {
         }
     }
 
+    // ====================== 内部查询余额接口 ======================
+    @PostMapping("/internal/balance")
+    public AjaxResult internalQueryBalance(@RequestBody InternalBalanceRequest request) {
+
+        try {
+            String username = request.getUsername();
+            String password = request.getPassword();
+
+            // 校验必填
+            if (StringUtils.isAnyBlank(username, password)) {
+                return AjaxResult.error(400, "用户名和密码不能为空");
+            }
+
+            // 从数据库查询
+            String correctPassword = getCustomerPassword(username);
+            if (StringUtils.isEmpty(correctPassword)) {
+                return AjaxResult.error(401, "用户不存在");
+            }
+
+            // 验证密码
+            if (!correctPassword.equals(password)) {
+                return AjaxResult.error(401, "密码错误");
+            }
+
+            // 查询余额
+            NCacheDBLink db = NCacheDBLink.getNCacheDBLink();
+            db.InitEnv();
+            db.ConnectToCacheDB();
+            Map<String, Object> balanceMap = db.prc_MMSIFQueryBalance(username);
+            db.Disconnect();
+            db.Destroy();
+
+            long balanceRaw = Long.parseLong(balanceMap.get("Balance").toString());
+            long creditRaw = Long.parseLong(balanceMap.get("Credit").toString());
+
+            double balance = balanceRaw / 10000.0;
+            double credit = creditRaw / 10000.0;
+
+            Map<String, Object> data = new HashMap<>();
+            data.put("username", username);
+            data.put("balance", String.format("%.4f", balance));
+            data.put("credit", String.format("%.4f", credit));
+            data.put("queryTime", new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date()));
+
+            return AjaxResult.success("查询成功", data);
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            return AjaxResult.error(500, "查询失败: " + e.getMessage());
+        }
+    }
+
     // ====================== 根据TaskId查询短信详情 ======================
     @PostMapping("/task/detail")
     public AjaxResult getTaskDetail(@RequestBody TaskDetailRequest request) {
@@ -331,5 +383,15 @@ public class CustomerSmsApiController {
         public void setSign(String sign) {this.sign = sign;}
         public String getTaskId() {return taskId;}
         public void setTaskId(String taskId) {this.taskId = taskId;}
+    }
+
+    public static class InternalBalanceRequest {
+        private String username;
+        private String password;
+
+        public String getUsername() { return username; }
+        public void setUsername(String username) { this.username = username; }
+        public String getPassword() { return password; }
+        public void setPassword(String password) { this.password = password; }
     }
 }

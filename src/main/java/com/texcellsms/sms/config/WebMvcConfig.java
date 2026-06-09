@@ -48,7 +48,8 @@ public class WebMvcConfig implements WebMvcConfigurer {
                         "/open/api/sms/send",
                         "/open/api/sms/receipt",
                         "/open/api/sms/balance",
-                        "/open/api/sms/task/detail"
+                        "/open/api/sms/task/detail",
+                        "/open/api/sms/internal/balance"
                 );
     }
 }
