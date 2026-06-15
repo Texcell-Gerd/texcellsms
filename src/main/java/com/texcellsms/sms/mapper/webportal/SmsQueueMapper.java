@@ -155,4 +155,77 @@ public interface SmsQueueMapper {
     })
     @MapKey("APITaskId")
     List<Map<String, Object>> selectDrStatsByTaskIds(@Param("taskIds") List<String> taskIds);
+
+
+    /**
+     * 分页查询所有客户的任务列表（内部管理用）
+     */
+    @Select({
+            "<script>",
+            "SELECT TaskName, TaskID, SubAccount, ",
+            "       DATE_FORMAT(TaskTime, '%Y-%m-%d %H:%i:%s') AS TaskTime, ",
+            "       DATE_FORMAT(ScheduleSendTime, '%Y-%m-%d %H:%i:%s') AS ScheduleSendTime, ",
+            "       TaskTimeZone, ScheduleStatus, TotalCount, CalleeCount, ",
+            "       SubmitSuccCount, DRSuccCount, DRFailCount, Short_Message, SplitCount ",
+            "FROM tbl_APIScheduleSend ",
+            "<where>",
+            "  TaskTime >= #{threeDaysAgoTime} ",
+            "  <if test='subAccount != null and subAccount != \"\"'>",
+            "    AND SubAccount LIKE CONCAT('%', #{subAccount}, '%')",
+            "  </if>",
+            "  <if test='taskId != null and taskId != \"\"'>",
+            "    AND TaskID LIKE CONCAT('%', #{taskId}, '%')",
+            "  </if>",
+            "  <if test='scheduleStatus != null'>",
+            "    AND ScheduleStatus = #{scheduleStatus}",
+            "  </if>",
+            "</where>",
+            "ORDER BY TaskTime DESC ",
+            "LIMIT #{offset}, #{pageSize}",
+            "</script>"
+    })
+    @ResultType(ScheduleTaskVO.class)
+    List<ScheduleTaskVO> selectAllScheduleTaskList(
+            @Param("subAccount") String subAccount,
+            @Param("taskId") String taskId,
+            @Param("scheduleStatus") Integer scheduleStatus,
+            @Param("threeDaysAgoTime") String threeDaysAgoTime,
+            @Param("offset") Integer offset,
+            @Param("pageSize") Integer pageSize
+    );
+
+    /**
+     * 统计所有客户的任务总数（内部管理用）
+     */
+    @Select({
+            "<script>",
+            "SELECT COUNT(*) FROM tbl_APIScheduleSend ",
+            "<where>",
+            "  TaskTime >= #{threeDaysAgoTime} ",
+            "  <if test='subAccount != null and subAccount != \"\"'>",
+            "    AND SubAccount LIKE CONCAT('%', #{subAccount}, '%')",
+            "  </if>",
+            "  <if test='taskId != null and taskId != \"\"'>",
+            "    AND TaskID LIKE CONCAT('%', #{taskId}, '%')",
+            "  </if>",
+            "  <if test='scheduleStatus != null'>",
+            "    AND ScheduleStatus = #{scheduleStatus}",
+            "  </if>",
+            "</where>",
+            "</script>"
+    })
+    Long countAllScheduleTaskList(
+            @Param("subAccount") String subAccount,
+            @Param("taskId") String taskId,
+            @Param("scheduleStatus") Integer scheduleStatus,
+            @Param("threeDaysAgoTime") String threeDaysAgoTime
+    );
+
+    /**
+     * 获取近半小时客户提交量排行
+     */
+    @Select("SELECT SubAccount as subAccount, SUM(TotalCount) as totalCount FROM tbl_APIScheduleSend " +
+            "WHERE TaskTime >= DATE_SUB(NOW(), INTERVAL 30 MINUTE) AND SubAccount IS NOT NULL " +
+            "GROUP BY SubAccount ORDER BY totalCount DESC LIMIT 10")
+    List<Map<String, Object>> getCustomerRankingLastHalfHour();
 }

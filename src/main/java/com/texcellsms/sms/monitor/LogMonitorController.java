@@ -11,6 +11,7 @@ import com.texcellsms.sms.model.entity.CustomerApiClient;
 import com.texcellsms.sms.model.entity.CustomerNumberFile;
 import com.texcellsms.sms.model.entity.LoginAuditLog;
 import com.texcellsms.sms.model.entity.MonitorUser;
+import com.texcellsms.sms.service.SmsQueueService;
 import com.texcellsms.sms.util.ApiClientConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -55,6 +56,9 @@ public class LogMonitorController {
 
     @Autowired
     private MonitorUserMapper monitorUserMapper;
+
+    @Autowired
+    private SmsQueueService smsQueueService;
 
     @Autowired
     ApiClientConfig apiClientConfig;
@@ -263,6 +267,21 @@ public class LogMonitorController {
             return "<script>location.href='/monitor/login';</script>";
         }
         return generateOpsManagementHtml();
+    }
+
+    @GetMapping("/monitor/queue-management")
+    public String queueManagement(HttpServletRequest request) {
+        HttpSession session = request.getSession();
+        String clientIp = getRealIp(request);
+        String loginUsername = getCurrentUsername(session);
+
+        if (!isInnerIp(clientIp, loginUsername)) {
+            return "<h1 style='color:red;text-align:center;margin-top:100px;'>❌ 仅允许内网访问<br/>您的IP：" + clientIp + "</h1>";
+        }
+        if (!isLogin(session)) {
+            return "<script>location.href='/monitor/login';</script>";
+        }
+        return generateQueueManagementHtml();
     }
 
     @GetMapping("/api/monitor/logs")
@@ -1307,7 +1326,7 @@ public class LogMonitorController {
     }
 
     /**
-     * 解锁IP（需要先实现存储过程）
+     * 解锁IP
      */
     @PostMapping("/api/monitor/ops/unlock-ip")
     public Map<String, Object> unlockIp(@RequestParam String username,
@@ -1351,6 +1370,120 @@ public class LogMonitorController {
                 try { db.Disconnect(); } catch (Exception ignored) {}
                 try { db.Destroy(); } catch (Exception ignored) {}
             }
+        }
+        return result;
+    }
+
+    // ==================== 队列管理 API ====================
+
+    /**
+     * 获取任务列表（内部管理）
+     */
+    @GetMapping("/api/monitor/queue/tasks")
+    public Map<String, Object> getQueueTasksForAdmin(
+            @RequestParam(required = false) String subAccount,
+            @RequestParam(required = false) String taskId,
+            @RequestParam(required = false) Integer scheduleStatus,
+            @RequestParam(defaultValue = "1") int pageNum,
+            @RequestParam(defaultValue = "20") int pageSize,
+            @RequestParam(required = false) String secret,
+            HttpServletRequest request) {
+
+        Map<String, Object> result = new HashMap<>();
+        HttpSession session = request.getSession();
+        String clientIp = getRealIp(request);
+        String loginUsername = getCurrentUsername(session);
+
+        if (!isInnerIp(clientIp, loginUsername)) {
+            result.put("code", 403);
+            result.put("msg", "仅允许内网访问");
+            return result;
+        }
+        if (!MONITOR_SECRET.equals(secret)) {
+            result.put("code", 401);
+            result.put("msg", "无权限访问");
+            return result;
+        }
+
+        try {
+            Map<String, Object> data = smsQueueService.getAllQueueTasksForAdmin(
+                    subAccount, taskId, scheduleStatus, pageNum, pageSize);
+            result.put("code", 200);
+            result.put("data", data);
+        } catch (Exception e) {
+            logger.error("查询任务列表失败", e);
+            result.put("code", 500);
+            result.put("msg", "查询失败: " + e.getMessage());
+        }
+        return result;
+    }
+
+    /**
+     * 获取任务详情
+     */
+    @GetMapping("/api/monitor/queue/task/detail")
+    public Map<String, Object> getTaskDetail(
+            @RequestParam String taskId,
+            @RequestParam(required = false) String callee,
+            @RequestParam(defaultValue = "1") int pageNum,
+            @RequestParam(defaultValue = "20") int pageSize,
+            @RequestParam(required = false) String secret,
+            HttpServletRequest request) {
+
+        Map<String, Object> result = new HashMap<>();
+        HttpSession session = request.getSession();
+        String clientIp = getRealIp(request);
+        String loginUsername = getCurrentUsername(session);
+
+        if (!isInnerIp(clientIp, loginUsername)) {
+            result.put("code", 403);
+            result.put("msg", "仅允许内网访问");
+            return result;
+        }
+        if (!MONITOR_SECRET.equals(secret)) {
+            result.put("code", 401);
+            result.put("msg", "无权限访问");
+            return result;
+        }
+
+        try {
+            Map<String, Object> data = smsQueueService.getQueueTaskDetail(taskId, pageNum, pageSize, callee);
+            result.put("code", 200);
+            result.put("data", data);
+        } catch (Exception e) {
+            logger.error("查询任务详情失败", e);
+            result.put("code", 500);
+            result.put("msg", "查询失败: " + e.getMessage());
+        }
+        return result;
+    }
+
+    @GetMapping("/api/monitor/queue/customer-ranking")
+    public Map<String, Object> getCustomerRanking(@RequestParam(required = false) String secret, HttpServletRequest request) {
+        Map<String, Object> result = new HashMap<>();
+        HttpSession session = request.getSession();
+        String clientIp = getRealIp(request);
+        String loginUsername = getCurrentUsername(session);
+
+        if (!isInnerIp(clientIp, loginUsername)) {
+            result.put("code", 403);
+            result.put("msg", "仅允许内网访问");
+            return result;
+        }
+        if (!MONITOR_SECRET.equals(secret)) {
+            result.put("code", 401);
+            result.put("msg", "无权限访问");
+            return result;
+        }
+
+        try {
+            List<Map<String, Object>> ranking = smsQueueService.getCustomerRankingLastHalfHour();
+            result.put("code", 200);
+            result.put("data", ranking);
+        } catch (Exception e) {
+            logger.error("获取客户排行失败", e);
+            result.put("code", 500);
+            result.put("msg", "查询失败: " + e.getMessage());
         }
         return result;
     }
@@ -1407,7 +1540,7 @@ public class LogMonitorController {
                 "<head>\n" +
                 "<meta charset=\"UTF-8\">\n" +
                 "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, user-scalable=no\">\n" +
-                "<title>Texcell 预付WEB 监控系统登录</title>\n" +
+                "<title>Texcell ECCOM WEB 监控系统登录</title>\n" +
                 "<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23667eea'/%3E%3Ctext x='50' y='68' font-size='50' text-anchor='middle' fill='white' font-family='Arial'%3E📊%3C/text%3E%3C/svg%3E\">\n" +
                 "<link href=\"https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap\" rel=\"stylesheet\">\n" +
                 "<style>\n" +
@@ -1423,19 +1556,8 @@ public class LogMonitorController {
                 "  --error-border: #fecaca;\n" +
                 "  --error-text: #dc2626;\n" +
                 "}\n" +
-                "[data-theme=\"dark\"] {\n" +
-                "  --card-bg: rgba(30,41,59,0.98);\n" +
-                "  --text-primary: #f1f5f9;\n" +
-                "  --text-secondary: #cbd5e1;\n" +
-                "  --text-muted: #64748b;\n" +
-                "  --input-border: #334155;\n" +
-                "  --input-bg: #1e293b;\n" +
-                "  --error-bg: rgba(127,29,29,0.4);\n" +
-                "  --error-border: #7f1d1d;\n" +
-                "  --error-text: #f87171;\n" +
-                "}\n" +
                 "*{margin:0;padding:0;box-sizing:border-box;}\n" +
-                "body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:linear-gradient(135deg,#0f172a 0%,#1e1b4b 50%,#2e1065 100%);min-height:100vh;display:flex;justify-content:center;align-items:center;position:relative;overflow:hidden;transition:background 0.3s;}\n" +
+                "body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:linear-gradient(135deg,#0f172a 0%,#1e1b4b 50%,#2e1065 100%);min-height:100vh;display:flex;justify-content:center;align-items:center;position:relative;overflow:hidden;}\n" +
                 "body::before{content:'';position:absolute;inset:0;background:var(--bg-overlay);pointer-events:none;}\n" +
                 ".bg-orb{position:absolute;width:500px;height:500px;border-radius:50%;filter:blur(80px);opacity:0.3;animation:float 20s infinite ease-in-out;}\n" +
                 ".orb-1{background:#667eea;top:-150px;right:-150px;animation-delay:0s;}\n" +
@@ -1473,13 +1595,10 @@ public class LogMonitorController {
                 ".error-msg .error-icon{color:var(--error-text);font-size:18px;}\n" +
                 ".error-msg .error-text{color:var(--error-text);font-size:13px;flex:1;}\n" +
                 ".footer{text-align:center;margin-top:24px;color:var(--text-muted);font-size:12px;}\n" +
-                ".theme-toggle{position:absolute;top:20px;right:20px;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);color:white;padding:8px 16px;border-radius:30px;cursor:pointer;font-size:13px;z-index:20;transition:all 0.3s;}\n" +
-                ".theme-toggle:hover{background:rgba(255,255,255,0.25);}\n" +
-                "@media(max-width:480px){.login-card{padding:32px 24px;}.login-card h2{font-size:24px;}.input-wrapper input{height:48px;}.login-btn{height:48px;}.theme-toggle{top:16px;right:16px;padding:6px 12px;font-size:12px;}}\n" +
+                "@media(max-width:480px){.login-card{padding:32px 24px;}.login-card h2{font-size:24px;}.input-wrapper input{height:48px;}.login-btn{height:48px;}}\n" +
                 "</style>\n" +
                 "</head>\n" +
                 "<body>\n" +
-                "<button class=\"theme-toggle\" onclick=\"toggleTheme()\" id=\"themeBtn\">🌙 深色</button>\n" +
                 "<div class=\"bg-orb orb-1\"></div>\n" +
                 "<div class=\"bg-orb orb-2\"></div>\n" +
                 "<div class=\"bg-orb orb-3\"></div>\n" +
@@ -1488,7 +1607,7 @@ public class LogMonitorController {
                 "<div class=\"login-card\">\n" +
                 "<div class=\"logo-area\">\n" +
                 "<div class=\"logo-icon\"><span>📊</span></div>\n" +
-                "<h2>预付WEB 监控系统登录</h2>\n" +
+                "<h2>ECCOM WEB 监控系统登录</h2>\n" +
                 "<div class=\"login-sub\">TexCell SMS 服务监控平台</div>\n" +
                 "</div>\n" +
                 "<div class=\"input-group\">\n" +
@@ -1523,26 +1642,6 @@ public class LogMonitorController {
                 "function togglePassword(){var pwd=document.getElementById('password');var btn=document.querySelector('.toggle-pwd');if(pwd.type==='password'){pwd.type='text';btn.innerHTML='🙈';}else{pwd.type='password';btn.innerHTML='👁️';}}\n" +
                 "function showError(msg){var errDiv=document.getElementById('errorMsg');var errText=document.getElementById('errorText');errText.innerText=msg;errDiv.classList.add('show');setTimeout(function(){errDiv.classList.remove('show');},3000);}\n" +
                 "function login(){var u=document.getElementById('username');var p=document.getElementById('password');var username=u.value.trim();var password=p.value;if(!username){showError('请输入账号');u.focus();return;}if(!password){showError('请输入密码');p.focus();return;}var btn=document.getElementById('loginBtn');btn.classList.add('loading');fetch('/monitor/login',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'username='+encodeURIComponent(username)+'&password='+encodeURIComponent(password)}).then(function(res){return res.json();}).then(function(data){if(data.code===200){window.location.href='/monitor/index';}else{showError(data.msg||'账号或密码错误');btn.classList.remove('loading');}}).catch(function(){showError('登录失败，请重试');btn.classList.remove('loading');});}\n" +
-                "// 主题切换\n" +
-                "function toggleTheme() {\n" +
-                "  var html = document.documentElement;\n" +
-                "  var btn = document.getElementById('themeBtn');\n" +
-                "  var currentTheme = html.getAttribute('data-theme');\n" +
-                "  if (currentTheme === 'dark') {\n" +
-                "    html.removeAttribute('data-theme');\n" +
-                "    btn.innerHTML = '🌙 深色';\n" +
-                "    localStorage.setItem('monitor-theme', 'light');\n" +
-                "  } else {\n" +
-                "    html.setAttribute('data-theme', 'dark');\n" +
-                "    btn.innerHTML = '☀️ 浅色';\n" +
-                "    localStorage.setItem('monitor-theme', 'dark');\n" +
-                "  }\n" +
-                "}\n" +
-                "var savedTheme = localStorage.getItem('monitor-theme');\n" +
-                "if (savedTheme === 'dark') {\n" +
-                "  document.documentElement.setAttribute('data-theme', 'dark');\n" +
-                "  document.getElementById('themeBtn').innerHTML = '☀️ 浅色';\n" +
-                "}\n" +
                 "document.getElementById('password').addEventListener('keypress',function(e){if(e.key==='Enter')login();});\n" +
                 "setTimeout(function(){document.getElementById('username').value='';document.getElementById('password').value='';},100);\n" +
                 "</script>\n" +
@@ -1556,7 +1655,7 @@ public class LogMonitorController {
                 "<head>\n" +
                 "<meta charset=\"UTF-8\">\n" +
                 "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, user-scalable=no\">\n" +
-                "<title>Texcell 预付WEB 监控首页</title>\n" +
+                "<title>Texcell ECCOM WEB 监控首页</title>\n" +
                 "<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23667eea'/%3E%3Ctext x='50' y='68' font-size='50' text-anchor='middle' fill='white' font-family='Arial'%3E📊%3C/text%3E%3C/svg%3E\">\n" +
                 "<script src=\"https://cdn.jsdelivr.net/npm/chart.js\"></script>\n" +
                 "<link href=\"https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap\" rel=\"stylesheet\">\n" +
@@ -1572,19 +1671,8 @@ public class LogMonitorController {
                 "  --navbar-bg: linear-gradient(135deg,#0f172a 0%,#1e1b4b 100%);\n" +
                 "  --hover-bg: rgba(0,0,0,0.02);\n" +
                 "}\n" +
-                "[data-theme=\"dark\"] {\n" +
-                "  --bg-primary: #0f172a;\n" +
-                "  --bg-card: #1e293b;\n" +
-                "  --text-primary: #f1f5f9;\n" +
-                "  --text-secondary: #94a3b8;\n" +
-                "  --text-muted: #64748b;\n" +
-                "  --border-color: rgba(255,255,255,0.08);\n" +
-                "  --shadow: 0 4px 20px rgba(0,0,0,0.3);\n" +
-                "  --navbar-bg: linear-gradient(135deg,#0f172a 0%,#0f172a 100%);\n" +
-                "  --hover-bg: rgba(255,255,255,0.05);\n" +
-                "}\n" +
                 "*{margin:0;padding:0;box-sizing:border-box;}\n" +
-                "body{background:var(--bg-primary);font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;transition:background 0.3s,color 0.3s;}\n" +
+                "body{background:var(--bg-primary);font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;}\n" +
                 "/* 顶部导航栏 */\n" +
                 ".navbar{background:var(--navbar-bg);box-shadow:0 4px 20px rgba(0,0,0,0.1);position:sticky;top:0;z-index:100;}\n" +
                 ".nav-container{max-width:1600px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:70px;}\n" +
@@ -1598,8 +1686,6 @@ public class LogMonitorController {
                 ".menu a.active{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white;box-shadow:0 4px 12px rgba(102,126,234,0.4);}\n" +
                 ".user-info{display:flex;align-items:center;gap:20px;}\n" +
                 ".user-name{color:#e2e8f0;font-size:14px;}\n" +
-                ".theme-toggle{background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);color:white;padding:8px 16px;border-radius:40px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;}\n" +
-                ".theme-toggle:hover{background:rgba(255,255,255,0.2);}\n" +
                 ".logout-btn{background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);color:white;padding:8px 20px;border-radius:40px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;}\n" +
                 ".logout-btn:hover{background:rgba(255,255,255,0.2);transform:translateY(-1px);}\n" +
                 ".page-wrap{max-width:1600px;margin:0 auto;padding:32px;}\n" +
@@ -1642,8 +1728,8 @@ public class LogMonitorController {
                 "<div class=\"nav-container\">\n" +
                 "<div class=\"logo\">\n" +
                 "<div class=\"logo-icon\">📊</div>\n" +
-                "<div class=\"logo-text\">SMS 监控管理系统</div>\n" +
-                "<div class=\"logo-sub\">v2.0</div>\n" +
+                "<div class=\"logo-text\">ECCOM WEB 监控管理系统</div>\n" +
+                "<div class=\"logo-sub\">v3.0</div>\n" +
                 "</div>\n" +
                 "<div class=\"menu\">\n" +
                 "<a href=\"/monitor/index\" class=\"active\">首页</a>\n" +
@@ -1653,10 +1739,10 @@ public class LogMonitorController {
                 "<a href=\"/monitor/customer-management\">客户管理</a>\n" +
                 "<a href=\"/monitor/user-management\">登录账户管理</a>\n" +
                 "<a href=\"/monitor/ops-management\">运维管理</a>\n" +
+                "<a href=\"/monitor/queue-management\">队列管理</a>" +
                 "</div>\n" +
                 "<div class=\"user-info\">\n" +
                 "<span class=\"user-name\">Administrator</span>\n" +
-                "<button class=\"theme-toggle\" onclick=\"toggleTheme()\" id=\"themeBtn\">🌙 深色</button>\n" +
                 "<button class=\"logout-btn\" onclick=\"logout()\">退出</button>\n" +
                 "</div>\n" +
                 "</div>\n" +
@@ -1664,7 +1750,7 @@ public class LogMonitorController {
                 "<div class=\"page-wrap\">\n" +
                 "<div class=\"welcome-card\">\n" +
                 "<h1>欢迎回来，Administrator</h1>\n" +
-                "<p>欢迎使用 SMS 监控管理系统，提供实时服务监控、登录审计、安全攻击防护等能力。</p>\n" +
+                "<p>欢迎使用ECCOM 监控管理系统</p>\n" +
                 "<div class=\"welcome-stats\" id=\"welcomeStats\"></div>\n" +
                 "</div>\n" +
                 "<div class=\"stats-grid\" id=\"statsGrid\"></div>\n" +
@@ -1686,27 +1772,6 @@ public class LogMonitorController {
                 "<div class=\"footer\">TexCell SMS 监控管理系统 | 数据实时更新 | 仅限内部使用</div>\n" +
                 "</div>\n" +
                 "<script>\n" +
-                "// 主题切换功能\n" +
-                "function toggleTheme() {\n" +
-                "  var html = document.documentElement;\n" +
-                "  var btn = document.getElementById('themeBtn');\n" +
-                "  var currentTheme = html.getAttribute('data-theme');\n" +
-                "  if (currentTheme === 'dark') {\n" +
-                "    html.removeAttribute('data-theme');\n" +
-                "    btn.innerHTML = '🌙 深色';\n" +
-                "    localStorage.setItem('monitor-theme', 'light');\n" +
-                "  } else {\n" +
-                "    html.setAttribute('data-theme', 'dark');\n" +
-                "    btn.innerHTML = '☀️ 浅色';\n" +
-                "    localStorage.setItem('monitor-theme', 'dark');\n" +
-                "  }\n" +
-                "}\n" +
-                "// 加载保存的主题\n" +
-                "var savedTheme = localStorage.getItem('monitor-theme');\n" +
-                "if (savedTheme === 'dark') {\n" +
-                "  document.documentElement.setAttribute('data-theme', 'dark');\n" +
-                "  document.getElementById('themeBtn').innerHTML = '☀️ 浅色';\n" +
-                "}\n" +
                 "function logout(){fetch('/monitor/logout').then(function(){location.href='/monitor/login';});}\n" +
                 "let hourlyChart, failIpChart;\n" +
                 "function renderActiveUsers(users) {\n" +
@@ -1731,7 +1796,7 @@ public class LogMonitorController {
                 "  container.innerHTML = html;\n" +
                 "}\n" +
                 "function escapeHtml(s) { if (!s) return ''; return s.replace(/[&<>]/g, function(m) { if (m === '&') return '&amp;'; if (m === '<') return '&lt;'; if (m === '>') return '&gt;'; return m; }); }\n" +
-                "fetch('/api/monitor/login-stats?secret=dn17ORUwf36Znl').then(function(res){return res.json();}).then(function(data){if(data.code===200&&data.data){var t=data.data.today||{},w=data.data.week||{},m=data.data.month||{},two=data.data.twoFactorStats||[];var google=0,email=0;for(var i=0;i<two.length;i++){var s=two[i];if(s.twoFactorType==='GOOGLE')google=s.totalCount||0;if(s.twoFactorType==='EMAIL')email=s.totalCount||0;}var successRate=t.total>0?(t.success*100/t.total).toFixed(1):0;document.getElementById('statsGrid').innerHTML='<div class=\"stat-card\"><div class=\"stat-icon\">📅</div><div class=\"stat-number\">'+(t.total||0)+'</div><div class=\"stat-label\">今日登录</div><div class=\"stat-trend\">✅成功 '+(t.success||0)+' / ❌失败 '+(t.fail||0)+'</div></div><div class=\"stat-card\"><div class=\"stat-icon\">📆</div><div class=\"stat-number\">'+(w.total||0)+'</div><div class=\"stat-label\">本周登录</div><div class=\"stat-trend\">📈 较上周 '+(w.total>m.total?'↑':'↓')+Math.abs(w.total-m.total)+'</div></div><div class=\"stat-card\"><div class=\"stat-icon\">📊</div><div class=\"stat-number\">'+(m.total||0)+'</div><div class=\"stat-label\">本月登录</div></div><div class=\"stat-card\"><div class=\"stat-icon\">🎯</div><div class=\"stat-number\">'+successRate+'%</div><div class=\"stat-label\">今日成功率</div></div><div class=\"stat-card\"><div class=\"stat-icon\">👥</div><div class=\"stat-number\">'+(data.data.todayActiveUsers||0)+'</div><div class=\"stat-label\">今日活跃账号</div></div>';document.getElementById('welcomeStats').innerHTML='<div class=\"welcome-stat\">🕐 服务运行: '+(data.runDuration||'计算中')+'</div>';// 渲染活跃账号列表\n" +
+                "fetch('/api/monitor/login-stats?secret=dn17ORUwf36Znl').then(function(res){return res.json();}).then(function(data){if(data.code===200&&data.data){var t=data.data.today||{},w=data.data.week||{},m=data.data.month||{},two=data.data.twoFactorStats||[];var google=0,email=0;for(var i=0;i<two.length;i++){var s=two[i];if(s.twoFactorType==='GOOGLE')google=s.totalCount||0;if(s.twoFactorType==='EMAIL')email=s.totalCount||0;}var successRate=t.total>0?(t.success*100/t.total).toFixed(1):0;document.getElementById('statsGrid').innerHTML='<div class=\"stat-card\"><div class=\"stat-icon\">📅</div><div class=\"stat-number\">'+(t.total||0)+'</div><div class=\"stat-label\">今日登录</div><div class=\"stat-trend\">✅成功 '+(t.success||0)+' / ❌失败 '+(t.fail||0)+'</div></div><div class=\"stat-card\"><div class=\"stat-icon\">📆</div><div class=\"stat-number\">'+(w.total||0)+'</div><div class=\"stat-label\">本周登录</div><div class=\"stat-trend\">📈 较上周 '+(w.total>m.total?'↑':'↓')+Math.abs(w.total-m.total)+'</div></div><div class=\"stat-card\"><div class=\"stat-icon\">📊</div><div class=\"stat-number\">'+(m.total||0)+'</div><div class=\"stat-label\">本月登录</div></div><div class=\"stat-card\"><div class=\"stat-icon\">🎯</div><div class=\"stat-number\">'+successRate+'%</div><div class=\"stat-label\">今日成功率</div></div><div class=\"stat-card\"><div class=\"stat-icon\">👥</div><div class=\"stat-number\">'+(data.data.todayActiveUsers||0)+'</div><div class=\"stat-label\">今日活跃账号</div></div>';document.getElementById('welcomeStats').innerHTML='<div class=\"welcome-stat\">🕐 服务运行: '+(data.runDuration||'计算中')+'</div>';\n" +
                 "  renderActiveUsers(data.data.todayActiveUserList || []);\n" +
                 "  if(data.data.hourlyTrend&&data.data.hourlyTrend.length>0){var hours=[],totals=[];for(var j=0;j<data.data.hourlyTrend.length;j++){var item=data.data.hourlyTrend[j];hours.push(item.hour+':00');totals.push(item.totalCount||0);}if(hourlyChart)hourlyChart.destroy();var ctx=document.getElementById('hourlyChart').getContext('2d');hourlyChart=new Chart(ctx,{type:'line',data:{labels:hours,datasets:[{label:'登录次数',data:totals,borderColor:'#667eea',backgroundColor:'rgba(102,126,234,0.08)',fill:true,tension:0.3,borderWidth:2,pointRadius:3,pointBackgroundColor:'#667eea'}]},options:{responsive:true,maintainAspectRatio:true,plugins:{legend:{position:'top'}}}});}if(data.data.todayTopFailIps&&data.data.todayTopFailIps.length>0){var ips=[],counts=[];for(var k=0;k<data.data.todayTopFailIps.length;k++){var item=data.data.todayTopFailIps[k];ips.push(item.realIp);counts.push(item.failCount||0);}if(failIpChart)failIpChart.destroy();var ctx2=document.getElementById('failIpChart').getContext('2d');failIpChart=new Chart(ctx2,{type:'bar',data:{labels:ips,datasets:[{label:'失败次数',data:counts,backgroundColor:'#e53935',borderRadius:8,barPercentage:0.7}]},options:{responsive:true,maintainAspectRatio:true,plugins:{legend:{position:'top'}}}});}}}).catch(function(err){console.error(err);});\n" +
                 "</script>\n" +
@@ -1745,7 +1810,7 @@ public class LogMonitorController {
                 "<head>\n" +
                 "<meta charset=\"UTF-8\">\n" +
                 "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, user-scalable=no\">\n" +
-                "<title>Texcell 预付WEB 服务监控面板</title>\n" +
+                "<title>Texcell ECCOM WEB 管理面板</title>\n" +
                 "<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23667eea'/%3E%3Ctext x='50' y='68' font-size='50' text-anchor='middle' fill='white' font-family='Arial'%3E📊%3C/text%3E%3C/svg%3E\">\n" +
                 "<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap\" rel=\"stylesheet\">\n" +
                 "<style>\n" +
@@ -1835,13 +1900,14 @@ public class LogMonitorController {
                 "<div class=\"navbar\">\n" +
                 "<div class=\"logo\">📊 TexCell SMS 监控系统</div>\n" +
                 "<div class=\"menu\">\n" +
-                "<a href=\"/monitor/index\" class=\"active\">首页</a>\n" +
-                "<a href=\"/monitor/dashboard\">服务监控</a>\n" +
+                "<a href=\"/monitor/index\">首页</a>\n" +
+                "<a href=\"/monitor/dashboard\" class=\"active\">服务监控</a>\n" +
                 "<a href=\"/monitor/login-audit\">登录审计</a>\n" +
                 "<a href=\"/monitor/number-files\">号码备份</a>\n" +
                 "<a href=\"/monitor/customer-management\">客户管理</a>\n" +
                 "<a href=\"/monitor/user-management\">登录账户管理</a>\n" +
                 "<a href=\"/monitor/ops-management\">运维管理</a>\n" +
+                "<a href=\"/monitor/queue-management\">队列管理</a>" +
                 "</div>\n" +
                 "<div class=\"user-info\">\n" +
                 "<span class=\"user-name\">Administrator</span>\n" +
@@ -1925,7 +1991,7 @@ public class LogMonitorController {
                 "<head>\n" +
                 "<meta charset=\"UTF-8\">\n" +
                 "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n" +
-                "<title>Texcell 预付WEB 登录审计日志</title>\n" +
+                "<title>Texcell ECCOM WEB 登录审计日志</title>\n" +
                 "<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23667eea'/%3E%3Ctext x='50' y='68' font-size='50' text-anchor='middle' fill='white' font-family='Arial'%3E📊%3C/text%3E%3C/svg%3E\">\n" +
                 "<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap\" rel=\"stylesheet\">\n" +
                 "<style>\n" +
@@ -2026,11 +2092,12 @@ public class LogMonitorController {
                 "<div class=\"nav-links\">\n" +
                 "<a href=\"/monitor/index\" class=\"active\">首页</a>\n" +
                 "<a href=\"/monitor/dashboard\">服务监控</a>\n" +
-                "<a href=\"/monitor/login-audit\">登录审计</a>\n" +
+                "<a href=\"/monitor/login-audit\" class=\"active\">登录审计</a>\n" +
                 "<a href=\"/monitor/number-files\">号码备份</a>\n" +
                 "<a href=\"/monitor/customer-management\">客户管理</a>\n" +
                 "<a href=\"/monitor/user-management\">登录账户管理</a>\n" +
                 "<a href=\"/monitor/ops-management\">运维管理</a>\n" +
+                "<a href=\"/monitor/queue-management\">队列管理</a>" +
                 "</div>\n" +
                 "<div class=\"nav-right\">\n" +
                 "<span class=\"user-name\">Administrator</span>\n" +
@@ -2323,10 +2390,11 @@ public class LogMonitorController {
                 "<a href=\"/monitor/index\" class=\"active\">首页</a>\n" +
                 "<a href=\"/monitor/dashboard\">服务监控</a>\n" +
                 "<a href=\"/monitor/login-audit\">登录审计</a>\n" +
-                "<a href=\"/monitor/number-files\">号码备份</a>\n" +
+                "<a href=\"/monitor/number-files\" class=\"active\">号码备份</a>\n" +
                 "<a href=\"/monitor/customer-management\">客户管理</a>\n" +
                 "<a href=\"/monitor/user-management\">登录账户管理</a>\n" +
                 "<a href=\"/monitor/ops-management\">运维管理</a>\n" +
+                "<a href=\"/monitor/queue-management\">队列管理</a>" +
                 "</div>\n" +
                 "<div class=\"nav-right\">\n" +
                 "<span class=\"user-name\">Administrator</span>\n" +
@@ -2612,9 +2680,10 @@ public class LogMonitorController {
                 "<a href=\"/monitor/dashboard\">服务监控</a>\n" +
                 "<a href=\"/monitor/login-audit\">登录审计</a>\n" +
                 "<a href=\"/monitor/number-files\">号码备份</a>\n" +
-                "<a href=\"/monitor/customer-management\">客户管理</a>\n" +
+                "<a href=\"/monitor/customer-management\" class=\"active\">客户管理</a>\n" +
                 "<a href=\"/monitor/user-management\">登录账户管理</a>\n" +
                 "<a href=\"/monitor/ops-management\">运维管理</a>\n" +
+                "<a href=\"/monitor/queue-management\">队列管理</a>" +
                 "</div>\n" +
                 "<div class=\"nav-right\">\n" +
                 "<span class=\"user-name\">Administrator</span>\n" +
@@ -2810,8 +2879,9 @@ public class LogMonitorController {
                 "<a href=\"/monitor/login-audit\">登录审计</a>\n" +
                 "<a href=\"/monitor/number-files\">号码备份</a>\n" +
                 "<a href=\"/monitor/customer-management\">客户管理</a>\n" +
-                "<a href=\"/monitor/user-management\">登录账户管理</a>\n" +
+                "<a href=\"/monitor/user-management\" class=\"active\">登录账户管理</a>\n" +
                 "<a href=\"/monitor/ops-management\">运维管理</a>\n" +
+                "<a href=\"/monitor/queue-management\">队列管理</a>" +
                 "</div>\n" +
                 "<div class=\"nav-right\">\n" +
                 "<span class=\"user-name\">Administrator</span>\n" +
@@ -2932,16 +3002,16 @@ public class LogMonitorController {
                 "}\n" +
                 "*{margin:0;padding:0;box-sizing:border-box;}\n" +
                 "body{background:var(--bg-primary);font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;min-height:100vh;transition:background 0.3s,color 0.3s;}\n" +
-                ".page-wrap{max-width:1200px;margin:0 auto;padding:20px 24px;}\n" +
-                ".navbar{background:var(--navbar-bg);height:60px;display:flex;align-items:center;justify-content:space-between;padding:0 32px;color:white;border-radius:16px;margin-bottom:24px;box-shadow:0 4px 20px rgba(0,0,0,0.08);transition:background 0.3s;}\n" +
-                ".nav-links{display:flex;gap:8px;}\n" +
-                ".navbar a{color:white;text-decoration:none;padding:8px 20px;border-radius:30px;font-weight:500;transition:all 0.3s;}\n" +
+                ".page-wrap{max-width:1400px;margin:0 auto;padding:20px 24px;}\n" +
+                ".navbar{background:var(--navbar-bg);min-height:60px;display:flex;align-items:center;justify-content:space-between;padding:12px 32px;color:white;border-radius:16px;margin-bottom:24px;box-shadow:0 4px 20px rgba(0,0,0,0.08);transition:background 0.3s;flex-wrap:wrap;gap:12px;}\n" +
+                ".nav-links{display:flex;gap:8px;flex-wrap:wrap;flex:1;}\n" +
+                ".navbar a{color:white;text-decoration:none;padding:8px 20px;border-radius:30px;font-weight:500;transition:all 0.3s;white-space:nowrap;}\n" +
                 ".navbar a:hover,.navbar a.active{background:rgba(255,255,255,0.2);}\n" +
-                ".nav-right{display:flex;align-items:center;gap:16px;}\n" +
-                ".user-name{color:white;font-size:14px;}\n" +
-                ".theme-toggle{background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.2);color:white;padding:8px 16px;border-radius:30px;cursor:pointer;font-size:13px;transition:all 0.3s;}\n" +
+                ".nav-right{display:flex;align-items:center;gap:16px;flex-shrink:0;}\n" +
+                ".user-name{color:white;font-size:14px;white-space:nowrap;}\n" +
+                ".theme-toggle{background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.2);color:white;padding:8px 16px;border-radius:30px;cursor:pointer;font-size:13px;transition:all 0.3s;white-space:nowrap;}\n" +
                 ".theme-toggle:hover{background:rgba(255,255,255,0.25);}\n" +
-                ".logout-btn{background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.2);color:white;padding:8px 20px;border-radius:30px;cursor:pointer;font-weight:500;transition:all 0.3s;}\n" +
+                ".logout-btn{background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.2);color:white;padding:8px 20px;border-radius:30px;cursor:pointer;font-weight:500;transition:all 0.3s;white-space:nowrap;}\n" +
                 ".logout-btn:hover{background:rgba(255,255,255,0.25);transform:translateY(-1px);}\n" +
                 ".title{font-size:20px;font-weight:700;color:var(--text-primary);margin-bottom:20px;display:flex;align-items:center;gap:10px;}\n" +
                 ".title-icon{font-size:28px;}\n" +
@@ -2967,7 +3037,7 @@ public class LogMonitorController {
                 ".result-error{color:#e53935;}\n" +
                 ".loading{opacity:0.6;pointer-events:none;}\n" +
                 ".footer{text-align:center;padding:32px 0;color:var(--text-secondary);font-size:12px;border-top:1px solid var(--border-color);margin-top:16px;}\n" +
-                "@media(max-width:768px){.cards-grid{grid-template-columns:1fr;}.navbar{padding:0 20px;}.nav-links a{padding:6px 12px;font-size:12px;}}\n" +
+                "@media(max-width:768px){.cards-grid{grid-template-columns:1fr;}.navbar{padding:12px 20px;}.nav-links{gap:4px;}.navbar a{padding:6px 12px;font-size:12px;}.nav-right{gap:8px;}}\n" +
                 "</style>\n" +
                 "</head>\n" +
                 "<body>\n" +
@@ -2979,8 +3049,9 @@ public class LogMonitorController {
                 "<a href=\"/monitor/login-audit\">登录审计</a>\n" +
                 "<a href=\"/monitor/number-files\">号码备份</a>\n" +
                 "<a href=\"/monitor/customer-management\">客户管理</a>\n" +
-                "<a href=\"/monitor/user-management\">登录账户管理</a>\n" +
+                "<a href=\"/monitor/user-management\">用户管理</a>\n" +
                 "<a href=\"/monitor/ops-management\" class=\"active\">运维管理</a>\n" +
+                "<a href=\"/monitor/queue-management\">队列管理</a>\n" +
                 "</div>\n" +
                 "<div class=\"nav-right\">\n" +
                 "<span class=\"user-name\">Administrator</span>\n" +
@@ -3019,7 +3090,7 @@ public class LogMonitorController {
                 "<div id=\"unlockIpResult\" class=\"result-area\"></div>\n" +
                 "</div>\n" +
                 "</div>\n" +
-                "<div class=\"footer\">🔧 运维管理工具 | 操作请谨慎，所有操作均有日志记录 | 仅限内部使用</div>\n" +
+                "<div class=\"footer\">🔧 EC WEB运维管理 | 操作请谨慎，所有操作均有日志记录 | 仅限内部使用</div>\n" +
                 "</div>\n" +
                 "<script>\n" +
                 "function toggleTheme(){var html=document.documentElement;var btn=document.getElementById('themeBtn');var currentTheme=html.getAttribute('data-theme');if(currentTheme==='dark'){html.removeAttribute('data-theme');btn.innerHTML='🌙 深色';localStorage.setItem('monitor-theme','light');}else{html.setAttribute('data-theme','dark');btn.innerHTML='☀️ 浅色';localStorage.setItem('monitor-theme','dark');}}\n" +
@@ -3032,6 +3103,187 @@ public class LogMonitorController {
                 "function unlockAccount(){var username=document.getElementById('unlockAccountUsername').value.trim();if(!username){alert('请输入客户账号');return;}var btn=event.target;setLoading(btn,true);fetch('/api/monitor/ops/unlock-account?username='+encodeURIComponent(username)+'&secret=dn17ORUwf36Znl',{method:'POST'}).then(res=>res.json()).then(data=>{setLoading(btn,false);if(data.code===200){showResult('unlockAccountResult',true,'解锁账户成功');document.getElementById('unlockAccountUsername').value='';}else{showResult('unlockAccountResult',false,'操作失败: '+(data.msg||'未知错误'));}}).catch(err=>{setLoading(btn,false);showResult('unlockAccountResult',false,'网络错误: '+err.message);});}\n" +
                 "function unlockIp(){var username=document.getElementById('unlockIpUsername').value.trim();if(!username){alert('请输入IP地址或账号');return;}var btn=event.target;setLoading(btn,true);fetch('/api/monitor/ops/unlock-ip?username='+encodeURIComponent(username)+'&secret=dn17ORUwf36Znl',{method:'POST'}).then(res=>res.json()).then(data=>{setLoading(btn,false);if(data.code===200){showResult('unlockIpResult',true,'解锁IP成功');document.getElementById('unlockIpUsername').value='';}else{showResult('unlockIpResult',false,'操作失败: '+(data.msg||'未知错误'));}}).catch(err=>{setLoading(btn,false);showResult('unlockIpResult',false,'网络错误: '+err.message);});}\n" +
                 "function escapeHtml(s){if(!s)return'';return String(s).replace(/[&<>]/g,function(m){if(m==='&')return'&amp;';if(m==='<')return'&lt;';if(m==='>')return'&gt;';return m;});}\n" +
+                "</script>\n" +
+                "</body>\n" +
+                "</html>";
+    }
+
+    private String generateQueueManagementHtml() {
+        return "<!DOCTYPE html>\n" +
+                "<html lang=\"zh-CN\">\n" +
+                "<head>\n" +
+                "<meta charset=\"UTF-8\">\n" +
+                "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n" +
+                "<title>队列管理</title>\n" +
+                "<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23667eea'/%3E%3Ctext x='50' y='68' font-size='50' text-anchor='middle' fill='white' font-family='Arial'%3E📨%3C/text%3E%3C/svg%3E\">\n" +
+                "<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap\" rel=\"stylesheet\">\n" +
+                "<script src=\"https://cdn.jsdelivr.net/npm/chart.js\"></script>\n" +
+                "<style>\n" +
+                "*{margin:0;padding:0;box-sizing:border-box;}\n" +
+                ":root{--bg-primary:#f0f2f5;--bg-card:#ffffff;--text-primary:#1e293b;--text-secondary:#475569;--text-muted:#94a3b8;--border-color:rgba(0,0,0,0.04);--shadow:0 2px 12px rgba(0,0,0,0.06);--navbar-bg:linear-gradient(135deg,#667eea 0%,#764ba2 100%);--search-card-bg:#ffffff;--table-header-bg:#fafafa;--table-hover:#fafafa;--input-bg:#ffffff;--input-border:#e5e7eb;--btn-reset-bg:#f5f5f5;--btn-reset-hover:#e8e8e8;}\n" +
+                "[data-theme=\"dark\"]{--bg-primary:#0f172a;--bg-card:#1e293b;--text-primary:#f1f5f9;--text-secondary:#94a3b8;--text-muted:#64748b;--border-color:rgba(255,255,255,0.08);--shadow:0 2px 12px rgba(0,0,0,0.3);--navbar-bg:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);--search-card-bg:#1e293b;--table-header-bg:#334155;--table-hover:#334155;--input-bg:#1e293b;--input-border:#334155;--btn-reset-bg:#334155;--btn-reset-hover:#475569;}\n" +
+                "body{background:var(--bg-primary);font-family:'Inter',sans-serif;min-height:100vh;transition:all 0.3s;}\n" +
+                ".page-wrap{max-width:1600px;margin:0 auto;padding:20px 24px;}\n" +
+                ".navbar{background:var(--navbar-bg);height:60px;display:flex;align-items:center;justify-content:space-between;padding:0 32px;color:white;border-radius:16px;margin-bottom:24px;}\n" +
+                ".nav-links{display:flex;gap:8px;}\n" +
+                ".navbar a{color:white;text-decoration:none;padding:8px 20px;border-radius:30px;font-weight:500;transition:all 0.3s;}\n" +
+                ".navbar a:hover,.navbar a.active{background:rgba(255,255,255,0.2);}\n" +
+                ".nav-right{display:flex;align-items:center;gap:16px;}\n" +
+                ".user-name{color:white;font-size:14px;}\n" +
+                ".theme-toggle,.logout-btn{background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.2);color:white;padding:8px 16px;border-radius:30px;cursor:pointer;transition:all 0.3s;}\n" +
+                ".theme-toggle:hover,.logout-btn:hover{background:rgba(255,255,255,0.25);}\n" +
+                ".rank-card{background:var(--bg-card);border-radius:16px;padding:20px;margin-bottom:24px;box-shadow:var(--shadow);}\n" +
+                ".rank-title{font-size:16px;font-weight:600;color:var(--text-primary);margin-bottom:16px;display:flex;align-items:center;gap:8px;}\n" +
+                ".rank-chart-container{height:300px;position:relative;}\n" +
+                ".search-card{background:var(--search-card-bg);border-radius:16px;padding:20px 24px;margin-bottom:24px;box-shadow:var(--shadow);}\n" +
+                ".search-row{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end;}\n" +
+                ".search-group{display:flex;flex-direction:column;gap:6px;}\n" +
+                ".search-group label{font-size:12px;color:var(--text-secondary);font-weight:500;}\n" +
+                ".search-group input,.search-group select{padding:8px 12px;border:1px solid var(--input-border);border-radius:10px;font-size:13px;min-width:160px;background:var(--input-bg);color:var(--text-primary);}\n" +
+                ".search-actions{display:flex;gap:10px;margin-left:auto;}\n" +
+                ".search-btn{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white;border:none;padding:8px 20px;border-radius:30px;cursor:pointer;font-weight:500;}\n" +
+                ".reset-btn{background:var(--btn-reset-bg);border:1px solid var(--input-border);padding:8px 20px;border-radius:30px;cursor:pointer;font-weight:500;color:var(--text-secondary);}\n" +
+                ".log-card{background:var(--bg-card);border-radius:16px;overflow:auto;box-shadow:var(--shadow);}\n" +
+                ".log-table{width:100%;border-collapse:collapse;min-width:1200px;}\n" +
+                ".log-table th{background:var(--table-header-bg);padding:12px 16px;text-align:left;font-size:13px;font-weight:600;color:var(--text-secondary);border-bottom:1px solid var(--border-color);}\n" +
+                ".log-table td{padding:12px 16px;font-size:13px;color:var(--text-primary);border-bottom:1px solid var(--border-color);}\n" +
+                ".log-table tr:hover td{background:var(--table-hover);}\n" +
+                ".sms-content{max-width:350px;word-break:break-all;white-space:normal;line-height:1.4;}\n" +
+                ".badge-subaccount{background:#e8f4fd;color:#1890ff;padding:2px 10px;border-radius:20px;font-size:11px;display:inline-block;}\n" +
+                ".badge-delivered{color:#52c41a;font-weight:500;}\n" +
+                ".badge-failed{color:#ff4d4f;font-weight:500;}\n" +
+                ".view-btn{background:#667eea;color:white;border:none;padding:6px 16px;border-radius:20px;cursor:pointer;font-size:12px;transition:all 0.3s;}\n" +
+                ".view-btn:hover{background:#5a67d8;}\n" +
+                ".pagination{display:flex;justify-content:center;gap:12px;padding:24px;border-top:1px solid var(--border-color);}\n" +
+                ".page-btn{padding:8px 16px;border:1px solid var(--input-border);background:var(--bg-card);color:var(--text-primary);border-radius:30px;cursor:pointer;font-size:13px;}\n" +
+                ".page-btn:hover:not(:disabled){border-color:#667eea;color:#667eea;}\n" +
+                ".page-btn:disabled{opacity:0.5;cursor:not-allowed;}\n" +
+                ".page-info{font-size:13px;color:var(--text-muted);align-self:center;}\n" +
+                ".footer{text-align:center;padding:32px 0;color:var(--text-secondary);font-size:12px;border-top:1px solid var(--border-color);margin-top:16px;}\n" +
+                ".modal{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);z-index:10000;display:flex;align-items:center;justify-content:center;}\n" +
+                ".modal-content{background:var(--bg-card);border-radius:20px;width:1000px;max-width:90%;max-height:85vh;display:flex;flex-direction:column;}\n" +
+                ".modal-header{display:flex;justify-content:space-between;align-items:center;padding:16px 24px;border-bottom:1px solid var(--border-color);}\n" +
+                ".modal-header h3{color:var(--text-primary);margin:0;}\n" +
+                ".modal-close{background:none;border:none;font-size:24px;cursor:pointer;color:var(--text-muted);}\n" +
+                ".modal-body{padding:20px 24px;overflow-y:auto;flex:1;}\n" +
+                ".detail-summary{background:linear-gradient(135deg, rgba(102,126,234,0.1) 0%, rgba(118,75,162,0.1) 100%);border-radius:12px;padding:12px 16px;margin-bottom:20px;display:flex;gap:20px;flex-wrap:wrap;}\n" +
+                ".detail-summary-item{display:flex;align-items:center;gap:8px;}\n" +
+                ".detail-summary-label{font-size:12px;color:var(--text-muted);}\n" +
+                ".detail-summary-value{font-size:16px;font-weight:600;color:var(--text-primary);}\n" +
+                ".detail-search{margin-bottom:16px;display:flex;gap:10px;}\n" +
+                ".detail-search input{flex:1;padding:8px 12px;border:1px solid var(--input-border);border-radius:10px;background:var(--input-bg);color:var(--text-primary);}\n" +
+                ".detail-search button{padding:8px 20px;background:#667eea;color:white;border:none;border-radius:30px;cursor:pointer;}\n" +
+                ".detail-table{width:100%;border-collapse:collapse;}\n" +
+                ".detail-table th,.detail-table td{padding:10px 12px;text-align:left;border-bottom:1px solid var(--border-color);}\n" +
+                ".detail-table th{background:var(--table-header-bg);font-weight:600;color:var(--text-secondary);}\n" +
+                ".detail-status-success{color:#52c41a;font-weight:500;}\n" +
+                ".detail-status-failed{color:#ff4d4f;font-weight:500;}\n" +
+                ".detail-status-pending{color:#faad14;font-weight:500;}\n" +
+                ".detail-pagination{display:flex;justify-content:center;gap:12px;margin-top:20px;padding-top:16px;border-top:1px solid var(--border-color);}\n" +
+                "@media(max-width:768px){.search-actions{margin-left:0;}.navbar{padding:0 20px;}.nav-links a{padding:6px 12px;font-size:12px;}.rank-chart-container{height:250px;}}\n" +
+                "</style>\n" +
+                "</head>\n" +
+                "<body>\n" +
+                "<div class=\"page-wrap\">\n" +
+                "<div class=\"navbar\">\n" +
+                "<div class=\"nav-links\">\n" +
+                "<a href=\"/monitor/index\">首页</a>\n" +
+                "<a href=\"/monitor/dashboard\">服务监控</a>\n" +
+                "<a href=\"/monitor/login-audit\">登录审计</a>\n" +
+                "<a href=\"/monitor/number-files\">号码备份</a>\n" +
+                "<a href=\"/monitor/customer-management\">客户管理</a>\n" +
+                "<a href=\"/monitor/user-management\">用户管理</a>\n" +
+                "<a href=\"/monitor/ops-management\">运维管理</a>\n" +
+                "<a href=\"/monitor/queue-management\" class=\"active\">发送队列管理</a>\n" +
+                "</div>\n" +
+                "<div class=\"nav-right\">\n" +
+                "<span class=\"user-name\">Administrator</span>\n" +
+                "<button class=\"theme-toggle\" onclick=\"toggleTheme()\">🌙 深色</button>\n" +
+                "<button class=\"logout-btn\" onclick=\"logout()\">退出</button>\n" +
+                "</div>\n" +
+                "</div>\n" +
+                "<div class=\"rank-card\">\n" +
+                "<div class=\"rank-title\">🏆 近30分钟客户提交量排行 (Top 10)</div>\n" +
+                "<div class=\"rank-chart-container\">\n" +
+                "<canvas id=\"rankingChart\"></canvas>\n" +
+                "</div>\n" +
+                "</div>\n" +
+                "<div class=\"search-card\">\n" +
+                "<div class=\"search-row\">\n" +
+                "<div class=\"search-group\"><label>👤 客户账号</label><input type=\"text\" id=\"searchSubAccount\" placeholder=\"模糊查询\"></div>\n" +
+                "<div class=\"search-group\"><label>🆔 任务ID</label><input type=\"text\" id=\"searchTaskId\" placeholder=\"模糊查询\"></div>\n" +
+                "<div class=\"search-actions\"><button class=\"search-btn\" onclick=\"searchTasks()\">🔍 查询</button><button class=\"reset-btn\" onclick=\"resetSearch()\">🔄 重置</button></div>\n" +
+                "</div>\n" +
+                "</div>\n" +
+                "<div class=\"log-card\">\n" +
+                "<table class=\"log-table\">\n" +
+                "<thead><tr><th>任务ID</th><th>客户账号</th><th>任务名称</th><th>短信内容</th><th>创建时间</th><th>计划时间</th><th>总数</th><th>已提交</th><th>成功</th><th>失败</th><th>操作</th></tr></thead>\n" +
+                "<tbody id=\"taskBody\"><tr><td colspan=\"11\" class=\"empty\">加载中...</td></tr></tbody>\n" +
+                "</table>\n" +
+                "<div class=\"pagination\" id=\"pagination\"></div>\n" +
+                "</div>\n" +
+                "<div class=\"footer\">📨 客户队列管理 | 仅显示最近3天数据 | 双击任务ID可查看详情</div>\n" +
+                "</div>\n" +
+                "<div id=\"detailModal\" class=\"modal\" style=\"display:none;\">\n" +
+                "<div class=\"modal-content\">\n" +
+                "<div class=\"modal-header\"><h3 id=\"modalTitle\">📋 任务详情</h3><button class=\"modal-close\" onclick=\"closeDetailModal()\">&times;</button></div>\n" +
+                "<div class=\"modal-body\">\n" +
+                "<div class=\"detail-summary\" id=\"detailSummary\"></div>\n" +
+                "<div class=\"detail-search\"><input type=\"text\" id=\"detailCallee\" placeholder=\"按号码筛选\"><button onclick=\"loadTaskDetail()\">🔍 查询</button></div>\n" +
+                "<div style=\"overflow-x:auto;\"><table class=\"detail-table\"><thead><tr><th>MsgId</th><th>发送方</th><th>接收号码</th><th>完成时间</th><th>状态</th><th>错误码</th><th>分片</th></tr></thead><tbody id=\"detailBody\"><tr><td colspan=\"7\" style=\"text-align:center;\">加载中...</td></tr></tbody></table></div>\n" +
+                "<div class=\"detail-pagination\" id=\"detailPagination\"></div>\n" +
+                "</div>\n" +
+                "</div>\n" +
+                "</div>\n" +
+                "<script>\n" +
+                "var page=1,size=10,totalPages=1;\n" +
+                "var currentTaskId='';\n" +
+                "var detailPage=1,detailSize=10,detailTotalPages=1;\n" +
+                "var rankingChart=null;\n" +
+                "function decodeSmsContent(str){if(!str)return'';try{var decoded=atob(str);try{return decodeURIComponent(decoded);}catch(e){return decoded;}}catch(e){return str;}}\n" +
+                "function toggleTheme(){var html=document.documentElement;var isDark=html.getAttribute('data-theme')==='dark';if(isDark){html.removeAttribute('data-theme');localStorage.setItem('monitor-theme','light');}else{html.setAttribute('data-theme','dark');localStorage.setItem('monitor-theme','dark');}}\n" +
+                "function logout(){fetch('/monitor/logout').then(function(){location.href='/monitor/login';});}\n" +
+                "if(localStorage.getItem('monitor-theme')==='dark'){document.documentElement.setAttribute('data-theme','dark');}\n" +
+                "function loadRanking(){fetch('/api/monitor/queue/customer-ranking?secret=dn17ORUwf36Znl').then(function(res){return res.json();}).then(function(data){var ctx=document.getElementById('rankingChart').getContext('2d');if(rankingChart)rankingChart.destroy();if(data.code===200&&data.data&&data.data.length){var list=data.data;var labels=list.map(function(i){return i.subAccount||i.username||'-';});var counts=list.map(function(i){return i.totalCount||0;});rankingChart=new Chart(ctx,{type:'bar',data:{labels:labels,datasets:[{label:'提交数量(条)',data:counts,backgroundColor:'#667eea',borderRadius:8}]},options:{responsive:true,maintainAspectRatio:true}});}else{rankingChart=new Chart(ctx,{type:'bar',data:{labels:['暂无数据'],datasets:[{label:'提交数量',data:[0]}]},options:{responsive:true}});}}).catch(function(){var ctx=document.getElementById('rankingChart').getContext('2d');if(rankingChart)rankingChart.destroy();rankingChart=new Chart(ctx,{type:'bar',data:{labels:['加载失败'],datasets:[{label:'提交数量',data:[0]}]},options:{responsive:true}});});}\n" +
+                "function formatNumber(num){if(!num)return'0';return num.toString().replace(/\\B(?=(\\d{3})+(?!\\d))/g,',');}\n" +
+                "function searchTasks(){page=1;loadTasks();}\n" +
+                "function resetSearch(){document.getElementById('searchSubAccount').value='';document.getElementById('searchTaskId').value='';page=1;loadTasks();}\n" +
+                "function loadTasks(){var subAccount=document.getElementById('searchSubAccount').value;var taskId=document.getElementById('searchTaskId').value;var url='/api/monitor/queue/tasks?secret=dn17ORUwf36Znl&pageNum='+page+'&pageSize='+size;if(subAccount)url+='&subAccount='+encodeURIComponent(subAccount);if(taskId)url+='&taskId='+encodeURIComponent(taskId);fetch(url).then(function(res){return res.json();}).then(function(data){if(data.code===200){var records=data.data?.records||[];totalPages=Math.ceil((data.data?.total||0)/size);renderTable(records);renderPagination();}else{document.getElementById('taskBody').innerHTML='<tr><td colspan=\"11\" class=\"empty\">加载失败:'+(data.msg||'错误')+'</td></tr>';}}).catch(function(){document.getElementById('taskBody').innerHTML='<tr><td colspan=\"11\" class=\"empty\">加载失败:网络错误</td></tr>';});}\n" +
+                "function escapeHtml(s){if(!s)return'';return String(s).replace(/[&<>]/g,function(m){return m==='&'?'&amp;':m==='<'?'&lt;':'&gt;';});}\n" +
+                "function renderTable(list){var tbody=document.getElementById('taskBody');if(!list||!list.length){tbody.innerHTML='<tr><td colspan=\"11\" class=\"empty\">暂无数据</td></tr>';return;}var html='';for(var i=0;i<list.length;i++){var t=list[i];var smsContent=decodeSmsContent(t.shortMessage||'');var taskIdAttr=escapeHtml(String(t.taskId||''));html+='<tr class=\"task-row\" data-task-id=\"'+taskIdAttr+'\" style=\"cursor:pointer;\">';\n" +
+                "html+='<td style=\"font-family:monospace;font-size:12px;\" title=\"'+escapeHtml(t.taskId||'')+'\">'+escapeHtml((t.taskId||'').substring(0,20))+'...</td>';\n" +
+                "html+='<td><span class=\"badge-subaccount\">'+escapeHtml(t.subAccount||'')+'</span></td>';\n" +
+                "html+='<td title=\"'+escapeHtml(t.taskName||'')+'\">'+escapeHtml((t.taskName||'').substring(0,30))+'</td>';\n" +
+                "html+='<td class=\"sms-content\">'+escapeHtml(smsContent).replace(/\\n/g,'<br>')+'</td>';\n" +
+                "html+='<td>'+escapeHtml(t.taskTime||'')+'</td>';\n" +
+                "html+='<td>'+escapeHtml(t.scheduleSendTime||'')+'</td>';\n" +
+                "html+='<td>'+formatNumber(t.totalCount||0)+'</td>';\n" +
+                "html+='<td>'+formatNumber(t.submitSuccCount||0)+'</td>';\n" +
+                "html+='<td class=\"badge-delivered\">'+formatNumber(t.drSuccCount||0)+'</td>';\n" +
+                "html+='<td class=\"badge-failed\">'+formatNumber(t.drFailCount||0)+'</td>';\n" +
+                "html+='<td><button class=\"view-btn\">📋 查看详情</button></td></tr>';}\n" +
+                "tbody.innerHTML=html;}\n" +
+                "function renderPagination(){var div=document.getElementById('pagination');if(!div||totalPages<=1){div.innerHTML='';return;}var html='<button class=\"page-btn\" onclick=\"goPage(1)\"'+(page===1?'disabled':'')+'>首页</button><button class=\"page-btn\" onclick=\"goPage('+(page-1)+')\"'+(page===1?'disabled':'')+'>上一页</button><span class=\"page-info\">第 '+page+' / '+totalPages+' 页</span><button class=\"page-btn\" onclick=\"goPage('+(page+1)+')\"'+(page===totalPages?'disabled':'')+'>下一页</button><button class=\"page-btn\" onclick=\"goPage('+totalPages+')\"'+(page===totalPages?'disabled':'')+'>尾页</button>';div.innerHTML=html;}\n" +
+                "function goPage(p){page=p;loadTasks();}\n" +
+                "function showTaskDetail(taskId){currentTaskId=taskId;detailPage=1;document.getElementById('modalTitle').innerHTML='📋 任务详情 - '+taskId;document.getElementById('detailCallee').value='';document.getElementById('detailModal').style.display='flex';loadTaskSummary();loadTaskDetail();}\n" +
+                "function loadTaskSummary(){fetch('/api/monitor/queue/task/summary?taskId='+encodeURIComponent(currentTaskId)+'&secret=dn17ORUwf36Znl').then(function(res){return res.json();}).then(function(data){if(data.code===200&&data.data){var d=data.data;document.getElementById('detailSummary').innerHTML='<div class=\"detail-summary-item\"><span class=\"detail-summary-label\">任务名称:</span><span class=\"detail-summary-value\">'+escapeHtml(d.taskName||'-')+'</span></div><div class=\"detail-summary-item\"><span class=\"detail-summary-label\">客户账号:</span><span class=\"detail-summary-value\">'+escapeHtml(d.subAccount||'-')+'</span></div><div class=\"detail-summary-item\"><span class=\"detail-summary-label\">总数量:</span><span class=\"detail-summary-value\">'+formatNumber(d.totalCount||0)+'</span></div><div class=\"detail-summary-item\"><span class=\"detail-summary-label\">成功送达:</span><span class=\"detail-summary-value\">'+formatNumber(d.drSuccCount||0)+'</span></div><div class=\"detail-summary-item\"><span class=\"detail-summary-label\">失败:</span><span class=\"detail-summary-value\">'+formatNumber(d.drFailCount||0)+'</span></div>';}});}\n" +
+                "function loadTaskDetail(){var callee=document.getElementById('detailCallee').value;var url='/api/monitor/queue/task/detail?secret=dn17ORUwf36Znl&taskId='+encodeURIComponent(currentTaskId)+'&pageNum='+detailPage+'&pageSize='+detailSize;if(callee)url+='&callee='+encodeURIComponent(callee);fetch(url).then(function(res){return res.json();}).then(function(data){if(data.code===200){var records=data.data?.records||[];var total=data.data?.total||0;detailTotalPages=Math.ceil(total/detailSize);renderDetailTable(records);renderDetailPagination();}else{document.getElementById('detailBody').innerHTML='<tr><td colspan=\"7\" style=\"text-align:center;\">加载失败:'+(data.msg||'错误')+'</td></tr>';}});}\n" +
+                "function renderDetailTable(list){var tbody=document.getElementById('detailBody');if(!list||!list.length){tbody.innerHTML='<tr><td colspan=\"7\" style=\"text-align:center;\">暂无数据</td></tr>';return;}var html='';for(var i=0;i<list.length;i++){var d=list[i];var statusClass=(d.recvDRStatus==='DELIVRD')?'detail-status-success':((d.recvDRStatus==='UNDELIV'||d.recvDRStatus==='REJECTD')?'detail-status-failed':'detail-status-pending');var statusText=(d.recvDRStatus==='DELIVRD')?'✅ 成功':((d.recvDRStatus==='UNDELIV'||d.recvDRStatus==='REJECTD')?'❌ 失败':'⏳ 等待');html+='<tr>';\n" +
+                "html+='<td style=\"font-family:monospace;font-size:11px;\" title=\"'+escapeHtml(d.submitMsgId||'')+'\">'+escapeHtml((d.submitMsgId||'').substring(0,20))+'...</td>';\n" +
+                "html+='<td>'+escapeHtml(d.caller||'')+'</td>';\n" +
+                "html+='<td>'+escapeHtml(d.callee||'')+'</td>';\n" +
+                "html+='<td>'+escapeHtml(d.recvDRTime||'-')+'</td>';\n" +
+                "html+='<td class=\"'+statusClass+'\">'+statusText+'</td>';\n" +
+                "html+='<td>'+escapeHtml(d.recvDRError||'-')+'</td>';\n" +
+                "html+='<td>'+(d.pkNumber||'')+'/'+(d.pkTotal||'')+'</td></tr>';}\n" +
+                "tbody.innerHTML=html;}\n" +
+                "function renderDetailPagination(){var div=document.getElementById('detailPagination');if(!div||detailTotalPages<=1){div.innerHTML='';return;}var html='<button class=\"page-btn\" onclick=\"goDetailPage(1)\"'+(detailPage===1?'disabled':'')+'>首页</button><button class=\"page-btn\" onclick=\"goDetailPage('+(detailPage-1)+')\"'+(detailPage===1?'disabled':'')+'>上一页</button><span class=\"page-info\">第 '+detailPage+' / '+detailTotalPages+' 页</span><button class=\"page-btn\" onclick=\"goDetailPage('+(detailPage+1)+')\"'+(detailPage===detailTotalPages?'disabled':'')+'>下一页</button><button class=\"page-btn\" onclick=\"goDetailPage('+detailTotalPages+')\"'+(detailPage===detailTotalPages?'disabled':'')+'>尾页</button>';div.innerHTML=html;}\n" +
+                "function goDetailPage(p){detailPage=p;loadTaskDetail();}\n" +
+                "function closeDetailModal(){document.getElementById('detailModal').style.display='none';currentTaskId='';detailPage=1;}\n" +
+                "document.addEventListener('click',function(e){var btn=e.target.closest('.view-btn');if(btn){e.stopPropagation();var row=btn.closest('.task-row');if(row&&row.dataset.taskId)showTaskDetail(row.dataset.taskId);}});\n" +
+                "document.addEventListener('dblclick',function(e){var row=e.target.closest('.task-row');if(row&&row.dataset.taskId)showTaskDetail(row.dataset.taskId);});\n" +
+                "loadRanking();loadTasks();\n" +
+                "setInterval(loadRanking,30000);\n" +
                 "</script>\n" +
                 "</body>\n" +
                 "</html>";

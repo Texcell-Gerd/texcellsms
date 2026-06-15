@@ -29,7 +29,7 @@ public class SmsQueueService {
     /**
      * 获取当前登录用户账号
      */
-    private String SubAccount(){
+    private String SubAccount() {
         return TokenService.getUsername();
     }
 
@@ -163,5 +163,63 @@ public class SmsQueueService {
         String subAccount = SubAccount();
         String threeDaysAgo = TimeRangeUtils.getThreeDaysAgoTime();
         return smsQueueMapper.batchUpdateScheduleStatus(subAccount, threeDaysAgo, taskIds);
+    }
+
+    /**
+     * 内部管理 - 分页获取所有客户的任务列表
+     */
+    public Map<String, Object> getAllQueueTasksForAdmin(String subAccount, String taskId, Integer scheduleStatus,
+                                                        Integer pageNum, Integer pageSize) {
+        DataSourceInterceptor.setCurrentDataSource(DynamicDataSourceConfig.DS_WEB_PORTAL);
+
+        String threeDaysAgoTime = TimeRangeUtils.getThreeDaysAgoTime();
+        int offset = (pageNum - 1) * pageSize;
+
+        List<ScheduleTaskVO> list = smsQueueMapper.selectAllScheduleTaskList(
+                subAccount, taskId, scheduleStatus, threeDaysAgoTime, offset, pageSize
+        );
+
+        // 统计 DR 成功/失败数量
+        if (list != null && !list.isEmpty()) {
+            List<String> taskIds = list.stream()
+                    .map(ScheduleTaskVO::getTaskId)
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toList());
+
+            List<Map<String, Object>> drStats = smsQueueMapper.selectDrStatsByTaskIds(taskIds);
+
+            Map<String, Map<String, Integer>> statMap = new HashMap<>();
+            for (Map<String, Object> map : drStats) {
+                String taskIdVal = (String) map.get("APITaskId");
+                Integer succCount = ((Number) map.get("drSuccCount")).intValue();
+                Integer failCount = ((Number) map.get("drFailCount")).intValue();
+
+                Map<String, Integer> countMap = new HashMap<>();
+                countMap.put("drSuccCount", succCount);
+                countMap.put("drFailCount", failCount);
+                statMap.put(taskIdVal, countMap);
+            }
+
+            for (ScheduleTaskVO vo : list) {
+                Map<String, Integer> countMap = statMap.getOrDefault(vo.getTaskId(), new HashMap<>());
+                vo.setDrSuccCount(countMap.getOrDefault("drSuccCount", 0));
+                vo.setDrFailCount(countMap.getOrDefault("drFailCount", 0));
+                vo.setShortMessage(Base64Util.encrypt(vo.getShortMessage()));
+            }
+        }
+
+        Long total = smsQueueMapper.countAllScheduleTaskList(subAccount, taskId, scheduleStatus, threeDaysAgoTime);
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("records", list == null ? Collections.emptyList() : list);
+        result.put("total", total == null ? 0L : total);
+        result.put("pageNum", pageNum);
+        result.put("pageSize", pageSize);
+        return result;
+    }
+
+    public List<Map<String, Object>> getCustomerRankingLastHalfHour() {
+        DataSourceInterceptor.setCurrentDataSource(DynamicDataSourceConfig.DS_WEB_PORTAL);
+        return smsQueueMapper.getCustomerRankingLastHalfHour();
     }
 }

@@ -10,6 +10,8 @@ public class ScheduleTaskVO {
     private String taskName;
     @Schema(description = "任务ID")
     private String taskId;
+    @Schema(description = "客户账号")
+    private String subAccount;  //
     @Schema(description = "任务提交时间")
     private String taskTime;
     @Schema(description = "任务预定时间")
