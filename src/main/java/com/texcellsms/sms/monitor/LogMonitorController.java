@@ -3,14 +3,8 @@ package com.texcellsms.sms.monitor;
 
 import CacheDB.NCacheDBLink;
 import com.texcellsms.sms.interceptor.SecurityMonitorInterceptor;
-import com.texcellsms.sms.mapper.webportal.CustomerApiClientMapper;
-import com.texcellsms.sms.mapper.webportal.CustomerNumberFileMapper;
-import com.texcellsms.sms.mapper.webportal.LoginAuditLogMapper;
-import com.texcellsms.sms.mapper.webportal.MonitorUserMapper;
-import com.texcellsms.sms.model.entity.CustomerApiClient;
-import com.texcellsms.sms.model.entity.CustomerNumberFile;
-import com.texcellsms.sms.model.entity.LoginAuditLog;
-import com.texcellsms.sms.model.entity.MonitorUser;
+import com.texcellsms.sms.mapper.webportal.*;
+import com.texcellsms.sms.model.entity.*;
 import com.texcellsms.sms.service.SmsQueueService;
 import com.texcellsms.sms.util.ApiClientConfig;
 import org.slf4j.Logger;
@@ -35,12 +29,15 @@ public class LogMonitorController {
     private static final String MONITOR_SECRET = "dn17ORUwf36Znl";
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
+
+    // 操作类型常量（在类顶部添加）
+    private static final String OPS_RESET_2FA = "RESET_2FA";
+    private static final String OPS_DISABLE_2FA = "DISABLE_2FA";
+    private static final String OPS_UNLOCK_ACCOUNT = "UNLOCK_ACCOUNT";
+    private static final String OPS_UNLOCK_IP = "UNLOCK_IP";
+
 //    private static final String ADMIN_USERNAME = "Administrator";
 //    private static final String ADMIN_PASSWORD = "dn17ORUwf36Znl";
-
-    private static final String[] INNER_IPS = {
-            "127.0.0.1", "192.168.", "202.77.56.146"
-    };
 
     @Autowired
     private LoginAuditLogMapper loginAuditLogMapper;
@@ -56,6 +53,9 @@ public class LogMonitorController {
 
     @Autowired
     private MonitorUserMapper monitorUserMapper;
+
+    @Autowired
+    private OpsAuditLogMapper opsAuditLogMapper;
 
     @Autowired
     private SmsQueueService smsQueueService;
@@ -92,31 +92,119 @@ public class LogMonitorController {
         return true;
     }
 
-    private boolean isInnerIp(String ip, String username) {
-        if (ip == null || ip.isEmpty()) return false;
-
-        // 检查内网IP段
-        for (String prefix : INNER_IPS) {
-            if (ip.startsWith(prefix)) return true;
+    /**
+     * IP权限检查 - 只允许数据库白名单中的IP访问
+     * @param ip 客户端IP
+     * @param username 登录用户名（未登录时为null）
+     * @return true=允许访问，false=拒绝访问
+     */
+    private boolean isIpAllowed(String ip, String username) {
+        if (ip == null || ip.isEmpty()) {
+            logger.warn("IP为空，拒绝访问");
+            return false;
+        }
+        if ("unknown".equalsIgnoreCase(ip)) {
+            logger.warn("IP为unknown，拒绝访问");
+            return false;
         }
 
-        // 有登录用户名，检查该用户的IP白名单
-        if (username != null && !username.isEmpty()) {
-            MonitorUser user = monitorUserMapper.selectByUsername(username);
-            if (user != null && user.getAllowedIps() != null && !user.getAllowedIps().trim().isEmpty()) {
-                String[] allowedIps = user.getAllowedIps().split(",");
-                for (String allowedIp : allowedIps) {
-                    allowedIp = allowedIp.trim();
-                    if (allowedIp.equals(ip) || (allowedIp.endsWith(".*") && ip.startsWith(allowedIp.substring(0, allowedIp.length() - 2)))) {
-                        return true;
-                    }
-                }
-                return false; // 有白名单但不匹配，拒绝访问
+        // 未登录时，检查是否有任何已启用的用户配置了该IP为白名单
+        if (username == null || username.isEmpty()) {
+            return isIpInAnyUserWhitelist(ip);
+        }
+
+        // 已登录，检查该用户的IP白名单
+        MonitorUser user = monitorUserMapper.selectByUsername(username);
+        if (user == null) {
+            logger.warn("用户 {} 不存在，拒绝IP {} 访问", username, ip);
+            return false;
+        }
+
+        // 检查用户状态
+        if (user.getStatus() != 1) {
+            logger.warn("用户 {} 已被禁用，拒绝IP {} 访问", username, ip);
+            return false;
+        }
+
+        String allowedIpsStr = user.getAllowedIps();
+        if (allowedIpsStr == null || allowedIpsStr.trim().isEmpty()) {
+            logger.warn("用户 {} 未配置IP白名单，拒绝IP {} 访问", username, ip);
+            return false;
+        }
+
+        // 解析白名单并匹配
+        String[] allowedIps = allowedIpsStr.split(",");
+        for (String allowedIp : allowedIps) {
+            allowedIp = allowedIp.trim();
+            if (allowedIp.isEmpty()) continue;
+
+            if (isIpMatch(ip, allowedIp)) {
+                logger.info("IP {} 匹配白名单规则 {}，允许用户 {} 访问", ip, allowedIp, username);
+                return true;
             }
         }
 
-        // 没有配置白名单，允许所有内网IP
-        return true;
+        logger.warn("IP {} 不在用户 {} 的白名单 [{}] 中，拒绝访问", ip, username, allowedIpsStr);
+        return false;
+    }
+
+    /**
+     * 检查IP是否在任何已启用用户的白名单中（用于未登录状态，如登录页面）
+     */
+    private boolean isIpInAnyUserWhitelist(String ip) {
+        try {
+            // 使用现有的 selectAllActive 方法查询所有启用的用户
+            List<MonitorUser> users = monitorUserMapper.selectAllActive();
+            if (users == null || users.isEmpty()) {
+                logger.warn("没有找到任何已启用的用户，拒绝IP {} 访问", ip);
+                return false;
+            }
+
+            for (MonitorUser user : users) {
+                String allowedIpsStr = user.getAllowedIps();
+                if (allowedIpsStr == null || allowedIpsStr.trim().isEmpty()) {
+                    continue;
+                }
+
+                String[] allowedIps = allowedIpsStr.split(",");
+                for (String allowedIp : allowedIps) {
+                    allowedIp = allowedIp.trim();
+                    if (allowedIp.isEmpty()) continue;
+
+                    if (isIpMatch(ip, allowedIp)) {
+                        logger.info("IP {} 匹配用户 {} 的白名单规则 {}，允许访问", ip, user.getUsername(), allowedIp);
+                        return true;
+                    }
+                }
+            }
+
+            logger.warn("IP {} 不在任何用户的白名单中，拒绝访问", ip);
+            return false;
+        } catch (Exception e) {
+            logger.error("检查IP白名单失败: {}", e.getMessage(), e);
+            return false;
+        }
+    }
+
+    /**
+     * 检查IP是否匹配白名单规则
+     * @param ip 客户端IP
+     * @param pattern 白名单规则（支持单个IP或IP段，如 192.168.1.* 或 192.168.1.100）
+     * @return true=匹配
+     */
+    private boolean isIpMatch(String ip, String pattern) {
+        // 精确匹配
+        if (pattern.equals(ip)) {
+            return true;
+        }
+        // IP段匹配（如 192.168.1.*）
+        if (pattern.endsWith(".*")) {
+            String prefix = pattern.substring(0, pattern.length() - 2);
+            if (ip.startsWith(prefix)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private boolean isLogin(HttpSession session) {
@@ -133,7 +221,7 @@ public class LogMonitorController {
         String clientIp = getRealIp(request);
         String loginUsername = getCurrentUsername(session);
 
-        if (!isInnerIp(clientIp, loginUsername)) {
+        if (!isIpAllowed(clientIp, loginUsername)) {
             return "<h1 style='color:red;text-align:center;margin-top:100px;'>❌ 仅允许内网访问<br/>您的IP：" + clientIp + "</h1>";
         }
         return generateLoginHtml();
@@ -170,7 +258,7 @@ public class LogMonitorController {
         String clientIp = getRealIp(request);
         String loginUsername = getCurrentUsername(session);
 
-        if (!isInnerIp(clientIp, loginUsername)) {
+        if (!isIpAllowed(clientIp, loginUsername)) {
             return "<h1 style='color:red;text-align:center;margin-top:100px;'>❌ 仅允许内网访问<br/>您的IP：" + clientIp + "</h1>";
         }
         if (!isLogin(session)) {
@@ -185,7 +273,7 @@ public class LogMonitorController {
         String clientIp = getRealIp(request);
         String loginUsername = getCurrentUsername(session);
 
-        if (!isInnerIp(clientIp, loginUsername)) {
+        if (!isIpAllowed(clientIp, loginUsername)) {
             return "<h1 style='color:red;text-align:center;margin-top:100px;'>❌ 仅允许内网访问<br/>您的IP：" + clientIp + "</h1>";
         }
         if (!isLogin(request.getSession())) {
@@ -200,7 +288,7 @@ public class LogMonitorController {
         String clientIp = getRealIp(request);
         String loginUsername = getCurrentUsername(session);
 
-        if (!isInnerIp(clientIp, loginUsername)) {
+        if (!isIpAllowed(clientIp, loginUsername)) {
             return "<h1 style='color:red;text-align:center;margin-top:100px;'>❌ 仅允许内网访问<br/>您的IP：" + clientIp + "</h1>";
         }
         if (!isLogin(request.getSession())) {
@@ -215,7 +303,7 @@ public class LogMonitorController {
         String clientIp = getRealIp(request);
         String loginUsername = getCurrentUsername(session);
 
-        if (!isInnerIp(clientIp, loginUsername)) {
+        if (!isIpAllowed(clientIp, loginUsername)) {
             return "<h1 style='color:red;text-align:center;margin-top:100px;'>❌ 仅允许内网访问<br/>您的IP：" + clientIp + "</h1>";
         }
         if (!isLogin(session)) {
@@ -230,7 +318,7 @@ public class LogMonitorController {
         String clientIp = getRealIp(request);
         String loginUsername = getCurrentUsername(session);
 
-        if (!isInnerIp(clientIp, loginUsername)) {
+        if (!isIpAllowed(clientIp, loginUsername)) {
             return "<h1 style='color:red;text-align:center;margin-top:100px;'>❌ 仅允许内网访问<br/>您的IP：" + clientIp + "</h1>";
         }
         if (!isLogin(session)) {
@@ -245,7 +333,7 @@ public class LogMonitorController {
         String clientIp = getRealIp(request);
         String loginUsername = getCurrentUsername(session);
 
-        if (!isInnerIp(clientIp, loginUsername)) {
+        if (!isIpAllowed(clientIp, loginUsername)) {
             return "<h1 style='color:red;text-align:center;margin-top:100px;'>❌ 仅允许内网访问<br/>您的IP：" + clientIp + "</h1>";
         }
         if (!isLogin(request.getSession())) {
@@ -260,7 +348,7 @@ public class LogMonitorController {
         String clientIp = getRealIp(request);
         String loginUsername = getCurrentUsername(session);
 
-        if (!isInnerIp(clientIp, loginUsername)) {
+        if (!isIpAllowed(clientIp, loginUsername)) {
             return "<h1 style='color:red;text-align:center;margin-top:100px;'>❌ 仅允许内网访问<br/>您的IP：" + clientIp + "</h1>";
         }
         if (!isLogin(session)) {
@@ -275,7 +363,7 @@ public class LogMonitorController {
         String clientIp = getRealIp(request);
         String loginUsername = getCurrentUsername(session);
 
-        if (!isInnerIp(clientIp, loginUsername)) {
+        if (!isIpAllowed(clientIp, loginUsername)) {
             return "<h1 style='color:red;text-align:center;margin-top:100px;'>❌ 仅允许内网访问<br/>您的IP：" + clientIp + "</h1>";
         }
         if (!isLogin(session)) {
@@ -291,7 +379,7 @@ public class LogMonitorController {
         String clientIp = getRealIp(request);
         String loginUsername = getCurrentUsername(session);
 
-        if (!isInnerIp(clientIp, loginUsername)) {
+        if (!isIpAllowed(clientIp, loginUsername)) {
             result.put("code", 403);
             result.put("msg", "仅允许内网访问，您的IP：" + clientIp);
             return result;
@@ -347,7 +435,7 @@ public class LogMonitorController {
         String clientIp = getRealIp(request);
         String loginUsername = getCurrentUsername(session);
 
-        if (!isInnerIp(clientIp, loginUsername)) {
+        if (!isIpAllowed(clientIp, loginUsername)) {
             resultMap.put("code", 403);
             resultMap.put("msg", "仅允许内网访问");
             return resultMap;
@@ -412,7 +500,7 @@ public class LogMonitorController {
         String clientIp = getRealIp(request);
         String loginUsername = getCurrentUsername(session);
 
-        if (!isInnerIp(clientIp, loginUsername)) {
+        if (!isIpAllowed(clientIp, loginUsername)) {
             resultMap.put("code", 403);
             resultMap.put("msg", "仅允许内网访问");
             return resultMap;
@@ -463,7 +551,7 @@ public class LogMonitorController {
         String clientIp = getRealIp(request);
         String loginUsername = getCurrentUsername(session);
 
-        if (!isInnerIp(clientIp, loginUsername)) {
+        if (!isIpAllowed(clientIp, loginUsername)) {
             resultMap.put("code", 403);
             resultMap.put("msg", "仅允许内网访问");
             return resultMap;
@@ -547,7 +635,7 @@ public class LogMonitorController {
         String clientIp = getRealIp(request);
         String loginUsername = getCurrentUsername(session);
 
-        if (!isInnerIp(clientIp, loginUsername)) {
+        if (!isIpAllowed(clientIp, loginUsername)) {
             response.setContentType("text/html;charset=UTF-8");
             response.getWriter().write("<h1 style='color:red'>❌ 仅允许内网访问</h1>");
             return;
@@ -645,7 +733,7 @@ public class LogMonitorController {
         String clientIp = getRealIp(request);
         String loginUsername = getCurrentUsername(session);
 
-        if (!isInnerIp(clientIp, loginUsername)) {
+        if (!isIpAllowed(clientIp, loginUsername)) {
             result.put("code", 403);
             result.put("msg", "仅允许内网访问");
             return result;
@@ -703,7 +791,7 @@ public class LogMonitorController {
         String clientIp = getRealIp(request);
         String loginUsername = getCurrentUsername(session);
 
-        if (!isInnerIp(clientIp, loginUsername)) {
+        if (!isIpAllowed(clientIp, loginUsername)) {
             response.setContentType("text/html;charset=UTF-8");
             response.getWriter().write("<h1 style='color:red'>❌ 仅允许内网访问</h1>");
             return;
@@ -761,7 +849,7 @@ public class LogMonitorController {
         String clientIp = getRealIp(request);
         String loginUsername = getCurrentUsername(session);
 
-        if (!isInnerIp(clientIp, loginUsername)) {
+        if (!isIpAllowed(clientIp, loginUsername)) {
             result.put("code", 403);
             result.put("msg", "仅允许内网访问");
             return result;
@@ -795,7 +883,7 @@ public class LogMonitorController {
         String clientIp = getRealIp(request);
         String loginUsername = getCurrentUsername(session);
 
-        if (!isInnerIp(clientIp, loginUsername)) {
+        if (!isIpAllowed(clientIp, loginUsername)) {
             result.put("code", 403);
             result.put("msg", "仅允许内网访问");
             return result;
@@ -818,7 +906,7 @@ public class LogMonitorController {
         return result;
     }
 
-    // ==================== 客户管理 API ====================
+    // ==================== API客户管理 API ====================
 
     @GetMapping("/api/monitor/customers")
     public Map<String, Object> getCustomers(
@@ -834,7 +922,7 @@ public class LogMonitorController {
         String clientIp = getRealIp(request);
         String loginUsername = getCurrentUsername(session);
 
-        if (!isInnerIp(clientIp, loginUsername)) {
+        if (!isIpAllowed(clientIp, loginUsername)) {
             result.put("code", 403);
             result.put("msg", "仅允许内网访问");
             return result;
@@ -874,7 +962,7 @@ public class LogMonitorController {
         String clientIp = getRealIp(request);
         String loginUsername = getCurrentUsername(session);
 
-        if (!isInnerIp(clientIp, loginUsername)) {
+        if (!isIpAllowed(clientIp, loginUsername)) {
             result.put("code", 403);
             result.put("msg", "仅允许内网访问");
             return result;
@@ -907,7 +995,7 @@ public class LogMonitorController {
         String clientIp = getRealIp(request);
         String loginUsername = getCurrentUsername(session);
 
-        if (!isInnerIp(clientIp, loginUsername)) {
+        if (!isIpAllowed(clientIp, loginUsername)) {
             result.put("code", 403);
             result.put("msg", "仅允许内网访问");
             return result;
@@ -949,7 +1037,7 @@ public class LogMonitorController {
         String clientIp = getRealIp(request);
         String loginUsername = getCurrentUsername(session);
 
-        if (!isInnerIp(clientIp, loginUsername)) {
+        if (!isIpAllowed(clientIp, loginUsername)) {
             result.put("code", 403);
             result.put("msg", "仅允许内网访问");
             return result;
@@ -991,7 +1079,7 @@ public class LogMonitorController {
         String clientIp = getRealIp(request);
         String loginUsername = getCurrentUsername(session);
 
-        if (!isInnerIp(clientIp, loginUsername)) {
+        if (!isIpAllowed(clientIp, loginUsername)) {
             result.put("code", 403);
             result.put("msg", "仅允许内网访问");
             return result;
@@ -1016,7 +1104,7 @@ public class LogMonitorController {
         return result;
     }
 
-// ==================== 用户管理 API ====================
+// ==================== 登录账户管理 API ====================
 
     @GetMapping("/api/monitor/users")
     public Map<String, Object> getMonitorUsers(
@@ -1032,7 +1120,7 @@ public class LogMonitorController {
         String clientIp = getRealIp(request);
         String loginUsername = getCurrentUsername(session);
 
-        if (!isInnerIp(clientIp, loginUsername)) {
+        if (!isIpAllowed(clientIp, loginUsername)) {
             result.put("code", 403);
             result.put("msg", "仅允许内网访问");
             return result;
@@ -1072,7 +1160,7 @@ public class LogMonitorController {
         String clientIp = getRealIp(request);
         String loginUsername = getCurrentUsername(session);
 
-        if (!isInnerIp(clientIp, loginUsername)) {
+        if (!isIpAllowed(clientIp, loginUsername)) {
             result.put("code", 403);
             result.put("msg", "仅允许内网访问");
             return result;
@@ -1111,7 +1199,7 @@ public class LogMonitorController {
         String clientIp = getRealIp(request);
         String loginUsername = getCurrentUsername(session);
 
-        if (!isInnerIp(clientIp, loginUsername)) {
+        if (!isIpAllowed(clientIp, loginUsername)) {
             result.put("code", 403);
             result.put("msg", "仅允许内网访问");
             return result;
@@ -1151,7 +1239,7 @@ public class LogMonitorController {
         String clientIp = getRealIp(request);
         String loginUsername = getCurrentUsername(session);
 
-        if (!isInnerIp(clientIp, loginUsername)) {
+        if (!isIpAllowed(clientIp, loginUsername)) {
             result.put("code", 403);
             result.put("msg", "仅允许内网访问");
             return result;
@@ -1174,9 +1262,116 @@ public class LogMonitorController {
         return result;
     }
 
+    /**
+     * 获取当前登录用户信息
+     */
+    @GetMapping("/api/monitor/current-user")
+    public Map<String, Object> getCurrentUser(HttpServletRequest request) {
+        Map<String, Object> result = new HashMap<>();
+        HttpSession session = request.getSession();
+        String username = getCurrentUsername(session);
+        String role = (String) session.getAttribute("MONITOR_ROLE");
+
+        Map<String, Object> userInfo = new HashMap<>();
+        userInfo.put("username", username);
+        userInfo.put("role", role != null ? role : "ADMIN");
+
+        result.put("code", 200);
+        result.put("data", userInfo);
+        return result;
+    }
+
+    /**
+     * 重置用户密码（单独接口）
+     */
+    @PostMapping("/api/monitor/users/reset-password")
+    public Map<String, Object> resetPassword(@RequestBody Map<String, Object> params,
+                                             @RequestParam(required = false) String secret,
+                                             HttpServletRequest request) {
+        Map<String, Object> result = new HashMap<>();
+        HttpSession session = request.getSession();
+        String clientIp = getRealIp(request);
+        String loginUsername = getCurrentUsername(session);
+
+        if (!isIpAllowed(clientIp, loginUsername)) {
+            result.put("code", 403);
+            result.put("msg", "IP不在白名单中");
+            return result;
+        }
+        if (!MONITOR_SECRET.equals(secret)) {
+            result.put("code", 401);
+            result.put("msg", "无权限访问");
+            return result;
+        }
+
+        try {
+            Long id = ((Number) params.get("id")).longValue();
+            String password = (String) params.get("password");
+
+            if (password == null || password.trim().isEmpty()) {
+                result.put("code", 400);
+                result.put("msg", "密码不能为空");
+                return result;
+            }
+
+            MonitorUser user = monitorUserMapper.selectById(id);
+            if (user == null) {
+                result.put("code", 404);
+                result.put("msg", "用户不存在");
+                return result;
+            }
+
+            // 权限检查：NOC只能重置自己的密码
+            String currentRole = (String) session.getAttribute("MONITOR_ROLE");
+            if (!"ADMIN".equals(currentRole) && !user.getUsername().equals(loginUsername)) {
+                result.put("code", 403);
+                result.put("msg", "权限不足，只能重置自己的密码");
+                return result;
+            }
+
+            user.setPassword(password);
+            monitorUserMapper.update(user);
+
+            result.put("code", 200);
+            result.put("msg", "密码重置成功");
+        } catch (Exception e) {
+            logger.error("重置密码失败", e);
+            result.put("code", 500);
+            result.put("msg", "重置失败: " + e.getMessage());
+        }
+        return result;
+    }
+
     // ==================== 解除限制 API ====================
 
     // ==================== 运维管理 API ====================
+
+    /**
+     * 记录运维操作日志
+     */
+    private void recordOpsLog(String operationType, String operationName, String target,
+                              boolean success, String resultMsg, HttpServletRequest request) {
+        try {
+            HttpSession session = request.getSession();
+            String operator = getCurrentUsername(session);
+            if (operator == null) operator = "未知";
+
+            OpsAuditLog log = new OpsAuditLog();
+            log.setOperator(operator);
+            log.setOperationType(operationType);
+            log.setOperationName(operationName);
+            log.setTarget(target);
+            log.setResult(success ? 1 : 0);
+            log.setResultMsg(resultMsg);
+            log.setRequestIp(getRealIp(request));
+            log.setUserAgent(request.getHeader("User-Agent"));
+
+            opsAuditLogMapper.insert(log);
+            logger.info("运维操作日志记录成功: {} - {} - {}", operator, operationName, target);
+        } catch (Exception e) {
+            logger.error("记录运维操作日志失败: {}", e.getMessage());
+        }
+    }
 
     /**
      * 重置2FA（解绑2FA）
@@ -1190,7 +1385,7 @@ public class LogMonitorController {
         String clientIp = getRealIp(request);
         String loginUsername = getCurrentUsername(session);
 
-        if (!isInnerIp(clientIp, loginUsername)) {
+        if (!isIpAllowed(clientIp, loginUsername)) {
             result.put("code", 403);
             result.put("msg", "仅允许内网访问");
             return result;
@@ -1202,6 +1397,8 @@ public class LogMonitorController {
         }
 
         NCacheDBLink db = null;
+        boolean success = false;
+        String resultMsg = "";
         try {
             db = NCacheDBLink.getNCacheDBLink();
             db.InitEnv();
@@ -1210,15 +1407,19 @@ public class LogMonitorController {
             Map<String, Object> ret = db.prc_Set2FAKeyForCompanyId("", username);
             db.Disconnect();
 
+            success = true;
+            resultMsg = "重置2FA成功";
             result.put("code", 200);
             result.put("msg", "重置2FA成功");
             result.put("data", ret);
             logger.info("运维操作: 重置2FA, 操作人={}, 目标账号={}", loginUsername, username);
         } catch (Exception e) {
             logger.error("重置2FA失败", e);
+            resultMsg = "重置2FA失败: " + e.getMessage();
             result.put("code", 500);
             result.put("msg", "重置2FA失败: " + e.getMessage());
         } finally {
+            recordOpsLog(OPS_RESET_2FA, "重置2FA", username, success, resultMsg, request);
             if (db != null) {
                 try { db.Disconnect(); } catch (Exception ignored) {}
                 try { db.Destroy(); } catch (Exception ignored) {}
@@ -1239,7 +1440,7 @@ public class LogMonitorController {
         String clientIp = getRealIp(request);
         String loginUsername = getCurrentUsername(session);
 
-        if (!isInnerIp(clientIp, loginUsername)) {
+        if (!isIpAllowed(clientIp, loginUsername)) {
             result.put("code", 403);
             result.put("msg", "仅允许内网访问");
             return result;
@@ -1251,6 +1452,8 @@ public class LogMonitorController {
         }
 
         NCacheDBLink db = null;
+        boolean success = false;
+        String resultMsg = "";
         try {
             db = NCacheDBLink.getNCacheDBLink();
             db.InitEnv();
@@ -1259,15 +1462,19 @@ public class LogMonitorController {
             Map<String, Object> ret = db.prc_SetCompany2FA_Condition(username, "", "", "1");
             db.Disconnect();
 
+            success = true;
+            resultMsg = "解除2FA成功";
             result.put("code", 200);
             result.put("msg", "解除2FA成功");
             result.put("data", ret);
             logger.info("运维操作: 解除2FA, 操作人={}, 目标账号={}", loginUsername, username);
         } catch (Exception e) {
             logger.error("解除2FA失败", e);
+            resultMsg = "解除2FA失败: " + e.getMessage();
             result.put("code", 500);
             result.put("msg", "解除2FA失败: " + e.getMessage());
         } finally {
+            recordOpsLog(OPS_DISABLE_2FA, "解除2FA", username, success, resultMsg, request);
             if (db != null) {
                 try { db.Disconnect(); } catch (Exception ignored) {}
                 try { db.Destroy(); } catch (Exception ignored) {}
@@ -1277,7 +1484,7 @@ public class LogMonitorController {
     }
 
     /**
-     * 解锁账户（需要先实现存储过程）
+     * 解锁账户
      */
     @PostMapping("/api/monitor/ops/unlock-account")
     public Map<String, Object> unlockAccount(@RequestParam String username,
@@ -1288,7 +1495,7 @@ public class LogMonitorController {
         String clientIp = getRealIp(request);
         String loginUsername = getCurrentUsername(session);
 
-        if (!isInnerIp(clientIp, loginUsername)) {
+        if (!isIpAllowed(clientIp, loginUsername)) {
             result.put("code", 403);
             result.put("msg", "仅允许内网访问");
             return result;
@@ -1300,6 +1507,8 @@ public class LogMonitorController {
         }
 
         NCacheDBLink db = null;
+        boolean success = false;
+        String resultMsg = "";
         try {
             db = NCacheDBLink.getNCacheDBLink();
             db.InitEnv();
@@ -1308,15 +1517,19 @@ public class LogMonitorController {
             Map<String, Object> ret = db.prc_ResumeWEBAccountByStaff(username, loginUsername, "0");
             db.Disconnect();
 
+            success = true;
+            resultMsg = "解锁账户成功";
             result.put("code", 200);
             result.put("msg", "解锁账户成功");
             result.put("data", ret);
             logger.info("运维操作: 解锁账户, 操作人={}, 目标账号={}", loginUsername, username);
         } catch (Exception e) {
             logger.error("解锁账户失败", e);
+            resultMsg = "解锁账户失败: " + e.getMessage();
             result.put("code", 500);
             result.put("msg", "解锁账户失败: " + e.getMessage());
         } finally {
+            recordOpsLog(OPS_UNLOCK_ACCOUNT, "解锁账户", username, success, resultMsg, request);
             if (db != null) {
                 try { db.Disconnect(); } catch (Exception ignored) {}
                 try { db.Destroy(); } catch (Exception ignored) {}
@@ -1337,7 +1550,7 @@ public class LogMonitorController {
         String clientIp = getRealIp(request);
         String loginUsername = getCurrentUsername(session);
 
-        if (!isInnerIp(clientIp, loginUsername)) {
+        if (!isIpAllowed(clientIp, loginUsername)) {
             result.put("code", 403);
             result.put("msg", "仅允许内网访问");
             return result;
@@ -1349,6 +1562,8 @@ public class LogMonitorController {
         }
 
         NCacheDBLink db = null;
+        boolean success = false;
+        String resultMsg = "";
         try {
             db = NCacheDBLink.getNCacheDBLink();
             db.InitEnv();
@@ -1357,15 +1572,19 @@ public class LogMonitorController {
             Map<String, Object> ret = db.prc_ResumeWEBAccountByStaff(username, loginUsername, "1");
             db.Disconnect();
 
+            success = true;
+            resultMsg = "解锁IP成功";
             result.put("code", 200);
             result.put("msg", "解锁IP成功");
             result.put("data", ret);
-            logger.info("运维操作: 解锁IP, 操作人={}, 目标账号={}", loginUsername, username);
+            logger.info("运维操作: 解锁IP, 操作人={}, 目标={}", loginUsername, username);
         } catch (Exception e) {
             logger.error("解锁IP失败", e);
+            resultMsg = "解锁IP失败: " + e.getMessage();
             result.put("code", 500);
             result.put("msg", "解锁IP失败: " + e.getMessage());
         } finally {
+            recordOpsLog(OPS_UNLOCK_IP, "解锁IP", username, success, resultMsg, request);
             if (db != null) {
                 try { db.Disconnect(); } catch (Exception ignored) {}
                 try { db.Destroy(); } catch (Exception ignored) {}
@@ -1374,7 +1593,118 @@ public class LogMonitorController {
         return result;
     }
 
-    // ==================== 队列管理 API ====================
+    // ==================== 运维日志 API ====================
+
+    /**
+     * 查询运维操作日志（分页）
+     */
+    @GetMapping("/api/monitor/ops-logs")
+    public Map<String, Object> getOpsLogs(
+            @RequestParam(required = false) String operator,
+            @RequestParam(required = false) String operationType,
+            @RequestParam(required = false) String startTime,
+            @RequestParam(required = false) String endTime,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String secret,
+            HttpServletRequest request) {
+
+        Map<String, Object> result = new HashMap<>();
+        HttpSession session = request.getSession();
+        String clientIp = getRealIp(request);
+        String loginUsername = getCurrentUsername(session);
+
+        if (!isIpAllowed(clientIp, loginUsername)) {
+            result.put("code", 403);
+            result.put("msg", "仅允许内网访问");
+            return result;
+        }
+        if (!MONITOR_SECRET.equals(secret)) {
+            result.put("code", 401);
+            result.put("msg", "无权限访问");
+            return result;
+        }
+
+        try {
+            int offset = (page - 1) * size;
+            LocalDateTime start = null;
+            LocalDateTime end = null;
+
+            if (startTime != null && !startTime.trim().isEmpty()) {
+                try {
+                    String timeStr = startTime.trim();
+                    if (timeStr.length() == 16) timeStr += ":00";
+                    start = LocalDateTime.parse(timeStr, DATE_FORMATTER);
+                } catch (Exception e) {
+                    logger.error("解析开始时间失败: {}", startTime);
+                }
+            }
+            if (endTime != null && !endTime.trim().isEmpty()) {
+                try {
+                    String timeStr = endTime.trim();
+                    if (timeStr.length() == 16) timeStr += ":00";
+                    end = LocalDateTime.parse(timeStr, DATE_FORMATTER);
+                } catch (Exception e) {
+                    logger.error("解析结束时间失败: {}", endTime);
+                }
+            }
+
+            List<OpsAuditLog> logs = opsAuditLogMapper.selectPage(offset, size, operator, operationType, start, end);
+            long total = opsAuditLogMapper.count(operator, operationType, start, end);
+
+            result.put("code", 200);
+            result.put("data", logs);
+            result.put("page", page);
+            result.put("size", size);
+            result.put("total", total);
+            result.put("totalPages", (total + size - 1) / size);
+        } catch (Exception e) {
+            logger.error("查询运维日志失败", e);
+            result.put("code", 500);
+            result.put("msg", "查询失败: " + e.getMessage());
+        }
+        return result;
+    }
+
+    /**
+     * 获取运维操作统计数据（用于图表）
+     */
+    @GetMapping("/api/monitor/ops-logs/stats")
+    public Map<String, Object> getOpsLogsStats(@RequestParam(required = false) String secret, HttpServletRequest request) {
+        Map<String, Object> result = new HashMap<>();
+        HttpSession session = request.getSession();
+        String clientIp = getRealIp(request);
+        String loginUsername = getCurrentUsername(session);
+
+        if (!isIpAllowed(clientIp, loginUsername)) {
+            result.put("code", 403);
+            result.put("msg", "仅允许内网访问");
+            return result;
+        }
+        if (!MONITOR_SECRET.equals(secret)) {
+            result.put("code", 401);
+            result.put("msg", "无权限访问");
+            return result;
+        }
+
+        try {
+            Map<String, Object> stats = new HashMap<>();
+            stats.put("weekCompare", opsAuditLogMapper.getWeekCompareStats());
+            stats.put("monthStatsByType", opsAuditLogMapper.getCurrentMonthStatsByType());
+            stats.put("monthStatsByOperator", opsAuditLogMapper.getCurrentMonthStatsByOperator());
+            stats.put("last7DaysTrend", opsAuditLogMapper.getLast7DaysTrend());
+
+            result.put("code", 200);
+            result.put("data", stats);
+        } catch (Exception e) {
+            logger.error("获取运维统计失败", e);
+            result.put("code", 500);
+            result.put("msg", "统计失败: " + e.getMessage());
+        }
+        return result;
+    }
+
+    // ==================== 发送队列管理 API ====================
 
     /**
      * 获取任务列表（内部管理）
@@ -1394,7 +1724,7 @@ public class LogMonitorController {
         String clientIp = getRealIp(request);
         String loginUsername = getCurrentUsername(session);
 
-        if (!isInnerIp(clientIp, loginUsername)) {
+        if (!isIpAllowed(clientIp, loginUsername)) {
             result.put("code", 403);
             result.put("msg", "仅允许内网访问");
             return result;
@@ -1435,7 +1765,7 @@ public class LogMonitorController {
         String clientIp = getRealIp(request);
         String loginUsername = getCurrentUsername(session);
 
-        if (!isInnerIp(clientIp, loginUsername)) {
+        if (!isIpAllowed(clientIp, loginUsername)) {
             result.put("code", 403);
             result.put("msg", "仅允许内网访问");
             return result;
@@ -1465,7 +1795,7 @@ public class LogMonitorController {
         String clientIp = getRealIp(request);
         String loginUsername = getCurrentUsername(session);
 
-        if (!isInnerIp(clientIp, loginUsername)) {
+        if (!isIpAllowed(clientIp, loginUsername)) {
             result.put("code", 403);
             result.put("msg", "仅允许内网访问");
             return result;
@@ -1736,20 +2066,22 @@ public class LogMonitorController {
                 "<a href=\"/monitor/dashboard\">服务监控</a>\n" +
                 "<a href=\"/monitor/login-audit\">登录审计</a>\n" +
                 "<a href=\"/monitor/number-files\">号码备份</a>\n" +
-                "<a href=\"/monitor/customer-management\">客户管理</a>\n" +
+                "<a href=\"/monitor/customer-management\">API客户管理</a>\n" +
                 "<a href=\"/monitor/user-management\">登录账户管理</a>\n" +
                 "<a href=\"/monitor/ops-management\">运维管理</a>\n" +
-                "<a href=\"/monitor/queue-management\">队列管理</a>" +
+                "<a href=\"/monitor/queue-management\">发送队列管理</a>" +
                 "</div>\n" +
                 "<div class=\"user-info\">\n" +
-                "<span class=\"user-name\">Administrator</span>\n" +
+                "<span class=\"user-name\" id=\"currentUsername\">加载中...</span>\n" +
+                "<span class=\"user-role\" id=\"currentUserRole\" style=\"background:rgba(255,255,255,0.2);padding:4px 12px;border-radius:20px;font-size:12px;\">加载中...</span>\n" +
                 "<button class=\"logout-btn\" onclick=\"logout()\">退出</button>\n" +
+                "</div>\n" +
                 "</div>\n" +
                 "</div>\n" +
                 "</div>\n" +
                 "<div class=\"page-wrap\">\n" +
                 "<div class=\"welcome-card\">\n" +
-                "<h1>欢迎回来，Administrator</h1>\n" +
+                "<h1 id=\"welcomeTitle\">欢迎回来，加载中...</h1>\n" +
                 "<p>欢迎使用ECCOM 监控管理系统</p>\n" +
                 "<div class=\"welcome-stats\" id=\"welcomeStats\"></div>\n" +
                 "</div>\n" +
@@ -1773,6 +2105,23 @@ public class LogMonitorController {
                 "</div>\n" +
                 "<script>\n" +
                 "function logout(){fetch('/monitor/logout').then(function(){location.href='/monitor/login';});}\n" +
+                "// 获取当前登录用户信息\n" +
+                "function getCurrentUserInfo() {\n" +
+                "    fetch('/api/monitor/current-user?secret=dn17ORUwf36Znl')\n" +
+                "        .then(function(res) { return res.json(); })\n" +
+                "        .then(function(data) {\n" +
+                "            if (data.code === 200) {\n" +
+                "                document.getElementById('currentUsername').innerText = data.data.username;\n" +
+                "                var roleSpan = document.getElementById('currentUserRole');\n" +
+                "                var roleText = data.data.role === 'ADMIN' ? '👑 管理员' : '🔧 NOC';\n" +
+                "                roleSpan.innerHTML = roleText;\n" +
+                "                // 更新欢迎语\n" +
+                "                var welcomeTitle = document.getElementById('welcomeTitle');\n" +
+                "                if (welcomeTitle) welcomeTitle.innerHTML = '欢迎回来，' + data.data.username;\n" +
+                "            }\n" +
+                "        }).catch(function(err) { console.error('获取用户信息失败:', err); });\n" +
+                "}\n" +
+                "getCurrentUserInfo();\n" +
                 "let hourlyChart, failIpChart;\n" +
                 "function renderActiveUsers(users) {\n" +
                 "  var container = document.getElementById('userItems');\n" +
@@ -1904,15 +2253,16 @@ public class LogMonitorController {
                 "<a href=\"/monitor/dashboard\" class=\"active\">服务监控</a>\n" +
                 "<a href=\"/monitor/login-audit\">登录审计</a>\n" +
                 "<a href=\"/monitor/number-files\">号码备份</a>\n" +
-                "<a href=\"/monitor/customer-management\">客户管理</a>\n" +
+                "<a href=\"/monitor/customer-management\">API客户管理</a>\n" +
                 "<a href=\"/monitor/user-management\">登录账户管理</a>\n" +
                 "<a href=\"/monitor/ops-management\">运维管理</a>\n" +
-                "<a href=\"/monitor/queue-management\">队列管理</a>" +
+                "<a href=\"/monitor/queue-management\">发送队列管理</a>" +
                 "</div>\n" +
                 "<div class=\"user-info\">\n" +
-                "<span class=\"user-name\">Administrator</span>\n" +
-                "<button class=\"theme-toggle\" onclick=\"toggleTheme()\" id=\"themeBtn\">🌙 深色</button>\n" +
-                "<button class=\"logout-btn\" onclick=\"logout()\">退出</button>\n" +
+                "    <span class=\"user-name\" id=\"currentUsername\">加载中...</span>\n" +
+                "    <span class=\"user-role\" id=\"currentUserRole\" style=\"background:rgba(255,255,255,0.2);padding:4px 12px;border-radius:30px;font-size:12px;\">加载中...</span>\n" +
+                "    <button class=\"theme-toggle\" onclick=\"toggleTheme()\" id=\"themeBtn\">🌙 深色</button>\n" +
+                "    <button class=\"logout-btn\" onclick=\"logout()\">退出</button>\n" +
                 "</div>\n" +
                 "</div>\n" +
                 "<div class=\"status-header\">\n" +
@@ -1954,6 +2304,22 @@ public class LogMonitorController {
                 "  }\n" +
                 "}\n" +
                 "function logout(){fetch('/monitor/logout').then(function(){location.href='/monitor/login';});}\n" +
+                "// 获取当前登录用户信息\n" +
+                "function getCurrentUserInfo() {\n" +
+                "    fetch('/api/monitor/current-user?secret=dn17ORUwf36Znl')\n" +
+                "        .then(function(res) { return res.json(); })\n" +
+                "        .then(function(data) {\n" +
+                "            if (data.code === 200) {\n" +
+                "                document.getElementById('currentUsername').innerText = data.data.username;\n" +
+                "                var roleSpan = document.getElementById('currentUserRole');\n" +
+                "                var roleText = data.data.role === 'ADMIN' ? '👑 管理员' : '🔧 NOC';\n" +
+                "                roleSpan.innerHTML = roleText;\n" +
+                "                var welcomeTitle = document.querySelector('.welcome-card h1');\n" +
+                "                if (welcomeTitle) welcomeTitle.innerHTML = '欢迎回来，' + data.data.username;\n" +
+                "            }\n" +
+                "        }).catch(function(err) { console.error('获取用户信息失败:', err); });\n" +
+                "}\n" +
+                "getCurrentUserInfo();\n" +
                 "var PAGE_SIZE=10;\n" +
                 "var apiData=[],attackData=[],longSmsData=[],gcData=[],errorData=[];\n" +
                 "var apiPage=1,attackPage=1,longSmsPage=1,gcPage=1,errorPage=1;\n" +
@@ -2035,7 +2401,7 @@ public class LogMonitorController {
                 "}\n" +
                 "*{margin:0;padding:0;box-sizing:border-box;}\n" +
                 "body{background:var(--bg-primary);font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;min-height:100vh;transition:background 0.3s,color 0.3s;}\n" +
-                ".page-wrap{max-width:1400px;margin:0 auto;padding:20px 24px;}\n" +
+                ".page-wrap{max-width:1600px;margin:0 auto;padding:20px 24px;}\n" +
                 ".navbar{background:var(--navbar-bg);height:60px;display:flex;align-items:center;justify-content:space-between;padding:0 32px;color:white;border-radius:16px;margin-bottom:24px;box-shadow:0 4px 20px rgba(0,0,0,0.08);transition:background 0.3s;}\n" +
                 ".nav-links{display:flex;gap:8px;}\n" +
                 ".navbar a{color:white;text-decoration:none;padding:8px 20px;border-radius:30px;font-weight:500;transition:all 0.3s;}\n" +
@@ -2094,15 +2460,16 @@ public class LogMonitorController {
                 "<a href=\"/monitor/dashboard\">服务监控</a>\n" +
                 "<a href=\"/monitor/login-audit\" class=\"active\">登录审计</a>\n" +
                 "<a href=\"/monitor/number-files\">号码备份</a>\n" +
-                "<a href=\"/monitor/customer-management\">客户管理</a>\n" +
+                "<a href=\"/monitor/customer-management\">API客户管理</a>\n" +
                 "<a href=\"/monitor/user-management\">登录账户管理</a>\n" +
                 "<a href=\"/monitor/ops-management\">运维管理</a>\n" +
-                "<a href=\"/monitor/queue-management\">队列管理</a>" +
+                "<a href=\"/monitor/queue-management\">发送队列管理</a>" +
                 "</div>\n" +
                 "<div class=\"nav-right\">\n" +
-                "<span class=\"user-name\">Administrator</span>\n" +
-                "<button class=\"theme-toggle\" onclick=\"toggleTheme()\" id=\"themeBtn\">🌙 深色</button>\n" +
-                "<button class=\"logout-btn\" onclick=\"logout()\">退出</button>\n" +
+                "    <span class=\"user-name\" id=\"currentUsername\">加载中...</span>\n" +
+                "    <span class=\"user-role\" id=\"currentUserRole\" style=\"background:rgba(255,255,255,0.2);padding:4px 12px;border-radius:20px;font-size:12px;\">加载中...</span>\n" +
+                "    <button class=\"theme-toggle\" onclick=\"toggleTheme()\" id=\"themeBtn\">🌙 深色</button>\n" +
+                "    <button class=\"logout-btn\" onclick=\"logout()\">退出</button>\n" +
                 "</div>\n" +
                 "</div>\n" +
                 "<div class=\"stats-grid\" id=\"statsGrid\"></div>\n" +
@@ -2150,6 +2517,20 @@ public class LogMonitorController {
                 "  if (themeBtn) themeBtn.innerHTML = '☀️ 浅色';\n" +
                 "}\n" +
                 "let page=1,size=20,totalPages=1;\n" +
+                "// 获取当前登录用户信息\n" +
+                "function getCurrentUserInfo() {\n" +
+                "    fetch('/api/monitor/current-user?secret=dn17ORUwf36Znl')\n" +
+                "        .then(function(res) { return res.json(); })\n" +
+                "        .then(function(data) {\n" +
+                "            if (data.code === 200) {\n" +
+                "                document.getElementById('currentUsername').innerText = data.data.username;\n" +
+                "                var roleSpan = document.getElementById('currentUserRole');\n" +
+                "                var roleText = data.data.role === 'ADMIN' ? '👑 管理员' : '🔧 NOC';\n" +
+                "                roleSpan.innerHTML = roleText;\n" +
+                "            }\n" +
+                "        }).catch(function(err) { console.error('获取用户信息失败:', err); });\n" +
+                "}\n" +
+                "getCurrentUserInfo();\n" +
                 "function formatTwoFactor(tf){if(tf==='GOOGLE')return'<span class=\"badge badge-google\">🔐 Google</span>';if(tf==='EMAIL')return'<span class=\"badge badge-email\">📧 邮箱</span>';return'-';}\n" +
                 "function loadStats(){fetch('/api/monitor/login-stats?secret=dn17ORUwf36Znl').then(res=>res.json()).then(data=>{if(data.code===200&&data.data){var t=data.data.today||{},w=data.data.week||{},m=data.data.month||{},two=data.data.twoFactorStats||[];var google=0,email=0;if(two && two.forEach){two.forEach(s=>{if(s.twoFactorType==='GOOGLE')google=s.totalCount||0;if(s.twoFactorType==='EMAIL')email=s.totalCount||0;});}var successRate=t.total>0?((t.success*100)/t.total).toFixed(1):0;var statsGrid = document.getElementById('statsGrid');if(statsGrid) statsGrid.innerHTML='<div class=\"stat-card\"><div class=\"stat-number\">'+(t.total||0)+'</div><div class=\"stat-label\">今日登录</div><div class=\"stat-sub\">✅成功 '+(t.success||0)+' / ❌失败 '+(t.fail||0)+'</div></div><div class=\"stat-card\"><div class=\"stat-number\">'+(w.total||0)+'</div><div class=\"stat-label\">本周登录</div></div><div class=\"stat-card\"><div class=\"stat-number\">'+(m.total||0)+'</div><div class=\"stat-label\">本月登录</div></div><div class=\"stat-card\"><div class=\"stat-number\">'+successRate+'%</div><div class=\"stat-label\">今日成功率</div></div><div class=\"stat-card\"><div class=\"stat-number\">'+google+'/'+email+'</div><div class=\"stat-label\">Google/邮箱2FA</div></div>';}}).catch(err=>console.error('加载统计数据失败:',err));}\n" +
                 "function searchLogs(){page=1;loadLogs();}\n" +
@@ -2293,7 +2674,7 @@ public class LogMonitorController {
                 "<head>\n" +
                 "<meta charset=\"UTF-8\">\n" +
                 "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n" +
-                "<title>客户号码文件管理</title>\n" +
+                "<title>Texcell ECCOM WEB 客户号码文件管理</title>\n" +
                 "<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23667eea'/%3E%3Ctext x='50' y='68' font-size='50' text-anchor='middle' fill='white' font-family='Arial'%3E📁%3C/text%3E%3C/svg%3E\">\n" +
                 "<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap\" rel=\"stylesheet\">\n" +
                 "<style>\n" +
@@ -2333,7 +2714,7 @@ public class LogMonitorController {
                 "}\n" +
                 "*{margin:0;padding:0;box-sizing:border-box;}\n" +
                 "body{background:var(--bg-primary);font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;min-height:100vh;transition:background 0.3s,color 0.3s;}\n" +
-                ".page-wrap{max-width:1400px;margin:0 auto;padding:20px 24px;}\n" +
+                ".page-wrap{max-width:1600px;margin:0 auto;padding:20px 24px;}\n" +
                 ".navbar{background:var(--navbar-bg);height:60px;display:flex;align-items:center;justify-content:space-between;padding:0 32px;color:white;border-radius:16px;margin-bottom:24px;box-shadow:0 4px 20px rgba(0,0,0,0.08);transition:background 0.3s;}\n" +
                 ".nav-links{display:flex;gap:8px;}\n" +
                 ".navbar a{color:white;text-decoration:none;padding:8px 20px;border-radius:30px;font-weight:500;transition:all 0.3s;}\n" +
@@ -2391,15 +2772,16 @@ public class LogMonitorController {
                 "<a href=\"/monitor/dashboard\">服务监控</a>\n" +
                 "<a href=\"/monitor/login-audit\">登录审计</a>\n" +
                 "<a href=\"/monitor/number-files\" class=\"active\">号码备份</a>\n" +
-                "<a href=\"/monitor/customer-management\">客户管理</a>\n" +
+                "<a href=\"/monitor/customer-management\">API客户管理</a>\n" +
                 "<a href=\"/monitor/user-management\">登录账户管理</a>\n" +
                 "<a href=\"/monitor/ops-management\">运维管理</a>\n" +
-                "<a href=\"/monitor/queue-management\">队列管理</a>" +
+                "<a href=\"/monitor/queue-management\">发送队列管理</a>" +
                 "</div>\n" +
                 "<div class=\"nav-right\">\n" +
-                "<span class=\"user-name\">Administrator</span>\n" +
-                "<button class=\"theme-toggle\" onclick=\"toggleTheme()\" id=\"themeBtn\">🌙 深色</button>\n" +
-                "<button class=\"logout-btn\" onclick=\"logout()\">退出</button>\n" +
+                "    <span class=\"user-name\" id=\"currentUsername\">加载中...</span>\n" +
+                "    <span class=\"user-role\" id=\"currentUserRole\" style=\"background:rgba(255,255,255,0.2);padding:4px 12px;border-radius:20px;font-size:12px;\">加载中...</span>\n" +
+                "    <button class=\"theme-toggle\" onclick=\"toggleTheme()\" id=\"themeBtn\">🌙 深色</button>\n" +
+                "    <button class=\"logout-btn\" onclick=\"logout()\">退出</button>\n" +
                 "</div>\n" +
                 "</div>\n" +
                 "<div class=\"search-card\">\n" +
@@ -2428,6 +2810,20 @@ public class LogMonitorController {
                 "</div>\n" +
                 "<script>\n" +
                 "let page=1,size=20,totalPages=1;\n" +
+                "// 获取当前登录用户信息\n" +
+                "function getCurrentUserInfo() {\n" +
+                "    fetch('/api/monitor/current-user?secret=dn17ORUwf36Znl')\n" +
+                "        .then(function(res) { return res.json(); })\n" +
+                "        .then(function(data) {\n" +
+                "            if (data.code === 200) {\n" +
+                "                document.getElementById('currentUsername').innerText = data.data.username;\n" +
+                "                var roleSpan = document.getElementById('currentUserRole');\n" +
+                "                var roleText = data.data.role === 'ADMIN' ? '👑 管理员' : '🔧 NOC';\n" +
+                "                roleSpan.innerHTML = roleText;\n" +
+                "            }\n" +
+                "        }).catch(function(err) { console.error('获取用户信息失败:', err); });\n" +
+                "}\n" +
+                "getCurrentUserInfo();\n" +
                 "function toggleTheme(){\n" +
                 "  var html=document.documentElement;\n" +
                 "  var btn=document.getElementById('themeBtn');\n" +
@@ -2565,7 +2961,7 @@ public class LogMonitorController {
                 "<head>\n" +
                 "<meta charset=\"UTF-8\">\n" +
                 "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n" +
-                "<title>客户管理</title>\n" +
+                "<title>Texcell ECCOM WEB API客户管理</title>\n" +
                 "<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23667eea'/%3E%3Ctext x='50' y='68' font-size='50' text-anchor='middle' fill='white' font-family='Arial'%3E👥%3C/text%3E%3C/svg%3E\">\n" +
                 "<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap\" rel=\"stylesheet\">\n" +
                 "<style>\n" +
@@ -2609,7 +3005,7 @@ public class LogMonitorController {
                 "}\n" +
                 "*{margin:0;padding:0;box-sizing:border-box;}\n" +
                 "body{background:var(--bg-primary);font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;min-height:100vh;transition:background 0.3s,color 0.3s;}\n" +
-                ".page-wrap{max-width:1400px;margin:0 auto;padding:20px 24px;}\n" +
+                ".page-wrap{max-width:1600px;margin:0 auto;padding:20px 24px;}\n" +
                 ".navbar{background:var(--navbar-bg);height:60px;display:flex;align-items:center;justify-content:space-between;padding:0 32px;color:white;border-radius:16px;margin-bottom:24px;box-shadow:0 4px 20px rgba(0,0,0,0.08);transition:background 0.3s;}\n" +
                 ".nav-links{display:flex;gap:8px;}\n" +
                 ".navbar a{color:white;text-decoration:none;padding:8px 20px;border-radius:30px;font-weight:500;transition:all 0.3s;}\n" +
@@ -2680,15 +3076,16 @@ public class LogMonitorController {
                 "<a href=\"/monitor/dashboard\">服务监控</a>\n" +
                 "<a href=\"/monitor/login-audit\">登录审计</a>\n" +
                 "<a href=\"/monitor/number-files\">号码备份</a>\n" +
-                "<a href=\"/monitor/customer-management\" class=\"active\">客户管理</a>\n" +
+                "<a href=\"/monitor/customer-management\" class=\"active\">API客户管理</a>\n" +
                 "<a href=\"/monitor/user-management\">登录账户管理</a>\n" +
                 "<a href=\"/monitor/ops-management\">运维管理</a>\n" +
-                "<a href=\"/monitor/queue-management\">队列管理</a>" +
+                "<a href=\"/monitor/queue-management\">发送队列管理</a>" +
                 "</div>\n" +
                 "<div class=\"nav-right\">\n" +
-                "<span class=\"user-name\">Administrator</span>\n" +
-                "<button class=\"theme-toggle\" onclick=\"toggleTheme()\" id=\"themeBtn\">🌙 深色</button>\n" +
-                "<button class=\"logout-btn\" onclick=\"logout()\">退出</button>\n" +
+                "    <span class=\"user-name\" id=\"currentUsername\">加载中...</span>\n" +
+                "    <span class=\"user-role\" id=\"currentUserRole\" style=\"background:rgba(255,255,255,0.2);padding:4px 12px;border-radius:20px;font-size:12px;\">加载中...</span>\n" +
+                "    <button class=\"theme-toggle\" onclick=\"toggleTheme()\" id=\"themeBtn\">🌙 深色</button>\n" +
+                "    <button class=\"logout-btn\" onclick=\"logout()\">退出</button>\n" +
                 "</div>\n" +
                 "</div>\n" +
                 "<div class=\"stats-card\" id=\"statsCard\">\n" +
@@ -2716,7 +3113,7 @@ public class LogMonitorController {
                 "</table>\n" +
                 "<div class=\"pagination\" id=\"pagination\"></div>\n" +
                 "</div>\n" +
-                "<div class=\"footer\">👥 API客户管理 | 新增/编辑客户后需重启应用生效</div>\n" +
+                "<div class=\"footer\">👥 APIAPI客户管理 | 新增/编辑客户后需重启应用生效</div>\n" +
                 "</div>\n" +
                 "<div id=\"modal\" class=\"modal\" style=\"display:none;\">\n" +
                 "<div class=\"modal-content\">\n" +
@@ -2731,6 +3128,20 @@ public class LogMonitorController {
                 "</div>\n" +
                 "<script>\n" +
                 "let page=1,size=20,totalPages=1;\n" +
+                "// 获取当前登录用户信息\n" +
+                "function getCurrentUserInfo() {\n" +
+                "    fetch('/api/monitor/current-user?secret=dn17ORUwf36Znl')\n" +
+                "        .then(function(res) { return res.json(); })\n" +
+                "        .then(function(data) {\n" +
+                "            if (data.code === 200) {\n" +
+                "                document.getElementById('currentUsername').innerText = data.data.username;\n" +
+                "                var roleSpan = document.getElementById('currentUserRole');\n" +
+                "                var roleText = data.data.role === 'ADMIN' ? '👑 管理员' : '🔧 NOC';\n" +
+                "                roleSpan.innerHTML = roleText;\n" +
+                "            }\n" +
+                "        }).catch(function(err) { console.error('获取用户信息失败:', err); });\n" +
+                "}\n" +
+                "getCurrentUserInfo();\n" +
                 "function toggleTheme(){var html=document.documentElement;var btn=document.getElementById('themeBtn');var currentTheme=html.getAttribute('data-theme');if(currentTheme==='dark'){html.removeAttribute('data-theme');btn.innerHTML='🌙 深色';localStorage.setItem('monitor-theme','light');}else{html.setAttribute('data-theme','dark');btn.innerHTML='☀️ 浅色';localStorage.setItem('monitor-theme','dark');}}\n" +
                 "function logout(){fetch('/monitor/logout').then(function(){location.href='/monitor/login';});}\n" +
                 "var savedTheme=localStorage.getItem('monitor-theme');if(savedTheme==='dark'){document.documentElement.setAttribute('data-theme','dark');var themeBtn=document.getElementById('themeBtn');if(themeBtn)themeBtn.innerHTML='☀️ 浅色';}\n" +
@@ -2768,7 +3179,7 @@ public class LogMonitorController {
                 "<head>\n" +
                 "<meta charset=\"UTF-8\">\n" +
                 "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n" +
-                "<title>用户管理</title>\n" +
+                "<title>Texcell ECCOM WEB 登录账户管理</title>\n" +
                 "<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23667eea'/%3E%3Ctext x='50' y='68' font-size='50' text-anchor='middle' fill='white' font-family='Arial'%3E👤%3C/text%3E%3C/svg%3E\">\n" +
                 "<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap\" rel=\"stylesheet\">\n" +
                 "<style>\n" +
@@ -2812,7 +3223,7 @@ public class LogMonitorController {
                 "}\n" +
                 "*{margin:0;padding:0;box-sizing:border-box;}\n" +
                 "body{background:var(--bg-primary);font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;min-height:100vh;transition:background 0.3s,color 0.3s;}\n" +
-                ".page-wrap{max-width:1400px;margin:0 auto;padding:20px 24px;}\n" +
+                ".page-wrap{max-width:1600px;margin:0 auto;padding:20px 24px;}\n" +
                 ".navbar{background:var(--navbar-bg);height:60px;display:flex;align-items:center;justify-content:space-between;padding:0 32px;color:white;border-radius:16px;margin-bottom:24px;box-shadow:0 4px 20px rgba(0,0,0,0.08);transition:background 0.3s;}\n" +
                 ".nav-links{display:flex;gap:8px;}\n" +
                 ".navbar a{color:white;text-decoration:none;padding:8px 20px;border-radius:30px;font-weight:500;transition:all 0.3s;}\n" +
@@ -2837,7 +3248,7 @@ public class LogMonitorController {
                 ".add-btn{background:linear-gradient(135deg,#10b981 0%,#059669 100%);color:white;border:none;padding:8px 20px;border-radius:30px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;}\n" +
                 ".add-btn:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(16,185,129,0.4);}\n" +
                 ".log-card{background:var(--bg-card);border-radius:16px;overflow:auto;box-shadow:var(--shadow);transition:background 0.3s;}\n" +
-                ".log-table{width:100%;border-collapse:collapse;min-width:800px;}\n" +
+                ".log-table{width:100%;border-collapse:collapse;min-width:900px;}\n" +
                 ".log-table th{background:var(--table-header-bg);padding:14px 16px;text-align:left;font-size:13px;font-weight:600;color:var(--text-secondary);border-bottom:1px solid var(--border-color);transition:background 0.3s;}\n" +
                 ".log-table td{padding:14px 16px;font-size:13px;color:var(--text-primary);border-bottom:1px solid var(--border-color);transition:color 0.3s;}\n" +
                 ".log-table tr:hover td{background:var(--table-hover);}\n" +
@@ -2849,6 +3260,8 @@ public class LogMonitorController {
                 ".edit-btn:hover{background:#5a67d8;}\n" +
                 ".delete-btn{background:#e53935;color:white;margin-left:8px;}\n" +
                 ".delete-btn:hover{background:#c62828;}\n" +
+                ".reset-pwd-btn{background:#f59e0b;color:white;margin-left:8px;}\n" +
+                ".reset-pwd-btn:hover{background:#d97706;}\n" +
                 ".pagination{display:flex;justify-content:center;gap:12px;padding:24px;border-top:1px solid var(--border-color);}\n" +
                 ".page-btn{padding:8px 16px;border:1px solid var(--input-border);background:var(--bg-card);color:var(--text-primary);border-radius:30px;cursor:pointer;font-size:13px;transition:all 0.3s;}\n" +
                 ".page-btn:hover:not(:disabled){border-color:#667eea;color:#667eea;}\n" +
@@ -2868,23 +3281,25 @@ public class LogMonitorController {
                 ".modal-buttons{display:flex;gap:12px;justify-content:flex-end;margin-top:20px;}\n" +
                 ".confirm-btn{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white;border:none;padding:8px 24px;border-radius:30px;cursor:pointer;font-weight:500;}\n" +
                 ".cancel-btn{background:var(--btn-reset-bg);border:1px solid var(--input-border);padding:8px 24px;border-radius:30px;cursor:pointer;color:var(--text-secondary);}\n" +
+                ".info-text{font-size:12px;color:var(--text-muted);margin-top:4px;}\n" +
                 "</style>\n" +
                 "</head>\n" +
                 "<body>\n" +
                 "<div class=\"page-wrap\">\n" +
                 "<div class=\"navbar\">\n" +
                 "<div class=\"nav-links\">\n" +
-                "<a href=\"/monitor/index\" class=\"active\">首页</a>\n" +
+                "<a href=\"/monitor/index\">首页</a>\n" +
                 "<a href=\"/monitor/dashboard\">服务监控</a>\n" +
                 "<a href=\"/monitor/login-audit\">登录审计</a>\n" +
                 "<a href=\"/monitor/number-files\">号码备份</a>\n" +
-                "<a href=\"/monitor/customer-management\">客户管理</a>\n" +
+                "<a href=\"/monitor/customer-management\">API客户管理</a>\n" +
                 "<a href=\"/monitor/user-management\" class=\"active\">登录账户管理</a>\n" +
                 "<a href=\"/monitor/ops-management\">运维管理</a>\n" +
-                "<a href=\"/monitor/queue-management\">队列管理</a>" +
+                "<a href=\"/monitor/queue-management\">发送队列管理</a>\n" +
                 "</div>\n" +
                 "<div class=\"nav-right\">\n" +
-                "<span class=\"user-name\">Administrator</span>\n" +
+                "<span class=\"user-name\" id=\"currentUsername\">加载中...</span>\n" +
+                "<span class=\"user-name\" id=\"currentUserRole\" style=\"background:rgba(255,255,255,0.2);padding:4px 12px;border-radius:20px;font-size:12px;\">加载中...</span>\n" +
                 "<button class=\"theme-toggle\" onclick=\"toggleTheme()\" id=\"themeBtn\">🌙 深色</button>\n" +
                 "<button class=\"logout-btn\" onclick=\"logout()\">退出</button>\n" +
                 "</div>\n" +
@@ -2893,65 +3308,333 @@ public class LogMonitorController {
                 "<div class=\"search-row\">\n" +
                 "<div class=\"search-group\"><label>👤 用户名</label><input type=\"text\" id=\"searchUsername\" placeholder=\"模糊查询\"></div>\n" +
                 "<div class=\"search-group\"><label>📊 状态</label><select id=\"searchStatus\"><option value=\"\">全部</option><option value=\"1\">启用</option><option value=\"0\">禁用</option></select></div>\n" +
-                "<div class=\"search-actions\">\n" +
+                "<div class=\"search-actions\" id=\"searchActions\">\n" +
                 "<button class=\"search-btn\" onclick=\"searchUsers()\">🔍 查询</button>\n" +
                 "<button class=\"reset-btn\" onclick=\"resetSearch()\">🔄 重置</button>\n" +
-                "<button class=\"add-btn\" onclick=\"showAddModal()\">➕ 新增用户</button>\n" +
                 "</div>\n" +
                 "</div>\n" +
                 "</div>\n" +
                 "<div class=\"log-card\">\n" +
                 "<table class=\"log-table\">\n" +
                 "<thead>\n" +
-                "<tr><th>ID</th><th>用户名</th><th>密码</th><th>角色</th><th>状态</th><th>允许IP</th><th>备注</th><th>创建时间</th><th>操作</th></tr>\n" +
+                "<th>ID</th><th>用户名</th><th>密码</th><th>角色</th><th>状态</th><th>允许IP</th><th>备注</th><th>创建时间</th><th>操作</th>\n" +
                 "</thead>\n" +
-                "<tbody id=\"userBody\"><tr><td colspan=\"9\" class=\"empty\">加载中...</tr></tbody>\n" +
+                "<tbody id=\"userBody\"><td colspan=\"9\" class=\"empty\">加载中...</td></tr>\n" +
+                "</tbody>\n" +
                 "</table>\n" +
                 "<div class=\"pagination\" id=\"pagination\"></div>\n" +
                 "</div>\n" +
-                "<div class=\"footer\">👤 监控系统用户管理 | 支持多IP配置，逗号分隔</div>\n" +
+                "<div class=\"footer\">👤 监控系统登录账户管理 | 支持多IP配置，逗号分隔 | NOC角色只能修改自己的信息和重置密码</div>\n" +
                 "</div>\n" +
+                "<!-- 编辑用户弹窗 -->\n" +
                 "<div id=\"modal\" class=\"modal\" style=\"display:none;\">\n" +
                 "<div class=\"modal-content\">\n" +
-                "<div class=\"modal-header\"><h3 id=\"modalTitle\">新增用户</h3><button class=\"modal-close\" onclick=\"closeModal()\">&times;</button></div>\n" +
+                "<div class=\"modal-header\"><h3 id=\"modalTitle\">编辑用户</h3><button class=\"modal-close\" onclick=\"closeModal()\">&times;</button></div>\n" +
                 "<input type=\"hidden\" id=\"editId\">\n" +
                 "<div class=\"form-group\"><label>用户名 *</label><input type=\"text\" id=\"inputUsername\" placeholder=\"请输入用户名\"></div>\n" +
-                "<div class=\"form-group\"><label>密码 *</label><input type=\"password\" id=\"inputPassword\" placeholder=\"请输入密码\"></div>\n" +
-                "<div class=\"form-group\"><label>角色</label><select id=\"inputRole\"><option value=\"ADMIN\">管理员</option></select></div>\n" +
+                "<div class=\"form-group\"><label>新密码</label><input type=\"password\" id=\"inputPassword\" placeholder=\"留空则不修改密码\"><div class=\"info-text\">如需修改密码，请输入新密码</div></div>\n" +
+                "<div class=\"form-group\" id=\"roleGroup\"><label>角色</label><select id=\"inputRole\"><option value=\"ADMIN\">管理员</option><option value=\"NOC\">NOC</option></select></div>\n" +
                 "<div class=\"form-group\"><label>状态</label><select id=\"inputStatus\"><option value=\"1\">启用</option><option value=\"0\">禁用</option></select></div>\n" +
-                "<div class=\"form-group\"><label>允许IP</label><input type=\"text\" id=\"inputAllowedIps\" placeholder=\"多个IP用逗号分隔，留空则允许所有内网IP\"></div>\n" +
+                "<div class=\"form-group\"><label>允许IP</label><input type=\"text\" id=\"inputAllowedIps\" placeholder=\"多个IP用逗号分隔，如：192.168.1.*,10.0.0.1\"></div>\n" +
                 "<div class=\"form-group\"><label>备注</label><textarea id=\"inputRemark\" rows=\"2\" placeholder=\"请输入备注\"></textarea></div>\n" +
                 "<div class=\"modal-buttons\"><button class=\"confirm-btn\" onclick=\"saveUser()\">保存</button><button class=\"cancel-btn\" onclick=\"closeModal()\">取消</button></div>\n" +
                 "</div>\n" +
                 "</div>\n" +
+                "<!-- 重置密码弹窗 -->\n" +
+                "<div id=\"resetPwdModal\" class=\"modal\" style=\"display:none;\">\n" +
+                "<div class=\"modal-content\">\n" +
+                "<div class=\"modal-header\"><h3>重置密码</h3><button class=\"modal-close\" onclick=\"closeResetPwdModal()\">&times;</button></div>\n" +
+                "<input type=\"hidden\" id=\"resetUserId\">\n" +
+                "<div class=\"form-group\"><label>用户名</label><input type=\"text\" id=\"resetUsername\" readonly disabled style=\"background:var(--btn-reset-bg);\"></div>\n" +
+                "<div class=\"form-group\"><label>新密码</label><input type=\"password\" id=\"resetPassword\" placeholder=\"请输入新密码\"><div class=\"info-text\">密码长度至少6位，建议包含大小写字母和数字</div></div>\n" +
+                "<div class=\"form-group\"><label>确认密码</label><input type=\"password\" id=\"resetConfirmPassword\" placeholder=\"请再次输入新密码\"></div>\n" +
+                "<div class=\"modal-buttons\"><button class=\"confirm-btn\" onclick=\"confirmResetPassword()\">确认重置</button><button class=\"cancel-btn\" onclick=\"closeResetPwdModal()\">取消</button></div>\n" +
+                "</div>\n" +
+                "</div>\n" +
                 "<script>\n" +
-                "let page=1,size=20,totalPages=1;\n" +
+                "var page=1,size=20,totalPages=1;\n" +
+                "var currentUserRole = '';\n" +
+                "var currentUsername = '';\n" +
+                "\n" +
                 "function toggleTheme(){var html=document.documentElement;var btn=document.getElementById('themeBtn');var currentTheme=html.getAttribute('data-theme');if(currentTheme==='dark'){html.removeAttribute('data-theme');btn.innerHTML='🌙 深色';localStorage.setItem('monitor-theme','light');}else{html.setAttribute('data-theme','dark');btn.innerHTML='☀️ 浅色';localStorage.setItem('monitor-theme','dark');}}\n" +
                 "function logout(){fetch('/monitor/logout').then(function(){location.href='/monitor/login';});}\n" +
+                "\n" +
                 "var savedTheme=localStorage.getItem('monitor-theme');if(savedTheme==='dark'){document.documentElement.setAttribute('data-theme','dark');var themeBtn=document.getElementById('themeBtn');if(themeBtn)themeBtn.innerHTML='☀️ 浅色';}\n" +
+                "\n" +
+                "// 获取当前登录用户信息\n" +
+                "function getCurrentUserInfo(){\n" +
+                "    fetch('/api/monitor/current-user?secret=dn17ORUwf36Znl')\n" +
+                "        .then(res=>res.json())\n" +
+                "        .then(data=>{\n" +
+                "            if(data.code===200){\n" +
+                "                currentUsername = data.data.username;\n" +
+                "                currentUserRole = data.data.role;\n" +
+                "                document.getElementById('currentUsername').innerText = currentUsername;\n" +
+                "                document.getElementById('currentUserRole').innerHTML = currentUserRole === 'ADMIN' ? '👑 管理员' : '🔧 NOC';\n" +
+                "                \n" +
+                "                // 根据角色控制UI显示\n" +
+                "                if(currentUserRole === 'NOC'){\n" +
+                "                    // NOC用户：隐藏新增按钮，编辑时只能编辑自己的账户\n" +
+                "                    var searchActions = document.getElementById('searchActions');\n" +
+                "                    if(searchActions) searchActions.style.display = 'flex';\n" +
+                "                } else {\n" +
+                "                    // ADMIN用户：显示新增按钮\n" +
+                "                    var searchActions = document.getElementById('searchActions');\n" +
+                "                    if(searchActions && !document.getElementById('addBtnExists')){\n" +
+                "                        var addBtn = document.createElement('button');\n" +
+                "                        addBtn.className = 'add-btn';\n" +
+                "                        addBtn.innerHTML = '➕ 新增用户';\n" +
+                "                        addBtn.onclick = function(){ showAddModal(); };\n" +
+                "                        addBtn.id = 'addBtnExists';\n" +
+                "                        searchActions.appendChild(addBtn);\n" +
+                "                    }\n" +
+                "                }\n" +
+                "            }\n" +
+                "        }).catch(err=>console.error('获取用户信息失败:',err));\n" +
+                "}\n" +
+                "\n" +
                 "function searchUsers(){page=1;loadUsers();}\n" +
                 "function resetSearch(){document.getElementById('searchUsername').value='';document.getElementById('searchStatus').value='';page=1;loadUsers();}\n" +
-                "function loadUsers(){var username=document.getElementById('searchUsername').value;var status=document.getElementById('searchStatus').value;var url='/api/monitor/users?secret=dn17ORUwf36Znl&page='+page+'&size='+size;if(username)url+='&username='+encodeURIComponent(username);if(status)url+='&status='+status;fetch(url).then(res=>res.json()).then(data=>{if(data.code===200){renderTable(data.data||[]);totalPages=data.totalPages||1;renderPagination();}else{document.getElementById('userBody').innerHTML='<tr><td colspan=\"9\" class=\"empty\">加载失败:'+(data.msg||'错误')+'</tr>';}}).catch(()=>{document.getElementById('userBody').innerHTML='<tr><td colspan=\"9\" class=\"empty\">加载失败:网络错误</tr>';});}\n" +
-                "function renderTable(list){var tbody=document.getElementById('userBody');if(!tbody)return;if(!list||list.length===0){tbody.innerHTML='<tr><td colspan=\"9\" class=\"empty\">暂无数据</tr>';return;}var html='';for(var i=0;i<list.length;i++){var u=list[i];var statusClass=u.status===1?'status-enabled':'status-disabled';var statusText=u.status===1?'启用':'禁用';html+='<tr>'+\n" +
-                "'<td>'+u.id+'</td>'+\n" +
-                "'<td>'+escapeHtml(u.username||'')+'</td>'+\n" +
-                "'<td>******</td>'+\n" +
-                "'<td>'+escapeHtml(u.role||'ADMIN')+'</td>'+\n" +
-                "'<td><span class=\"status-badge '+statusClass+'\">'+statusText+'</span></td>'+\n" +
-                "'<td>'+escapeHtml(u.allowedIps||'-')+'</td>'+\n" +
-                "'<td>'+escapeHtml(u.remark||'')+'</td>'+\n" +
-                "'<td>'+formatDateTime(u.createTime||'')+'</td>'+\n" +
-                "'<td><button class=\"action-btn edit-btn\" onclick=\"editUser('+u.id+')\">编辑</button><button class=\"action-btn delete-btn\" onclick=\"deleteUser('+u.id+')\">删除</button></td>'+\n" +
-                "'<tr>';}tbody.innerHTML=html;}\n" +
+                "\n" +
+                "function loadUsers(){\n" +
+                "    var username=document.getElementById('searchUsername').value;\n" +
+                "    var status=document.getElementById('searchStatus').value;\n" +
+                "    var url='/api/monitor/users?secret=dn17ORUwf36Znl&page='+page+'&size='+size;\n" +
+                "    if(username)url+='&username='+encodeURIComponent(username);\n" +
+                "    if(status)url+='&status='+status;\n" +
+                "    fetch(url).then(res=>res.json()).then(data=>{\n" +
+                "        if(data.code===200){\n" +
+                "            renderTable(data.data||[]);\n" +
+                "            totalPages=data.totalPages||1;\n" +
+                "            renderPagination();\n" +
+                "        }else{\n" +
+                "            document.getElementById('userBody').innerHTML='<tr><td colspan=\"9\" class=\"empty\">加载失败:'+(data.msg||'错误')+'</td></tr>';\n" +
+                "        }\n" +
+                "    }).catch(()=>{\n" +
+                "        document.getElementById('userBody').innerHTML='<tr><td colspan=\"9\" class=\"empty\">加载失败:网络错误</td></tr>';\n" +
+                "    });\n" +
+                "}\n" +
+                "\n" +
+                "function renderTable(list){\n" +
+                "    var tbody=document.getElementById('userBody');\n" +
+                "    if(!tbody)return;\n" +
+                "    if(!list||list.length===0){\n" +
+                "        tbody.innerHTML='<tr><td colspan=\"9\" class=\"empty\">暂无数据</td></tr>';\n" +
+                "        return;\n" +
+                "    }\n" +
+                "    var html='';\n" +
+                "    for(var i=0;i<list.length;i++){\n" +
+                "        var u=list[i];\n" +
+                "        var statusClass=u.status===1?'status-enabled':'status-disabled';\n" +
+                "        var statusText=u.status===1?'启用':'禁用';\n" +
+                "        \n" +
+                "        // 根据角色控制操作按钮显示\n" +
+                "        var isSelf = (u.username === currentUsername);\n" +
+                "        var isAdmin = (currentUserRole === 'ADMIN');\n" +
+                "        var canEdit = isAdmin || isSelf;\n" +
+                "        var canDelete = isAdmin && (u.username !== 'Administrator'); // 不能删除默认管理员\n" +
+                "        var canResetPwd = isAdmin || isSelf;\n" +
+                "        \n" +
+                "        var actionsHtml = '';\n" +
+                "        if(canEdit){\n" +
+                "            actionsHtml += '<button class=\"action-btn edit-btn\" onclick=\"editUser('+u.id+')\">编辑</button>';\n" +
+                "        }\n" +
+                "        if(canResetPwd){\n" +
+                "            actionsHtml += '<button class=\"action-btn reset-pwd-btn\" onclick=\"showResetPwdModal('+u.id+',\\''+escapeHtml(u.username)+'\\')\">重置密码</button>';\n" +
+                "        }\n" +
+                "        if(canDelete){\n" +
+                "            actionsHtml += '<button class=\"action-btn delete-btn\" onclick=\"deleteUser('+u.id+')\">删除</button>';\n" +
+                "        }\n" +
+                "        if(actionsHtml === '') actionsHtml = '-';\n" +
+                "        \n" +
+                "        html+='<tr>'+\n" +
+                "            '<td>'+u.id+'</td>'+\n" +
+                "            '<td>'+escapeHtml(u.username||'')+'</td>'+\n" +
+                "            '<td>******</td>'+\n" +
+                "            '<td><span class=\"status-badge\">'+escapeHtml(u.role||'ADMIN')+'</span></td>'+\n" +
+                "            '<td><span class=\"status-badge '+statusClass+'\">'+statusText+'</span></td>'+\n" +
+                "            '<td>'+escapeHtml(u.allowedIps||'-')+'</td>'+\n" +
+                "            '<td>'+escapeHtml(u.remark||'')+'</td>'+\n" +
+                "            '<td>'+formatDateTime(u.createTime||'')+'</td>'+\n" +
+                "            '<td>'+actionsHtml+'</td>'+\n" +
+                "            '</tr>';\n" +
+                "    }\n" +
+                "    tbody.innerHTML=html;\n" +
+                "}\n" +
+                "\n" +
                 "function formatDateTime(dateStr){if(!dateStr)return'-';return dateStr.replace('T',' ').substring(0,19);}\n" +
+                "\n" +
                 "function renderPagination(){var div=document.getElementById('pagination');if(!div)return;if(totalPages<=1){div.innerHTML='';return;}var html='<button class=\"page-btn\" onclick=\"goPage(1)\"'+(page===1?'disabled':'')+'>首页</button><button class=\"page-btn\" onclick=\"goPage('+(page-1)+')\"'+(page===1?'disabled':'')+'>上一页</button><span class=\"page-info\">第 '+page+' / '+totalPages+' 页</span><button class=\"page-btn\" onclick=\"goPage('+(page+1)+')\"'+(page===totalPages?'disabled':'')+'>下一页</button><button class=\"page-btn\" onclick=\"goPage('+totalPages+')\"'+(page===totalPages?'disabled':'')+'>尾页</button>';div.innerHTML=html;}\n" +
                 "function goPage(p){page=p;loadUsers();}\n" +
-                "function showAddModal(){document.getElementById('modalTitle').innerText='新增用户';document.getElementById('editId').value='';document.getElementById('inputUsername').value='';document.getElementById('inputPassword').value='';document.getElementById('inputRole').value='ADMIN';document.getElementById('inputStatus').value='1';document.getElementById('inputAllowedIps').value='';document.getElementById('inputRemark').value='';document.getElementById('modal').style.display='flex';}\n" +
-                "function editUser(id){fetch('/api/monitor/users?secret=dn17ORUwf36Znl&page=1&size=9999').then(res=>res.json()).then(data=>{if(data.code===200){var user=data.data.find(u=>u.id===id);if(user){document.getElementById('modalTitle').innerText='编辑用户';document.getElementById('editId').value=user.id;document.getElementById('inputUsername').value=user.username;document.getElementById('inputPassword').value='';document.getElementById('inputRole').value=user.role||'ADMIN';document.getElementById('inputStatus').value=user.status;document.getElementById('inputAllowedIps').value=user.allowedIps||'';document.getElementById('inputRemark').value=user.remark||'';document.getElementById('modal').style.display='flex';}}});}\n" +
-                "function saveUser(){var id=document.getElementById('editId').value;var username=document.getElementById('inputUsername').value.trim();var password=document.getElementById('inputPassword').value;var role=document.getElementById('inputRole').value;var status=document.getElementById('inputStatus').value;var allowedIps=document.getElementById('inputAllowedIps').value;var remark=document.getElementById('inputRemark').value;if(!username){alert('请输入用户名');return;}if(!id && !password){alert('请输入密码');return;}var data={username:username,role:role,status:parseInt(status),allowedIps:allowedIps,remark:remark};if(id)data.id=parseInt(id);if(password)data.password=password;var url=id?'/api/monitor/users':'/api/monitor/users';var method=id?'PUT':'POST';fetch(url+'?secret=dn17ORUwf36Znl',{method:method,headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}).then(res=>res.json()).then(data=>{if(data.code===200){closeModal();loadUsers();}else{alert(data.msg||'操作失败');}}).catch(err=>{alert('操作失败:'+err.message);});}\n" +
-                "function deleteUser(id){if(!confirm('确定要删除该用户吗？删除后无法恢复！'))return;fetch('/api/monitor/users?id='+id+'&secret=dn17ORUwf36Znl',{method:'DELETE'}).then(res=>res.json()).then(data=>{if(data.code===200){loadUsers();}else{alert(data.msg||'删除失败');}}).catch(err=>{alert('删除失败:'+err.message);});}\n" +
-                "function closeModal(){document.getElementById('modal').style.display='none';}\n" +
+                "\n" +
+                "function showAddModal(){\n" +
+                "    // NOC用户不能新增\n" +
+                "    if(currentUserRole !== 'ADMIN'){\n" +
+                "        alert('权限不足，只有管理员可以新增用户');\n" +
+                "        return;\n" +
+                "    }\n" +
+                "    document.getElementById('modalTitle').innerText='新增用户';\n" +
+                "    document.getElementById('editId').value='';\n" +
+                "    document.getElementById('inputUsername').value='';\n" +
+                "    document.getElementById('inputPassword').value='';\n" +
+                "    document.getElementById('inputRole').value='NOC';\n" +
+                "    document.getElementById('inputStatus').value='1';\n" +
+                "    document.getElementById('inputAllowedIps').value='';\n" +
+                "    document.getElementById('inputRemark').value='';\n" +
+                "    document.getElementById('roleGroup').style.display = 'block';\n" +
+                "    document.getElementById('modal').style.display='flex';\n" +
+                "}\n" +
+                "\n" +
+                "function editUser(id){\n" +
+                "    fetch('/api/monitor/users?secret=dn17ORUwf36Znl&page=1&size=9999')\n" +
+                "        .then(res=>res.json())\n" +
+                "        .then(data=>{\n" +
+                "            if(data.code===200){\n" +
+                "                var user=data.data.find(u=>u.id===id);\n" +
+                "                if(user){\n" +
+                "                    // NOC用户只能编辑自己的账户\n" +
+                "                    if(currentUserRole === 'NOC' && user.username !== currentUsername){\n" +
+                "                        alert('权限不足，NOC用户只能编辑自己的账户');\n" +
+                "                        return;\n" +
+                "                    }\n" +
+                "                    \n" +
+                "                    document.getElementById('modalTitle').innerText='编辑用户';\n" +
+                "                    document.getElementById('editId').value=user.id;\n" +
+                "                    document.getElementById('inputUsername').value=user.username;\n" +
+                "                    document.getElementById('inputPassword').value='';\n" +
+                "                    document.getElementById('inputStatus').value=user.status;\n" +
+                "                    document.getElementById('inputAllowedIps').value=user.allowedIps||'';\n" +
+                "                    document.getElementById('inputRemark').value=user.remark||'';\n" +
+                "                    \n" +
+                "                    // NOC用户不能修改角色，隐藏角色选择框\n" +
+                "                    if(currentUserRole === 'NOC'){\n" +
+                "                        document.getElementById('roleGroup').style.display = 'none';\n" +
+                "                    } else {\n" +
+                "                        document.getElementById('roleGroup').style.display = 'block';\n" +
+                "                        document.getElementById('inputRole').value=user.role||'NOC';\n" +
+                "                    }\n" +
+                "                    \n" +
+                "                    // 用户名输入框设为只读（不能修改用户名）\n" +
+                "                    document.getElementById('inputUsername').readOnly = true;\n" +
+                "                    document.getElementById('inputUsername').style.background = 'var(--btn-reset-bg)';\n" +
+                "                    \n" +
+                "                    document.getElementById('modal').style.display='flex';\n" +
+                "                }\n" +
+                "            }\n" +
+                "        });\n" +
+                "}\n" +
+                "\n" +
+                "function saveUser(){\n" +
+                "    var id=document.getElementById('editId').value;\n" +
+                "    var username=document.getElementById('inputUsername').value.trim();\n" +
+                "    var password=document.getElementById('inputPassword').value;\n" +
+                "    var status=document.getElementById('inputStatus').value;\n" +
+                "    var allowedIps=document.getElementById('inputAllowedIps').value;\n" +
+                "    var remark=document.getElementById('inputRemark').value;\n" +
+                "    \n" +
+                "    if(!username){alert('请输入用户名');return;}\n" +
+                "    \n" +
+                "    var data={username:username,status:parseInt(status),allowedIps:allowedIps,remark:remark};\n" +
+                "    \n" +
+                "    // 角色处理：ADMIN可以修改角色，NOC不能\n" +
+                "    if(currentUserRole === 'ADMIN'){\n" +
+                "        var role=document.getElementById('inputRole').value;\n" +
+                "        data.role=role;\n" +
+                "    }\n" +
+                "    \n" +
+                "    if(id)data.id=parseInt(id);\n" +
+                "    if(password)data.password=password;\n" +
+                "    \n" +
+                "    var url=id?'/api/monitor/users':'/api/monitor/users';\n" +
+                "    var method=id?'PUT':'POST';\n" +
+                "    \n" +
+                "    fetch(url+'?secret=dn17ORUwf36Znl',{method:method,headers:{'Content-Type':'application/json'},body:JSON.stringify(data)})\n" +
+                "        .then(res=>res.json())\n" +
+                "        .then(data=>{\n" +
+                "            if(data.code===200){\n" +
+                "                closeModal();\n" +
+                "                loadUsers();\n" +
+                "            }else{\n" +
+                "                alert(data.msg||'操作失败');\n" +
+                "            }\n" +
+                "        }).catch(err=>{alert('操作失败:'+err.message);});\n" +
+                "}\n" +
+                "\n" +
+                "function deleteUser(id){\n" +
+                "    if(currentUserRole !== 'ADMIN'){\n" +
+                "        alert('权限不足，只有管理员可以删除用户');\n" +
+                "        return;\n" +
+                "    }\n" +
+                "    if(!confirm('确定要删除该用户吗？删除后无法恢复！'))return;\n" +
+                "    fetch('/api/monitor/users?id='+id+'&secret=dn17ORUwf36Znl',{method:'DELETE'})\n" +
+                "        .then(res=>res.json())\n" +
+                "        .then(data=>{\n" +
+                "            if(data.code===200){\n" +
+                "                loadUsers();\n" +
+                "            }else{\n" +
+                "                alert(data.msg||'删除失败');\n" +
+                "            }\n" +
+                "        }).catch(err=>{alert('删除失败:'+err.message);});\n" +
+                "}\n" +
+                "\n" +
+                "// 重置密码弹窗\n" +
+                "function showResetPwdModal(userId, username){\n" +
+                "    document.getElementById('resetUserId').value = userId;\n" +
+                "    document.getElementById('resetUsername').value = username;\n" +
+                "    document.getElementById('resetPassword').value = '';\n" +
+                "    document.getElementById('resetConfirmPassword').value = '';\n" +
+                "    document.getElementById('resetPwdModal').style.display = 'flex';\n" +
+                "}\n" +
+                "\n" +
+                "function confirmResetPassword(){\n" +
+                "    var userId = document.getElementById('resetUserId').value;\n" +
+                "    var newPassword = document.getElementById('resetPassword').value;\n" +
+                "    var confirmPassword = document.getElementById('resetConfirmPassword').value;\n" +
+                "    \n" +
+                "    if(!newPassword){\n" +
+                "        alert('请输入新密码');\n" +
+                "        return;\n" +
+                "    }\n" +
+                "    if(newPassword.length < 6){\n" +
+                "        alert('密码长度至少6位');\n" +
+                "        return;\n" +
+                "    }\n" +
+                "    if(newPassword !== confirmPassword){\n" +
+                "        alert('两次输入的密码不一致');\n" +
+                "        return;\n" +
+                "    }\n" +
+                "    \n" +
+                "    fetch('/api/monitor/users/reset-password?secret=dn17ORUwf36Znl',{\n" +
+                "        method:'POST',\n" +
+                "        headers:{'Content-Type':'application/json'},\n" +
+                "        body:JSON.stringify({id:parseInt(userId), password:newPassword})\n" +
+                "    }).then(res=>res.json())\n" +
+                "      .then(data=>{\n" +
+                "          if(data.code===200){\n" +
+                "              alert('密码重置成功');\n" +
+                "              closeResetPwdModal();\n" +
+                "          }else{\n" +
+                "              alert(data.msg||'重置失败');\n" +
+                "          }\n" +
+                "      }).catch(err=>{alert('重置失败:'+err.message);});\n" +
+                "}\n" +
+                "\n" +
+                "function closeModal(){\n" +
+                "    document.getElementById('modal').style.display='none';\n" +
+                "    // 恢复用户名输入框状态\n" +
+                "    var usernameInput = document.getElementById('inputUsername');\n" +
+                "    usernameInput.readOnly = false;\n" +
+                "    usernameInput.style.background = '';\n" +
+                "}\n" +
+                "\n" +
+                "function closeResetPwdModal(){\n" +
+                "    document.getElementById('resetPwdModal').style.display='none';\n" +
+                "}\n" +
+                "\n" +
                 "function escapeHtml(s){if(!s)return'';return String(s).replace(/[&<>]/g,function(m){if(m==='&')return'&amp;';if(m==='<')return'&lt;';if(m==='>')return'&gt;';return m;});}\n" +
+                "\n" +
+                "// 初始化\n" +
+                "getCurrentUserInfo();\n" +
                 "loadUsers();\n" +
                 "</script>\n" +
                 "</body>\n" +
@@ -2964,9 +3647,10 @@ public class LogMonitorController {
                 "<head>\n" +
                 "<meta charset=\"UTF-8\">\n" +
                 "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n" +
-                "<title>运维管理</title>\n" +
+                "<title>Texcell ECCOM WEB 运维管理</title>\n" +
                 "<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23667eea'/%3E%3Ctext x='50' y='68' font-size='50' text-anchor='middle' fill='white' font-family='Arial'%3E🔧%3C/text%3E%3C/svg%3E\">\n" +
                 "<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap\" rel=\"stylesheet\">\n" +
+                "<script src=\"https://cdn.jsdelivr.net/npm/chart.js\"></script>\n" +
                 "<style>\n" +
                 ":root {\n" +
                 "  --bg-primary: #f0f2f5;\n" +
@@ -2983,6 +3667,8 @@ public class LogMonitorController {
                 "  --btn-reset-bg: #f5f5f5;\n" +
                 "  --btn-reset-hover: #e8e8e8;\n" +
                 "  --card-hover: #f5f5f5;\n" +
+                "  --log-header-bg: #fafafa;\n" +
+                "  --table-hover: #fafafa;\n" +
                 "}\n" +
                 "[data-theme=\"dark\"] {\n" +
                 "  --bg-primary: #0f172a;\n" +
@@ -2999,10 +3685,12 @@ public class LogMonitorController {
                 "  --btn-reset-bg: #334155;\n" +
                 "  --btn-reset-hover: #475569;\n" +
                 "  --card-hover: #334155;\n" +
+                "  --log-header-bg: #334155;\n" +
+                "  --table-hover: #334155;\n" +
                 "}\n" +
                 "*{margin:0;padding:0;box-sizing:border-box;}\n" +
                 "body{background:var(--bg-primary);font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;min-height:100vh;transition:background 0.3s,color 0.3s;}\n" +
-                ".page-wrap{max-width:1400px;margin:0 auto;padding:20px 24px;}\n" +
+                ".page-wrap{max-width:1600px;margin:0 auto;padding:20px 24px;}\n" +
                 ".navbar{background:var(--navbar-bg);min-height:60px;display:flex;align-items:center;justify-content:space-between;padding:12px 32px;color:white;border-radius:16px;margin-bottom:24px;box-shadow:0 4px 20px rgba(0,0,0,0.08);transition:background 0.3s;flex-wrap:wrap;gap:12px;}\n" +
                 ".nav-links{display:flex;gap:8px;flex-wrap:wrap;flex:1;}\n" +
                 ".navbar a{color:white;text-decoration:none;padding:8px 20px;border-radius:30px;font-weight:500;transition:all 0.3s;white-space:nowrap;}\n" +
@@ -3036,8 +3724,45 @@ public class LogMonitorController {
                 ".result-success{color:#10b981;}\n" +
                 ".result-error{color:#e53935;}\n" +
                 ".loading{opacity:0.6;pointer-events:none;}\n" +
+                ".stats-section{margin-bottom:32px;}\n" +
+                ".stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:20px;margin-bottom:24px;}\n" +
+                ".stat-card{background:var(--bg-card);border-radius:20px;padding:20px;box-shadow:var(--shadow);border:1px solid var(--border-color);}\n" +
+                ".stat-number{font-size:32px;font-weight:800;color:#667eea;}\n" +
+                ".stat-label{font-size:13px;color:var(--text-muted);margin-top:5px;}\n" +
+                ".stat-trend{font-size:12px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border-color);color:var(--text-secondary);}\n" +
+                ".trend-up{color:#10b981;}\n" +
+                ".trend-down{color:#e53935;}\n" +
+                ".chart-row{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:32px;}\n" +
+                ".chart-card{background:var(--bg-card);border-radius:20px;padding:20px;box-shadow:var(--shadow);border:1px solid var(--border-color);}\n" +
+                ".chart-card h3{font-size:16px;font-weight:600;color:var(--text-primary);margin-bottom:16px;display:flex;align-items:center;gap:8px;}\n" +
+                ".chart-container{height:300px;position:relative;}\n" +
+                ".log-section{margin-top:32px;}\n" +
+                ".section-title{font-size:18px;font-weight:600;color:var(--text-primary);margin-bottom:16px;display:flex;align-items:center;gap:8px;}\n" +
+                ".section-title::before{content:'';width:4px;height:20px;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);border-radius:4px;}\n" +
+                ".search-card{background:var(--search-card-bg);border-radius:16px;padding:20px 24px;margin-bottom:20px;box-shadow:var(--shadow);transition:background 0.3s;}\n" +
+                ".search-row{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end;}\n" +
+                ".search-group{display:flex;flex-direction:column;gap:6px;}\n" +
+                ".search-group label{font-size:12px;color:var(--text-secondary);font-weight:500;}\n" +
+                ".search-group input,.search-group select{padding:8px 12px;border:1px solid var(--input-border);border-radius:10px;font-size:13px;min-width:140px;transition:all 0.3s;background:var(--input-bg);color:var(--text-primary);}\n" +
+                ".search-actions{display:flex;gap:10px;margin-left:auto;align-items:center;}\n" +
+                ".search-btn{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white;border:none;padding:8px 20px;border-radius:30px;cursor:pointer;font-weight:500;font-size:13px;}\n" +
+                ".reset-btn{background:var(--btn-reset-bg);border:1px solid var(--input-border);padding:8px 20px;border-radius:30px;cursor:pointer;font-weight:500;font-size:13px;color:var(--text-secondary);}\n" +
+                ".log-card{background:var(--bg-card);border-radius:16px;overflow:auto;box-shadow:var(--shadow);transition:background 0.3s;}\n" +
+                ".log-table{width:100%;border-collapse:collapse;min-width:800px;}\n" +
+                ".log-table th{background:var(--log-header-bg);padding:12px 16px;text-align:left;font-size:12px;font-weight:600;color:var(--text-secondary);border-bottom:1px solid var(--border-color);}\n" +
+                ".log-table td{padding:12px 16px;font-size:12px;color:var(--text-primary);border-bottom:1px solid var(--border-color);}\n" +
+                ".log-table tr:hover td{background:var(--table-hover);}\n" +
+                ".status-badge{display:inline-block;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:500;}\n" +
+                ".status-success{background:rgba(16,185,129,0.15);color:#10b981;}\n" +
+                ".status-fail{background:rgba(239,68,68,0.15);color:#e53935;}\n" +
+                ".pagination{display:flex;justify-content:center;gap:12px;padding:16px;border-top:1px solid var(--border-color);flex-wrap:wrap;}\n" +
+                ".page-btn{padding:6px 14px;border:1px solid var(--input-border);background:var(--bg-card);color:var(--text-primary);border-radius:30px;cursor:pointer;font-size:12px;transition:all 0.3s;}\n" +
+                ".page-btn:hover:not(:disabled){border-color:#667eea;color:#667eea;}\n" +
+                ".page-btn:disabled{opacity:0.5;cursor:not-allowed;}\n" +
+                ".page-info{font-size:12px;color:var(--text-muted);align-self:center;}\n" +
                 ".footer{text-align:center;padding:32px 0;color:var(--text-secondary);font-size:12px;border-top:1px solid var(--border-color);margin-top:16px;}\n" +
-                "@media(max-width:768px){.cards-grid{grid-template-columns:1fr;}.navbar{padding:12px 20px;}.nav-links{gap:4px;}.navbar a{padding:6px 12px;font-size:12px;}.nav-right{gap:8px;}}\n" +
+                "@media(max-width:1024px){.stats-grid{grid-template-columns:repeat(2,1fr);}}\n" +
+                "@media(max-width:768px){.stats-grid{grid-template-columns:1fr;}.chart-row{grid-template-columns:1fr;}.cards-grid{grid-template-columns:1fr;}.navbar{padding:12px 20px;}.nav-links{gap:4px;}.navbar a{padding:6px 12px;font-size:12px;}.nav-right{gap:8px;}}\n" +
                 "</style>\n" +
                 "</head>\n" +
                 "<body>\n" +
@@ -3048,41 +3773,39 @@ public class LogMonitorController {
                 "<a href=\"/monitor/dashboard\">服务监控</a>\n" +
                 "<a href=\"/monitor/login-audit\">登录审计</a>\n" +
                 "<a href=\"/monitor/number-files\">号码备份</a>\n" +
-                "<a href=\"/monitor/customer-management\">客户管理</a>\n" +
-                "<a href=\"/monitor/user-management\">用户管理</a>\n" +
+                "<a href=\"/monitor/customer-management\">API客户管理</a>\n" +
+                "<a href=\"/monitor/user-management\">登录账户管理</a>\n" +
                 "<a href=\"/monitor/ops-management\" class=\"active\">运维管理</a>\n" +
-                "<a href=\"/monitor/queue-management\">队列管理</a>\n" +
+                "<a href=\"/monitor/queue-management\">发送队列管理</a>\n" +
                 "</div>\n" +
                 "<div class=\"nav-right\">\n" +
-                "<span class=\"user-name\">Administrator</span>\n" +
-                "<button class=\"theme-toggle\" onclick=\"toggleTheme()\" id=\"themeBtn\">🌙 深色</button>\n" +
-                "<button class=\"logout-btn\" onclick=\"logout()\">退出</button>\n" +
+                "    <span class=\"user-name\" id=\"currentUsername\">加载中...</span>\n" +
+                "    <span class=\"user-role\" id=\"currentUserRole\" style=\"background:rgba(255,255,255,0.2);padding:4px 12px;border-radius:20px;font-size:12px;\">加载中...</span>\n" +
+                "    <button class=\"theme-toggle\" onclick=\"toggleTheme()\" id=\"themeBtn\">🌙 深色</button>\n" +
+                "    <button class=\"logout-btn\" onclick=\"logout()\">退出</button>\n" +
                 "</div>\n" +
                 "</div>\n" +
                 "<div class=\"title\"><span class=\"title-icon\">🔧</span> 运维管理工具</div>\n" +
+                "<!-- 操作卡片区 -->\n" +
                 "<div class=\"cards-grid\">\n" +
-                "<!-- 卡片1：重置2FA -->\n" +
                 "<div class=\"card\">\n" +
                 "<div class=\"card-header\"><span class=\"card-icon\">🔐</span><div><div class=\"card-title\">重置2FA</div><div class=\"card-desc\">解绑用户的Google验证器，重置后用户需重新绑定</div></div></div>\n" +
                 "<div class=\"form-group\"><label>客户账号</label><input type=\"text\" id=\"reset2faUsername\" placeholder=\"请输入客户账号\"></div>\n" +
                 "<button class=\"card-btn\" onclick=\"reset2FA()\">🔄 重置2FA</button>\n" +
                 "<div id=\"reset2faResult\" class=\"result-area\"></div>\n" +
                 "</div>\n" +
-                "<!-- 卡片2：解除2FA -->\n" +
                 "<div class=\"card\">\n" +
                 "<div class=\"card-header\"><span class=\"card-icon\">🔓</span><div><div class=\"card-title\">解除2FA</div><div class=\"card-desc\">解除用户的二次验证，用户将不再需要2FA验证</div></div></div>\n" +
                 "<div class=\"form-group\"><label>客户账号</label><input type=\"text\" id=\"disable2faUsername\" placeholder=\"请输入客户账号\"></div>\n" +
                 "<button class=\"card-btn warning\" onclick=\"disable2FA()\">🔓 解除2FA</button>\n" +
                 "<div id=\"disable2faResult\" class=\"result-area\"></div>\n" +
                 "</div>\n" +
-                "<!-- 卡片3：解锁账户 -->\n" +
                 "<div class=\"card\">\n" +
                 "<div class=\"card-header\"><span class=\"card-icon\">👤</span><div><div class=\"card-title\">解锁账户</div><div class=\"card-desc\">解除因多次登录失败被锁定的账户</div></div></div>\n" +
                 "<div class=\"form-group\"><label>客户账号</label><input type=\"text\" id=\"unlockAccountUsername\" placeholder=\"请输入客户账号\"></div>\n" +
                 "<button class=\"card-btn\" onclick=\"unlockAccount()\">🔓 解锁账户</button>\n" +
                 "<div id=\"unlockAccountResult\" class=\"result-area\"></div>\n" +
                 "</div>\n" +
-                "<!-- 卡片4：解锁IP -->\n" +
                 "<div class=\"card\">\n" +
                 "<div class=\"card-header\"><span class=\"card-icon\">🌐</span><div><div class=\"card-title\">解锁IP</div><div class=\"card-desc\">解除因多次登录失败被锁定的IP</div></div></div>\n" +
                 "<div class=\"form-group\"><label>IP地址或账号</label><input type=\"text\" id=\"unlockIpUsername\" placeholder=\"请输入IP地址\"></div>\n" +
@@ -3090,19 +3813,374 @@ public class LogMonitorController {
                 "<div id=\"unlockIpResult\" class=\"result-area\"></div>\n" +
                 "</div>\n" +
                 "</div>\n" +
+                "<!-- 统计卡片区 -->\n" +
+                "<div class=\"stats-section\">\n" +
+                "<div class=\"stats-grid\" id=\"statsGrid\"></div>\n" +
+                "</div>\n" +
+                "<!-- 图表区 -->\n" +
+                "<div class=\"chart-row\">\n" +
+                "<div class=\"chart-card\"><h3>📊 近7天操作趋势</h3><div class=\"chart-container\"><canvas id=\"trendChart\"></canvas></div></div>\n" +
+                "<div class=\"chart-card\"><h3>🥧 本月操作类型分布</h3><div class=\"chart-container\"><canvas id=\"typeChart\"></canvas></div></div>\n" +
+                "</div>\n" +
+                "<div class=\"chart-row\">\n" +
+                "<div class=\"chart-card\"><h3>🏆 操作人排行 (本月Top 10)</h3><div class=\"chart-container\"><canvas id=\"operatorChart\"></canvas></div></div>\n" +
+                "<div class=\"chart-card\"><h3>📈 成功率分析</h3><div class=\"chart-container\"><canvas id=\"successRateChart\"></canvas></div></div>\n" +
+                "</div>\n" +
+                "<!-- 日志列表区 -->\n" +
+                "<div class=\"log-section\">\n" +
+                "<div class=\"section-title\">📋 操作解除日志</div>\n" +
+                "<div class=\"search-card\">\n" +
+                "<div class=\"search-row\">\n" +
+                "<div class=\"search-group\"><label>👤 操作人</label><input type=\"text\" id=\"searchOperator\" placeholder=\"模糊查询\"></div>\n" +
+                "<div class=\"search-group\"><label>🔧 操作类型</label><select id=\"searchOperationType\"><option value=\"\">全部</option><option value=\"RESET_2FA\">重置2FA</option><option value=\"DISABLE_2FA\">解除2FA</option><option value=\"UNLOCK_ACCOUNT\">解锁账户</option><option value=\"UNLOCK_IP\">解锁IP</option></select></div>\n" +
+                "<div class=\"search-group\"><label>📅 开始时间</label><input type=\"datetime-local\" id=\"startTime\"></div>\n" +
+                "<div class=\"search-group\"><label>📅 结束时间</label><input type=\"datetime-local\" id=\"endTime\"></div>\n" +
+                "<div class=\"search-actions\"><button class=\"search-btn\" onclick=\"searchLogs()\">🔍 查询</button><button class=\"reset-btn\" onclick=\"resetSearch()\">🔄 重置</button></div>\n" +
+                "</div>\n" +
+                "</div>\n" +
+                "<div class=\"log-card\">\n" +
+                "<table class=\"log-table\">\n" +
+                "<thead>\n" +
+                "<tr><th>时间</th><th>操作人</th><th>操作类型</th><th>操作目标</th><th>结果</th><th>结果消息</th><th>IP</th></tr>\n" +
+                "</thead>\n" +
+                "<tbody id=\"logBody\"><tr><td colspan=\"7\" class=\"empty\">加载中...</td></tr></tbody>\n" +
+                "</table>\n" +
+                "<div class=\"pagination\" id=\"pagination\"></div>\n" +
+                "</div>\n" +
+                "</div>\n" +
                 "<div class=\"footer\">🔧 EC WEB运维管理 | 操作请谨慎，所有操作均有日志记录 | 仅限内部使用</div>\n" +
                 "</div>\n" +
                 "<script>\n" +
-                "function toggleTheme(){var html=document.documentElement;var btn=document.getElementById('themeBtn');var currentTheme=html.getAttribute('data-theme');if(currentTheme==='dark'){html.removeAttribute('data-theme');btn.innerHTML='🌙 深色';localStorage.setItem('monitor-theme','light');}else{html.setAttribute('data-theme','dark');btn.innerHTML='☀️ 浅色';localStorage.setItem('monitor-theme','dark');}}\n" +
-                "function logout(){fetch('/monitor/logout').then(function(){location.href='/monitor/login';});}\n" +
-                "var savedTheme=localStorage.getItem('monitor-theme');if(savedTheme==='dark'){document.documentElement.setAttribute('data-theme','dark');var themeBtn=document.getElementById('themeBtn');if(themeBtn)themeBtn.innerHTML='☀️ 浅色';}\n" +
-                "function showResult(elementId, success, message){var el=document.getElementById(elementId);if(!el)return;el.innerHTML='<span class=\"'+(success?'result-success':'result-error')+'\">'+(success?'✅ ':'❌ ')+escapeHtml(message)+'</span>';el.classList.add('show');setTimeout(function(){el.classList.remove('show');},5000);}\n" +
-                "function setLoading(btn, loading){if(loading){btn.classList.add('loading');btn.disabled=true;}else{btn.classList.remove('loading');btn.disabled=false;}}\n" +
-                "function reset2FA(){var username=document.getElementById('reset2faUsername').value.trim();if(!username){alert('请输入客户账号');return;}var btn=event.target;setLoading(btn,true);fetch('/api/monitor/ops/reset-2fa?username='+encodeURIComponent(username)+'&secret=dn17ORUwf36Znl',{method:'POST'}).then(res=>res.json()).then(data=>{setLoading(btn,false);if(data.code===200){showResult('reset2faResult',true,'重置2FA成功');document.getElementById('reset2faUsername').value='';}else{showResult('reset2faResult',false,'操作失败: '+(data.msg||'未知错误'));}}).catch(err=>{setLoading(btn,false);showResult('reset2faResult',false,'网络错误: '+err.message);});}\n" +
-                "function disable2FA(){var username=document.getElementById('disable2faUsername').value.trim();if(!username){alert('请输入客户账号');return;}var btn=event.target;setLoading(btn,true);fetch('/api/monitor/ops/disable-2fa?username='+encodeURIComponent(username)+'&secret=dn17ORUwf36Znl',{method:'POST'}).then(res=>res.json()).then(data=>{setLoading(btn,false);if(data.code===200){showResult('disable2faResult',true,'解除2FA成功');document.getElementById('disable2faUsername').value='';}else{showResult('disable2faResult',false,'操作失败: '+(data.msg||'未知错误'));}}).catch(err=>{setLoading(btn,false);showResult('disable2faResult',false,'网络错误: '+err.message);});}\n" +
-                "function unlockAccount(){var username=document.getElementById('unlockAccountUsername').value.trim();if(!username){alert('请输入客户账号');return;}var btn=event.target;setLoading(btn,true);fetch('/api/monitor/ops/unlock-account?username='+encodeURIComponent(username)+'&secret=dn17ORUwf36Znl',{method:'POST'}).then(res=>res.json()).then(data=>{setLoading(btn,false);if(data.code===200){showResult('unlockAccountResult',true,'解锁账户成功');document.getElementById('unlockAccountUsername').value='';}else{showResult('unlockAccountResult',false,'操作失败: '+(data.msg||'未知错误'));}}).catch(err=>{setLoading(btn,false);showResult('unlockAccountResult',false,'网络错误: '+err.message);});}\n" +
-                "function unlockIp(){var username=document.getElementById('unlockIpUsername').value.trim();if(!username){alert('请输入IP地址或账号');return;}var btn=event.target;setLoading(btn,true);fetch('/api/monitor/ops/unlock-ip?username='+encodeURIComponent(username)+'&secret=dn17ORUwf36Znl',{method:'POST'}).then(res=>res.json()).then(data=>{setLoading(btn,false);if(data.code===200){showResult('unlockIpResult',true,'解锁IP成功');document.getElementById('unlockIpUsername').value='';}else{showResult('unlockIpResult',false,'操作失败: '+(data.msg||'未知错误'));}}).catch(err=>{setLoading(btn,false);showResult('unlockIpResult',false,'网络错误: '+err.message);});}\n" +
-                "function escapeHtml(s){if(!s)return'';return String(s).replace(/[&<>]/g,function(m){if(m==='&')return'&amp;';if(m==='<')return'&lt;';if(m==='>')return'&gt;';return m;});}\n" +
+                "// 全局变量\n" +
+                "let page = 1, size = 20, totalPages = 1;\n" +
+                "let trendChart = null, typeChart = null, operatorChart = null, successRateChart = null;\n" +
+                "\n" +
+                "// 主题切换\n" +
+                "function toggleTheme(){\n" +
+                "    var html = document.documentElement;\n" +
+                "    var btn = document.getElementById('themeBtn');\n" +
+                "    var currentTheme = html.getAttribute('data-theme');\n" +
+                "    if(currentTheme === 'dark'){\n" +
+                "        html.removeAttribute('data-theme');\n" +
+                "        btn.innerHTML = '🌙 深色';\n" +
+                "        localStorage.setItem('monitor-theme', 'light');\n" +
+                "    }else{\n" +
+                "        html.setAttribute('data-theme', 'dark');\n" +
+                "        btn.innerHTML = '☀️ 浅色';\n" +
+                "        localStorage.setItem('monitor-theme', 'dark');\n" +
+                "    }\n" +
+                "}\n" +
+                "\n" +
+                "function logout(){ fetch('/monitor/logout').then(function(){ location.href = '/monitor/login'; }); }\n" +
+                "\n" +
+                "var savedTheme = localStorage.getItem('monitor-theme');\n" +
+                "if(savedTheme === 'dark'){\n" +
+                "    document.documentElement.setAttribute('data-theme', 'dark');\n" +
+                "    var themeBtn = document.getElementById('themeBtn');\n" +
+                "    if(themeBtn) themeBtn.innerHTML = '☀️ 浅色';\n" +
+                "}\n" +
+                "\n" +
+                "// 获取当前登录用户信息\n" +
+                "function getCurrentUserInfo() {\n" +
+                "    fetch('/api/monitor/current-user?secret=dn17ORUwf36Znl')\n" +
+                "        .then(function(res) { return res.json(); })\n" +
+                "        .then(function(data) {\n" +
+                "            if (data.code === 200) {\n" +
+                "                document.getElementById('currentUsername').innerText = data.data.username;\n" +
+                "                var roleSpan = document.getElementById('currentUserRole');\n" +
+                "                var roleText = data.data.role === 'ADMIN' ? '👑 管理员' : '🔧 NOC';\n" +
+                "                roleSpan.innerHTML = roleText;\n" +
+                "            }\n" +
+                "        }).catch(function(err) { console.error('获取用户信息失败:', err); });\n" +
+                "}\n" +
+                "getCurrentUserInfo();\n" +
+                "\n" +
+                "// 操作函数\n" +
+                "function showResult(elementId, success, message){\n" +
+                "    var el = document.getElementById(elementId);\n" +
+                "    if(!el) return;\n" +
+                "    el.innerHTML = '<span class=\"' + (success ? 'result-success' : 'result-error') + '\">' + (success ? '✅ ' : '❌ ') + escapeHtml(message) + '</span>';\n" +
+                "    el.classList.add('show');\n" +
+                "    setTimeout(function(){ el.classList.remove('show'); }, 5000);\n" +
+                "}\n" +
+                "\n" +
+                "function setLoading(btn, loading){\n" +
+                "    if(loading){\n" +
+                "        btn.classList.add('loading');\n" +
+                "        btn.disabled = true;\n" +
+                "    }else{\n" +
+                "        btn.classList.remove('loading');\n" +
+                "        btn.disabled = false;\n" +
+                "    }\n" +
+                "}\n" +
+                "\n" +
+                "function reset2FA(){\n" +
+                "    var username = document.getElementById('reset2faUsername').value.trim();\n" +
+                "    if(!username){ alert('请输入客户账号'); return; }\n" +
+                "    var btn = event.target;\n" +
+                "    setLoading(btn, true);\n" +
+                "    fetch('/api/monitor/ops/reset-2fa?username=' + encodeURIComponent(username) + '&secret=dn17ORUwf36Znl', {method:'POST'})\n" +
+                "        .then(res => res.json())\n" +
+                "        .then(data => {\n" +
+                "            setLoading(btn, false);\n" +
+                "            if(data.code === 200){\n" +
+                "                showResult('reset2faResult', true, '重置2FA成功');\n" +
+                "                document.getElementById('reset2faUsername').value = '';\n" +
+                "                loadStats(); loadLogs(); loadCharts();\n" +
+                "            }else{\n" +
+                "                showResult('reset2faResult', false, '操作失败: ' + (data.msg || '未知错误'));\n" +
+                "            }\n" +
+                "        }).catch(err => { setLoading(btn, false); showResult('reset2faResult', false, '网络错误: ' + err.message); });\n" +
+                "}\n" +
+                "\n" +
+                "function disable2FA(){\n" +
+                "    var username = document.getElementById('disable2faUsername').value.trim();\n" +
+                "    if(!username){ alert('请输入客户账号'); return; }\n" +
+                "    var btn = event.target;\n" +
+                "    setLoading(btn, true);\n" +
+                "    fetch('/api/monitor/ops/disable-2fa?username=' + encodeURIComponent(username) + '&secret=dn17ORUwf36Znl', {method:'POST'})\n" +
+                "        .then(res => res.json())\n" +
+                "        .then(data => {\n" +
+                "            setLoading(btn, false);\n" +
+                "            if(data.code === 200){\n" +
+                "                showResult('disable2faResult', true, '解除2FA成功');\n" +
+                "                document.getElementById('disable2faUsername').value = '';\n" +
+                "                loadStats(); loadLogs(); loadCharts();\n" +
+                "            }else{\n" +
+                "                showResult('disable2faResult', false, '操作失败: ' + (data.msg || '未知错误'));\n" +
+                "            }\n" +
+                "        }).catch(err => { setLoading(btn, false); showResult('disable2faResult', false, '网络错误: ' + err.message); });\n" +
+                "}\n" +
+                "\n" +
+                "function unlockAccount(){\n" +
+                "    var username = document.getElementById('unlockAccountUsername').value.trim();\n" +
+                "    if(!username){ alert('请输入客户账号'); return; }\n" +
+                "    var btn = event.target;\n" +
+                "    setLoading(btn, true);\n" +
+                "    fetch('/api/monitor/ops/unlock-account?username=' + encodeURIComponent(username) + '&secret=dn17ORUwf36Znl', {method:'POST'})\n" +
+                "        .then(res => res.json())\n" +
+                "        .then(data => {\n" +
+                "            setLoading(btn, false);\n" +
+                "            if(data.code === 200){\n" +
+                "                showResult('unlockAccountResult', true, '解锁账户成功');\n" +
+                "                document.getElementById('unlockAccountUsername').value = '';\n" +
+                "                loadStats(); loadLogs(); loadCharts();\n" +
+                "            }else{\n" +
+                "                showResult('unlockAccountResult', false, '操作失败: ' + (data.msg || '未知错误'));\n" +
+                "            }\n" +
+                "        }).catch(err => { setLoading(btn, false); showResult('unlockAccountResult', false, '网络错误: ' + err.message); });\n" +
+                "}\n" +
+                "\n" +
+                "function unlockIp(){\n" +
+                "    var username = document.getElementById('unlockIpUsername').value.trim();\n" +
+                "    if(!username){ alert('请输入IP地址或账号'); return; }\n" +
+                "    var btn = event.target;\n" +
+                "    setLoading(btn, true);\n" +
+                "    fetch('/api/monitor/ops/unlock-ip?username=' + encodeURIComponent(username) + '&secret=dn17ORUwf36Znl', {method:'POST'})\n" +
+                "        .then(res => res.json())\n" +
+                "        .then(data => {\n" +
+                "            setLoading(btn, false);\n" +
+                "            if(data.code === 200){\n" +
+                "                showResult('unlockIpResult', true, '解锁IP成功');\n" +
+                "                document.getElementById('unlockIpUsername').value = '';\n" +
+                "                loadStats(); loadLogs(); loadCharts();\n" +
+                "            }else{\n" +
+                "                showResult('unlockIpResult', false, '操作失败: ' + (data.msg || '未知错误'));\n" +
+                "            }\n" +
+                "        }).catch(err => { setLoading(btn, false); showResult('unlockIpResult', false, '网络错误: ' + err.message); });\n" +
+                "}\n" +
+                "\n" +
+                "// 加载统计数据\n" +
+                "function loadStats(){\n" +
+                "    fetch('/api/monitor/ops-logs/stats?secret=dn17ORUwf36Znl')\n" +
+                "        .then(res => res.json())\n" +
+                "        .then(data => {\n" +
+                "            if(data.code === 200 && data.data){\n" +
+                "                var weekCompare = data.data.weekCompare || {};\n" +
+                "                var thisWeek = weekCompare.this_week_count || 0;\n" +
+                "                var lastWeek = weekCompare.last_week_count || 0;\n" +
+                "                var trend = thisWeek - lastWeek;\n" +
+                "                var trendPercent = lastWeek > 0 ? (trend / lastWeek * 100).toFixed(1) : (thisWeek > 0 ? 100 : 0);\n" +
+                "                var trendClass = trend >= 0 ? 'trend-up' : 'trend-down';\n" +
+                "                var trendIcon = trend >= 0 ? '↑' : '↓';\n" +
+                "                \n" +
+                "                var statsHtml = '<div class=\"stat-card\"><div class=\"stat-number\">' + thisWeek + '</div><div class=\"stat-label\">本周操作次数</div><div class=\"stat-trend ' + trendClass + '\">' + trendIcon + ' ' + Math.abs(trendPercent) + '% 较上周</div></div>' +\n" +
+                "                    '<div class=\"stat-card\"><div class=\"stat-number\">' + lastWeek + '</div><div class=\"stat-label\">上周操作次数</div></div>';\n" +
+                "                \n" +
+                "                var monthStatsByType = data.data.monthStatsByType || [];\n" +
+                "                var totalMonth = 0;\n" +
+                "                for(var i = 0; i < monthStatsByType.length; i++){ totalMonth += monthStatsByType[i].count; }\n" +
+                "                statsHtml += '<div class=\"stat-card\"><div class=\"stat-number\">' + totalMonth + '</div><div class=\"stat-label\">本月操作总数</div></div>';\n" +
+                "                \n" +
+                "                var monthStatsByOperator = data.data.monthStatsByOperator || [];\n" +
+                "                var topOperator = monthStatsByOperator.length > 0 ? monthStatsByOperator[0].operator : '-';\n" +
+                "                var topCount = monthStatsByOperator.length > 0 ? monthStatsByOperator[0].total_count : 0;\n" +
+                "                statsHtml += '<div class=\"stat-card\"><div class=\"stat-number\">' + escapeHtml(topOperator) + '</div><div class=\"stat-label\">本月最活跃</div><div class=\"stat-trend\">操作 ' + topCount + ' 次</div></div>';\n" +
+                "                \n" +
+                "                document.getElementById('statsGrid').innerHTML = statsHtml;\n" +
+                "            }\n" +
+                "        }).catch(err => console.error('加载统计失败:', err));\n" +
+                "}\n" +
+                "\n" +
+                "// 加载图表\n" +
+                "function loadCharts(){\n" +
+                "    fetch('/api/monitor/ops-logs/stats?secret=dn17ORUwf36Znl')\n" +
+                "        .then(res => res.json())\n" +
+                "        .then(data => {\n" +
+                "            if(data.code === 200 && data.data){\n" +
+                "                // 近7天趋势图\n" +
+                "                var trendData = data.data.last7DaysTrend || [];\n" +
+                "                var dates = [], counts = [];\n" +
+                "                for(var i = 0; i < trendData.length; i++){\n" +
+                "                    dates.push(trendData[i].date);\n" +
+                "                    counts.push(trendData[i].count);\n" +
+                "                }\n" +
+                "                var ctx1 = document.getElementById('trendChart').getContext('2d');\n" +
+                "                if(trendChart) trendChart.destroy();\n" +
+                "                trendChart = new Chart(ctx1, {\n" +
+                "                    type: 'line',\n" +
+                "                    data: { labels: dates, datasets: [{ label: '操作次数', data: counts, borderColor: '#667eea', backgroundColor: 'rgba(102,126,234,0.1)', fill: true, tension: 0.3 }] },\n" +
+                "                    options: { responsive: true, maintainAspectRatio: true }\n" +
+                "                });\n" +
+                "                \n" +
+                "                // 操作类型分布图\n" +
+                "                var typeData = data.data.monthStatsByType || [];\n" +
+                "                var typeLabels = [], typeCounts = [];\n" +
+                "                var typeNameMap = { 'RESET_2FA': '重置2FA', 'DISABLE_2FA': '解除2FA', 'UNLOCK_ACCOUNT': '解锁账户', 'UNLOCK_IP': '解锁IP' };\n" +
+                "                for(var i = 0; i < typeData.length; i++){\n" +
+                "                    typeLabels.push(typeNameMap[typeData[i].operation_type] || typeData[i].operation_name);\n" +
+                "                    typeCounts.push(typeData[i].count);\n" +
+                "                }\n" +
+                "                var ctx2 = document.getElementById('typeChart').getContext('2d');\n" +
+                "                if(typeChart) typeChart.destroy();\n" +
+                "                typeChart = new Chart(ctx2, {\n" +
+                "                    type: 'pie',\n" +
+                "                    data: { labels: typeLabels, datasets: [{ data: typeCounts, backgroundColor: ['#667eea', '#764ba2', '#f59e0b', '#10b981'] }] },\n" +
+                "                    options: { responsive: true, maintainAspectRatio: true, plugins: { legend: { position: 'right' } } }\n" +
+                "                });\n" +
+                "                \n" +
+                "                // 操作人排行图\n" +
+                "                var operatorData = data.data.monthStatsByOperator || [];\n" +
+                "                var operatorLabels = [], operatorCounts = [];\n" +
+                "                for(var i = 0; i < Math.min(operatorData.length, 10); i++){\n" +
+                "                    operatorLabels.push(operatorData[i].operator);\n" +
+                "                    operatorCounts.push(operatorData[i].total_count);\n" +
+                "                }\n" +
+                "                var ctx3 = document.getElementById('operatorChart').getContext('2d');\n" +
+                "                if(operatorChart) operatorChart.destroy();\n" +
+                "                operatorChart = new Chart(ctx3, {\n" +
+                "                    type: 'bar',\n" +
+                "                    data: { labels: operatorLabels, datasets: [{ label: '操作次数', data: operatorCounts, backgroundColor: '#667eea', borderRadius: 8 }] },\n" +
+                "                    options: { responsive: true, maintainAspectRatio: true, indexAxis: 'y' }\n" +
+                "                });\n" +
+                "                \n" +
+                "                // 成功率分析图\n" +
+                "                var successData = data.data.monthStatsByOperator || [];\n" +
+                "                var successLabels = [], successRates = [];\n" +
+                "                for(var i = 0; i < Math.min(successData.length, 10); i++){\n" +
+                "                    var total = successData[i].total_count;\n" +
+                "                    var successCount = successData[i].success_count;\n" +
+                "                    var rate = total > 0 ? (successCount / total * 100).toFixed(1) : 0;\n" +
+                "                    successLabels.push(successData[i].operator);\n" +
+                "                    successRates.push(rate);\n" +
+                "                }\n" +
+                "                var ctx4 = document.getElementById('successRateChart').getContext('2d');\n" +
+                "                if(successRateChart) successRateChart.destroy();\n" +
+                "                successRateChart = new Chart(ctx4, {\n" +
+                "                    type: 'bar',\n" +
+                "                    data: { labels: successLabels, datasets: [{ label: '成功率 (%)', data: successRates, backgroundColor: '#10b981', borderRadius: 8 }] },\n" +
+                "                    options: { responsive: true, maintainAspectRatio: true, scales: { y: { max: 100, min: 0, ticks: { callback: function(val){ return val + '%'; } } } } }\n" +
+                "                });\n" +
+                "            }\n" +
+                "        }).catch(err => console.error('加载图表失败:', err));\n" +
+                "}\n" +
+                "\n" +
+                "// 日志列表相关函数\n" +
+                "function searchLogs(){ page = 1; loadLogs(); }\n" +
+                "\n" +
+                "function resetSearch(){\n" +
+                "    document.getElementById('searchOperator').value = '';\n" +
+                "    document.getElementById('searchOperationType').value = '';\n" +
+                "    document.getElementById('startTime').value = '';\n" +
+                "    document.getElementById('endTime').value = '';\n" +
+                "    page = 1;\n" +
+                "    loadLogs();\n" +
+                "}\n" +
+                "\n" +
+                "function loadLogs(){\n" +
+                "    var operator = document.getElementById('searchOperator').value;\n" +
+                "    var operationType = document.getElementById('searchOperationType').value;\n" +
+                "    var startTime = document.getElementById('startTime').value;\n" +
+                "    var endTime = document.getElementById('endTime').value;\n" +
+                "    var url = '/api/monitor/ops-logs?secret=dn17ORUwf36Znl&page=' + page + '&size=' + size;\n" +
+                "    if(operator) url += '&operator=' + encodeURIComponent(operator);\n" +
+                "    if(operationType) url += '&operationType=' + encodeURIComponent(operationType);\n" +
+                "    if(startTime) url += '&startTime=' + encodeURIComponent(startTime.replace('T', ' ') + ':00');\n" +
+                "    if(endTime) url += '&endTime=' + encodeURIComponent(endTime.replace('T', ' ') + ':00');\n" +
+                "    fetch(url).then(res => res.json()).then(data => {\n" +
+                "        if(data.code === 200){\n" +
+                "            renderTable(data.data || []);\n" +
+                "            totalPages = data.totalPages || 1;\n" +
+                "            renderPagination();\n" +
+                "        }else{\n" +
+                "            document.getElementById('logBody').innerHTML = '<tr><td colspan=\"7\" class=\"empty\">加载失败: ' + (data.msg || '错误') + '</td></tr>';\n" +
+                "        }\n" +
+                "    }).catch(() => {\n" +
+                "        document.getElementById('logBody').innerHTML = '<tr><td colspan=\"7\" class=\"empty\">加载失败: 网络错误</td></tr>';\n" +
+                "    });\n" +
+                "}\n" +
+                "\n" +
+                "function renderTable(list){\n" +
+                "    var tbody = document.getElementById('logBody');\n" +
+                "    if(!tbody) return;\n" +
+                "    if(!list || list.length === 0){\n" +
+                "        tbody.innerHTML = '<tr><td colspan=\"7\" class=\"empty\">暂无数据</td></tr>';\n" +
+                "        return;\n" +
+                "    }\n" +
+                "    var operationNameMap = { 'RESET_2FA': '重置2FA', 'DISABLE_2FA': '解除2FA', 'UNLOCK_ACCOUNT': '解锁账户', 'UNLOCK_IP': '解锁IP' };\n" +
+                "    var html = '';\n" +
+                "    for(var i = 0; i < list.length; i++){\n" +
+                "        var log = list[i];\n" +
+                "        var opName = operationNameMap[log.operationType] || log.operationName;\n" +
+                "        var statusClass = log.result === 1 ? 'status-success' : 'status-fail';\n" +
+                "        var statusText = log.result === 1 ? '成功' : '失败';\n" +
+                "        html += '<tr>' +\n" +
+                "            '<td style=\"white-space:nowrap\">' + formatDateTime(log.createTime) + '</td>' +\n" +
+                "            '<td>' + escapeHtml(log.operator) + '</td>' +\n" +
+                "            '<td><span class=\"status-badge\">' + opName + '</span></td>' +\n" +
+                "            '<td>' + escapeHtml(log.target) + '</td>' +\n" +
+                "            '<td><span class=\"status-badge ' + statusClass + '\">' + statusText + '</span></td>' +\n" +
+                "            '<td title=\"' + escapeHtml(log.resultMsg || '') + '\">' + (log.resultMsg ? (log.resultMsg.length > 30 ? escapeHtml(log.resultMsg.substring(0,30)) + '...' : escapeHtml(log.resultMsg)) : '-') + '</td>' +\n" +
+                "            '<td>' + (log.requestIp || '-') + '</td>' +\n" +
+                "            '</tr>';\n" +
+                "    }\n" +
+                "    tbody.innerHTML = html;\n" +
+                "}\n" +
+                "\n" +
+                "function formatDateTime(dateStr){ if(!dateStr) return '-'; return dateStr.replace('T', ' ').substring(0,19); }\n" +
+                "\n" +
+                "function renderPagination(){\n" +
+                "    var div = document.getElementById('pagination');\n" +
+                "    if(!div) return;\n" +
+                "    if(totalPages <= 1){ div.innerHTML = ''; return; }\n" +
+                "    var html = '<button class=\"page-btn\" onclick=\"goPage(1)\"' + (page === 1 ? 'disabled' : '') + '>首页</button>' +\n" +
+                "        '<button class=\"page-btn\" onclick=\"goPage(' + (page - 1) + ')\"' + (page === 1 ? 'disabled' : '') + '>上一页</button>' +\n" +
+                "        '<span class=\"page-info\">第 ' + page + ' / ' + totalPages + ' 页</span>' +\n" +
+                "        '<button class=\"page-btn\" onclick=\"goPage(' + (page + 1) + ')\"' + (page === totalPages ? 'disabled' : '') + '>下一页</button>' +\n" +
+                "        '<button class=\"page-btn\" onclick=\"goPage(' + totalPages + ')\"' + (page === totalPages ? 'disabled' : '') + '>尾页</button>';\n" +
+                "    div.innerHTML = html;\n" +
+                "}\n" +
+                "\n" +
+                "function goPage(p){ page = p; loadLogs(); }\n" +
+                "\n" +
+                "function escapeHtml(s){ if(!s) return ''; return String(s).replace(/[&<>]/g, function(m){ if(m === '&') return '&amp;'; if(m === '<') return '&lt;'; if(m === '>') return '&gt;'; return m; }); }\n" +
+                "\n" +
+                "// 初始化加载\n" +
+                "loadStats();\n" +
+                "loadLogs();\n" +
+                "loadCharts();\n" +
+                "// 每30秒自动刷新统计数据\n" +
+                "setInterval(function(){ loadStats(); loadCharts(); }, 30000);\n" +
                 "</script>\n" +
                 "</body>\n" +
                 "</html>";
@@ -3114,7 +4192,7 @@ public class LogMonitorController {
                 "<head>\n" +
                 "<meta charset=\"UTF-8\">\n" +
                 "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n" +
-                "<title>队列管理</title>\n" +
+                "<title>Texcell ECCOM WEB 发送队列管理</title>\n" +
                 "<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23667eea'/%3E%3Ctext x='50' y='68' font-size='50' text-anchor='middle' fill='white' font-family='Arial'%3E📨%3C/text%3E%3C/svg%3E\">\n" +
                 "<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap\" rel=\"stylesheet\">\n" +
                 "<script src=\"https://cdn.jsdelivr.net/npm/chart.js\"></script>\n" +
@@ -3191,15 +4269,16 @@ public class LogMonitorController {
                 "<a href=\"/monitor/dashboard\">服务监控</a>\n" +
                 "<a href=\"/monitor/login-audit\">登录审计</a>\n" +
                 "<a href=\"/monitor/number-files\">号码备份</a>\n" +
-                "<a href=\"/monitor/customer-management\">客户管理</a>\n" +
-                "<a href=\"/monitor/user-management\">用户管理</a>\n" +
+                "<a href=\"/monitor/customer-management\">API客户管理</a>\n" +
+                "<a href=\"/monitor/user-management\">登录账户管理</a>\n" +
                 "<a href=\"/monitor/ops-management\">运维管理</a>\n" +
                 "<a href=\"/monitor/queue-management\" class=\"active\">发送队列管理</a>\n" +
                 "</div>\n" +
                 "<div class=\"nav-right\">\n" +
-                "<span class=\"user-name\">Administrator</span>\n" +
-                "<button class=\"theme-toggle\" onclick=\"toggleTheme()\">🌙 深色</button>\n" +
-                "<button class=\"logout-btn\" onclick=\"logout()\">退出</button>\n" +
+                "    <span class=\"user-name\" id=\"currentUsername\">加载中...</span>\n" +
+                "    <span class=\"user-role\" id=\"currentUserRole\" style=\"background:rgba(255,255,255,0.2);padding:4px 12px;border-radius:20px;font-size:12px;\">加载中...</span>\n" +
+                "    <button class=\"theme-toggle\" onclick=\"toggleTheme()\">🌙 深色</button>\n" +
+                "    <button class=\"logout-btn\" onclick=\"logout()\">退出</button>\n" +
                 "</div>\n" +
                 "</div>\n" +
                 "<div class=\"rank-card\">\n" +
@@ -3222,7 +4301,7 @@ public class LogMonitorController {
                 "</table>\n" +
                 "<div class=\"pagination\" id=\"pagination\"></div>\n" +
                 "</div>\n" +
-                "<div class=\"footer\">📨 客户队列管理 | 仅显示最近3天数据 | 双击任务ID可查看详情</div>\n" +
+                "<div class=\"footer\">📨 客户发送队列管理 | 仅显示最近3天数据 | 双击任务ID可查看详情</div>\n" +
                 "</div>\n" +
                 "<div id=\"detailModal\" class=\"modal\" style=\"display:none;\">\n" +
                 "<div class=\"modal-content\">\n" +
@@ -3244,6 +4323,20 @@ public class LogMonitorController {
                 "function toggleTheme(){var html=document.documentElement;var isDark=html.getAttribute('data-theme')==='dark';if(isDark){html.removeAttribute('data-theme');localStorage.setItem('monitor-theme','light');}else{html.setAttribute('data-theme','dark');localStorage.setItem('monitor-theme','dark');}}\n" +
                 "function logout(){fetch('/monitor/logout').then(function(){location.href='/monitor/login';});}\n" +
                 "if(localStorage.getItem('monitor-theme')==='dark'){document.documentElement.setAttribute('data-theme','dark');}\n" +
+                "// 获取当前登录用户信息\n" +
+                "function getCurrentUserInfo() {\n" +
+                "    fetch('/api/monitor/current-user?secret=dn17ORUwf36Znl')\n" +
+                "        .then(function(res) { return res.json(); })\n" +
+                "        .then(function(data) {\n" +
+                "            if (data.code === 200) {\n" +
+                "                document.getElementById('currentUsername').innerText = data.data.username;\n" +
+                "                var roleSpan = document.getElementById('currentUserRole');\n" +
+                "                var roleText = data.data.role === 'ADMIN' ? '👑 管理员' : '🔧 NOC';\n" +
+                "                roleSpan.innerHTML = roleText;\n" +
+                "            }\n" +
+                "        }).catch(function(err) { console.error('获取用户信息失败:', err); });\n" +
+                "}\n" +
+                "getCurrentUserInfo();\n" +
                 "function loadRanking(){fetch('/api/monitor/queue/customer-ranking?secret=dn17ORUwf36Znl').then(function(res){return res.json();}).then(function(data){var ctx=document.getElementById('rankingChart').getContext('2d');if(rankingChart)rankingChart.destroy();if(data.code===200&&data.data&&data.data.length){var list=data.data;var labels=list.map(function(i){return i.subAccount||i.username||'-';});var counts=list.map(function(i){return i.totalCount||0;});rankingChart=new Chart(ctx,{type:'bar',data:{labels:labels,datasets:[{label:'提交数量(条)',data:counts,backgroundColor:'#667eea',borderRadius:8}]},options:{responsive:true,maintainAspectRatio:true}});}else{rankingChart=new Chart(ctx,{type:'bar',data:{labels:['暂无数据'],datasets:[{label:'提交数量',data:[0]}]},options:{responsive:true}});}}).catch(function(){var ctx=document.getElementById('rankingChart').getContext('2d');if(rankingChart)rankingChart.destroy();rankingChart=new Chart(ctx,{type:'bar',data:{labels:['加载失败'],datasets:[{label:'提交数量',data:[0]}]},options:{responsive:true}});});}\n" +
                 "function formatNumber(num){if(!num)return'0';return num.toString().replace(/\\B(?=(\\d{3})+(?!\\d))/g,',');}\n" +
                 "function searchTasks(){page=1;loadTasks();}\n" +
