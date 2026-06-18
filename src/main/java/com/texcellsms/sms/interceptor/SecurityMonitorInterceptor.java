@@ -52,7 +52,8 @@ public class SecurityMonitorInterceptor implements HandlerInterceptor {
 
     // ====================== 接口白名单======================
     private static final List<String> EXPORT_WHITE_LIST = Arrays.asList(
-            "/api/eccom/submit-record/export/easyexcel"
+            "/api/eccom/submit-record/export/easyexcel",
+            "/api/sms/queue/tasks/batch-delete"
     );
 
     public static void recordLoginFailure(String ip) {
