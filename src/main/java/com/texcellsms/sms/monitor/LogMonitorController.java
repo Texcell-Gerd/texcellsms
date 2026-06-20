@@ -1875,56 +1875,54 @@ public class LogMonitorController {
                 "<link href=\"https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap\" rel=\"stylesheet\">\n" +
                 "<style>\n" +
                 ":root {\n" +
-                "  --bg-overlay: rgba(0,0,0,0.4);\n" +
-                "  --card-bg: rgba(255,255,255,0.98);\n" +
+                "  --bg-overlay: rgba(0,0,0,0.05);\n" +
+                "  --card-bg: #ffffff;\n" +
                 "  --text-primary: #1e293b;\n" +
                 "  --text-secondary: #475569;\n" +
                 "  --text-muted: #94a3b8;\n" +
-                "  --input-border: #e2e8f0;\n" +
+                "  --input-border: #d1d5db;\n" +
                 "  --input-bg: #ffffff;\n" +
                 "  --error-bg: #fef2f2;\n" +
                 "  --error-border: #fecaca;\n" +
                 "  --error-text: #dc2626;\n" +
+                "  --primary-color: #1677ff;\n" +
+                "  --primary-hover: #4096ff;\n" +
                 "}\n" +
                 "*{margin:0;padding:0;box-sizing:border-box;}\n" +
-                "body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:linear-gradient(135deg,#0f172a 0%,#1e1b4b 50%,#2e1065 100%);min-height:100vh;display:flex;justify-content:center;align-items:center;position:relative;overflow:hidden;}\n" +
-                "body::before{content:'';position:absolute;inset:0;background:var(--bg-overlay);pointer-events:none;}\n" +
-                ".bg-orb{position:absolute;width:500px;height:500px;border-radius:50%;filter:blur(80px);opacity:0.3;animation:float 20s infinite ease-in-out;}\n" +
-                ".orb-1{background:#667eea;top:-150px;right:-150px;animation-delay:0s;}\n" +
-                ".orb-2{background:#764ba2;bottom:-150px;left:-150px;animation-delay:5s;}\n" +
-                ".orb-3{background:#f59e0b;top:50%;left:50%;transform:translate(-50%,-50%);width:400px;height:400px;opacity:0.15;animation-delay:10s;}\n" +
-                "@keyframes float{0%,100%{transform:translate(0,0) scale(1);}33%{transform:translate(30px,-30px) scale(1.05);}66%{transform:translate(-20px,20px) scale(0.95);}}\n" +
-                ".grid-pattern{position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,0.03) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.03) 1px,transparent 1px);background-size:50px 50px;pointer-events:none;}\n" +
+                "body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f0f2f5;min-height:100vh;display:flex;justify-content:center;align-items:center;position:relative;overflow:hidden;}\n" +
+                ".bg-orb{display:none;}\n" +
+                ".grid-pattern{display:none;}\n" +
+                "body::before{display:none;}\n" +
                 ".login-container{position:relative;z-index:10;width:100%;max-width:450px;margin:20px;animation:fadeInUp 0.6s ease-out;}\n" +
                 "@keyframes fadeInUp{from{opacity:0;transform:translateY(30px);}to{opacity:1;transform:translateY(0);}}\n" +
-                ".login-card{background:var(--card-bg);border-radius:48px;padding:48px 40px;box-shadow:0 25px 50px -12px rgba(0,0,0,0.25);backdrop-filter:blur(2px);transition:all 0.3s ease;}\n" +
+                ".login-card{background:#ffffff;border-radius:48px;padding:48px 40px;box-shadow:0 25px 50px -12px rgba(0,0,0,0.25);transition:all 0.3s ease;}\n" +
                 ".login-card:hover{transform:translateY(-4px);box-shadow:0 35px 60px -15px rgba(0,0,0,0.3);}\n" +
                 ".logo-area{text-align:center;margin-bottom:32px;}\n" +
-                ".logo-icon{width:64px;height:64px;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);border-radius:24px;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;box-shadow:0 10px 20px -5px rgba(102,126,234,0.4);}\n" +
+                ".logo-icon{width:64px;height:64px;background:linear-gradient(135deg,#1677ff 0%,#4096ff 100%);border-radius:24px;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;box-shadow:0 10px 20px -5px rgba(22,119,255,0.4);}\n" +
                 ".logo-icon span{font-size:36px;}\n" +
-                ".login-card h2{font-size:28px;font-weight:700;text-align:center;color:var(--text-primary);margin-bottom:8px;letter-spacing:-0.5px;}\n" +
-                ".login-sub{text-align:center;color:var(--text-muted);font-size:14px;margin-bottom:32px;font-weight:400;}\n" +
+                ".login-card h2{font-size:28px;font-weight:700;text-align:center;color:#1e293b;margin-bottom:8px;letter-spacing:-0.5px;}\n" +
+                ".login-sub{text-align:center;color:#94a3b8;font-size:14px;margin-bottom:32px;font-weight:400;}\n" +
                 ".input-group{margin-bottom:20px;}\n" +
-                ".input-label{display:block;font-size:13px;font-weight:500;color:var(--text-secondary);margin-bottom:8px;}\n" +
+                ".input-label{display:block;font-size:13px;font-weight:500;color:#475569;margin-bottom:8px;}\n" +
                 ".input-wrapper{position:relative;}\n" +
-                ".input-icon{position:absolute;left:16px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:18px;pointer-events:none;}\n" +
-                ".input-wrapper input{width:100%;height:52px;padding:0 16px 0 48px;border:1.5px solid var(--input-border);border-radius:20px;font-size:15px;color:var(--text-primary);background:var(--input-bg);transition:all 0.3s;}\n" +
-                ".input-wrapper input:focus{outline:none;border-color:#667eea;box-shadow:0 0 0 4px rgba(102,126,234,0.1);}\n" +
-                ".toggle-pwd{position:absolute;right:16px;top:50%;transform:translateY(-50%);cursor:pointer;color:var(--text-muted);font-size:18px;background:none;border:none;}\n" +
-                ".toggle-pwd:hover{color:#667eea;}\n" +
-                ".login-btn{width:100%;height:52px;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white;border:none;border-radius:26px;font-size:16px;font-weight:600;cursor:pointer;transition:all 0.3s;margin-top:8px;display:flex;align-items:center;justify-content:center;gap:8px;}\n" +
-                ".login-btn:hover{transform:translateY(-2px);box-shadow:0 10px 25px -5px rgba(102,126,234,0.5);}\n" +
+                ".input-icon{position:absolute;left:16px;top:50%;transform:translateY(-50%);color:#94a3b8;font-size:18px;pointer-events:none;}\n" +
+                ".input-wrapper input{width:100%;height:52px;padding:0 16px 0 48px;border:1.5px solid #d1d5db;border-radius:20px;font-size:15px;color:#1e293b;background:#ffffff;transition:all 0.3s;}\n" +
+                ".input-wrapper input:focus{outline:none;border-color:#1677ff;box-shadow:0 0 0 4px rgba(22,119,255,0.1);}\n" +
+                ".toggle-pwd{position:absolute;right:16px;top:50%;transform:translateY(-50%);cursor:pointer;color:#94a3b8;font-size:18px;background:none;border:none;}\n" +
+                ".toggle-pwd:hover{color:#1677ff;}\n" +
+                ".login-btn{width:100%;height:52px;background:linear-gradient(135deg,#1677ff 0%,#4096ff 100%);color:white;border:none;border-radius:26px;font-size:16px;font-weight:600;cursor:pointer;transition:all 0.3s;margin-top:8px;display:flex;align-items:center;justify-content:center;gap:8px;}\n" +
+                ".login-btn:hover{transform:translateY(-2px);box-shadow:0 10px 25px -5px rgba(22,119,255,0.5);}\n" +
                 ".login-btn:active{transform:translateY(0);}\n" +
                 ".login-btn.loading{opacity:0.7;cursor:not-allowed;}\n" +
                 ".login-btn .spinner{width:20px;height:20px;border:2px solid rgba(255,255,255,0.3);border-top-color:white;border-radius:50%;animation:spin 0.8s linear infinite;display:none;}\n" +
                 ".login-btn.loading .spinner{display:inline-block;}\n" +
                 ".login-btn.loading .btn-text{display:none;}\n" +
                 "@keyframes spin{to{transform:rotate(360deg);}}\n" +
-                ".error-msg{background:var(--error-bg);border:1px solid var(--error-border);border-radius:16px;padding:12px 16px;margin-top:20px;display:none;align-items:center;gap:10px;}\n" +
+                ".error-msg{background:#fef2f2;border:1px solid #fecaca;border-radius:16px;padding:12px 16px;margin-top:20px;display:none;align-items:center;gap:10px;}\n" +
                 ".error-msg.show{display:flex;}\n" +
-                ".error-msg .error-icon{color:var(--error-text);font-size:18px;}\n" +
-                ".error-msg .error-text{color:var(--error-text);font-size:13px;flex:1;}\n" +
-                ".footer{text-align:center;margin-top:24px;color:var(--text-muted);font-size:12px;}\n" +
+                ".error-msg .error-icon{color:#dc2626;font-size:18px;}\n" +
+                ".error-msg .error-text{color:#dc2626;font-size:13px;flex:1;}\n" +
+                ".footer{text-align:center;margin-top:24px;color:#94a3b8;font-size:12px;}\n" +
                 "@media(max-width:480px){.login-card{padding:32px 24px;}.login-card h2{font-size:24px;}.input-wrapper input{height:48px;}.login-btn{height:48px;}}\n" +
                 "</style>\n" +
                 "</head>\n" +
@@ -1991,63 +1989,65 @@ public class LogMonitorController {
                 "<link href=\"https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap\" rel=\"stylesheet\">\n" +
                 "<style>\n" +
                 ":root {\n" +
-                "  --bg-primary: #f0f4f8;\n" +
+                "  --bg-primary: #f5f7fa;\n" +
                 "  --bg-card: #ffffff;\n" +
                 "  --text-primary: #1e293b;\n" +
                 "  --text-secondary: #64748b;\n" +
                 "  --text-muted: #94a3b8;\n" +
-                "  --border-color: rgba(0,0,0,0.04);\n" +
-                "  --shadow: 0 4px 20px rgba(0,0,0,0.04);\n" +
-                "  --navbar-bg: linear-gradient(135deg,#0f172a 0%,#1e1b4b 100%);\n" +
+                "  --border-color: #e8ecf1;\n" +
+                "  --shadow: 0 1px 3px rgba(0,0,0,0.06);\n" +
+                "  --navbar-bg: #ffffff;\n" +
                 "  --hover-bg: rgba(0,0,0,0.02);\n" +
+                "  --primary-color: #1677ff;\n" +
+                "  --primary-hover: #4096ff;\n" +
                 "}\n" +
                 "*{margin:0;padding:0;box-sizing:border-box;}\n" +
-                "body{background:var(--bg-primary);font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;}\n" +
-                "/* 顶部导航栏 */\n" +
-                ".navbar{background:var(--navbar-bg);box-shadow:0 4px 20px rgba(0,0,0,0.1);position:sticky;top:0;z-index:100;}\n" +
+                "body{background:#f5f7fa;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;}\n" +
+                ".navbar{background:#ffffff;box-shadow:0 1px 3px rgba(0,0,0,0.06);border-bottom:1px solid #e8ecf1;position:sticky;top:0;z-index:100;}\n" +
                 ".nav-container{max-width:1600px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:70px;}\n" +
                 ".logo{display:flex;align-items:center;gap:12px;}\n" +
-                ".logo-icon{width:40px;height:40px;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;}\n" +
-                ".logo-text{font-size:18px;font-weight:700;color:white;letter-spacing:1px;}\n" +
+                ".logo-icon{width:40px;height:40px;background:linear-gradient(135deg,#1677ff 0%,#4096ff 100%);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;}\n" +
+                ".logo-text{font-size:18px;font-weight:700;color:#1e293b;letter-spacing:1px;}\n" +
                 ".logo-sub{font-size:11px;color:#94a3b8;margin-left:8px;}\n" +
                 ".menu{display:flex;gap:12px;}\n" +
-                ".menu a{color:#e2e8f0;text-decoration:none;padding:8px 20px;border-radius:40px;transition:all 0.3s;font-weight:500;font-size:14px;}\n" +
-                ".menu a:hover{background:rgba(255,255,255,0.1);color:white;}\n" +
-                ".menu a.active{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white;box-shadow:0 4px 12px rgba(102,126,234,0.4);}\n" +
+                ".menu a{color:#64748b;text-decoration:none;padding:8px 20px;border-radius:40px;transition:all 0.3s;font-weight:500;font-size:14px;}\n" +
+                ".menu a:hover{background:#f1f5f9;color:#1e293b;}\n" +
+                ".menu a.active{background:#e8f0fe;color:#1677ff;box-shadow:none;}\n" +
                 ".user-info{display:flex;align-items:center;gap:20px;}\n" +
-                ".user-name{color:#e2e8f0;font-size:14px;}\n" +
-                ".logout-btn{background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);color:white;padding:8px 20px;border-radius:40px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;}\n" +
-                ".logout-btn:hover{background:rgba(255,255,255,0.2);transform:translateY(-1px);}\n" +
+                ".user-name{color:#475569;font-size:14px;}\n" +
+                ".user-role{background:rgba(22,119,255,0.1);padding:4px 12px;border-radius:20px;font-size:12px;color:#1677ff;}\n" +
+                ".logout-btn{background:#f1f5f9;border:1px solid #e8ecf1;color:#475569;padding:8px 20px;border-radius:40px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;}\n" +
+                ".logout-btn:hover{background:#e8ecf1;transform:translateY(-1px);}\n" +
                 ".page-wrap{max-width:1600px;margin:0 auto;padding:32px;}\n" +
-                ".welcome-card{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);border-radius:28px;padding:36px 40px;margin-bottom:32px;color:white;position:relative;overflow:hidden;}\n" +
-                ".welcome-card::before{content:'📊';position:absolute;right:-20px;bottom:-30px;font-size:160px;opacity:0.08;pointer-events:none;}\n" +
+                ".welcome-card{background:#ffffff;border-radius:16px;padding:36px 40px;margin-bottom:32px;color:#1e293b;position:relative;overflow:hidden;border:1px solid #e8ecf1;box-shadow:0 1px 3px rgba(0,0,0,0.04);}\n" +
+                ".welcome-card::before{content:'📊';position:absolute;right:-20px;bottom:-30px;font-size:160px;opacity:0.06;pointer-events:none;}\n" +
                 ".welcome-card h1{font-size:28px;font-weight:700;margin-bottom:8px;}\n" +
-                ".welcome-card p{font-size:14px;opacity:0.85;margin-bottom:16px;}\n" +
+                ".welcome-card p{font-size:14px;color:#64748b;margin-bottom:16px;}\n" +
                 ".welcome-stats{display:flex;gap:32px;margin-top:16px;}\n" +
-                ".welcome-stat{display:flex;align-items:center;gap:8px;font-size:13px;opacity:0.9;}\n" +
+                ".welcome-stat{display:flex;align-items:center;gap:8px;font-size:13px;color:#64748b;}\n" +
                 ".stats-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:20px;margin-bottom:32px;}\n" +
-                ".stat-card{background:var(--bg-card);border-radius:24px;padding:24px 20px;box-shadow:var(--shadow);transition:all 0.3s;border:1px solid var(--border-color);}\n" +
-                ".stat-card:hover{transform:translateY(-4px);box-shadow:0 20px 30px -12px rgba(102,126,234,0.2);border-color:rgba(102,126,234,0.3);}\n" +
+                ".stat-card{background:#ffffff;border-radius:12px;padding:24px 20px;border:1px solid #e8ecf1;box-shadow:0 1px 3px rgba(0,0,0,0.04);transition:all 0.3s;}\n" +
+                ".stat-card:hover{transform:translateY(-2px);box-shadow:0 4px 12px rgba(0,0,0,0.06);border-color:#1677ff;}\n" +
                 ".stat-icon{font-size:28px;margin-bottom:12px;}\n" +
-                ".stat-number{font-size:36px;font-weight:800;color:var(--text-primary);line-height:1;}\n" +
-                ".stat-label{font-size:13px;color:var(--text-secondary);margin-top:8px;font-weight:500;}\n" +
-                ".stat-trend{font-size:12px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border-color);color:var(--text-secondary);}\n" +
-                ".section-title{font-size:18px;font-weight:700;color:var(--text-primary);margin-bottom:20px;display:flex;align-items:center;gap:8px;}\n" +
-                ".section-title::before{content:'';width:4px;height:20px;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);border-radius:4px;}\n" +
+                ".stat-number{font-size:36px;font-weight:800;color:#1e293b;line-height:1;}\n" +
+                ".stat-label{font-size:13px;color:#64748b;margin-top:8px;font-weight:500;}\n" +
+                ".stat-trend{font-size:12px;margin-top:8px;padding-top:8px;border-top:1px solid #e8ecf1;color:#64748b;}\n" +
+                ".section-title{font-size:18px;font-weight:700;color:#1e293b;margin-bottom:20px;display:flex;align-items:center;gap:8px;}\n" +
+                ".section-title::before{content:'';width:4px;height:20px;background:linear-gradient(135deg,#1677ff 0%,#4096ff 100%);border-radius:4px;}\n" +
                 ".chart-row{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:32px;}\n" +
-                ".chart-card{background:var(--bg-card);border-radius:24px;padding:24px;box-shadow:var(--shadow);border:1px solid var(--border-color);transition:all 0.3s;}\n" +
-                ".chart-card:hover{box-shadow:0 12px 30px -12px rgba(0,0,0,0.15);}\n" +
-                ".chart-card h3{font-size:16px;font-weight:600;color:var(--text-primary);margin-bottom:20px;display:flex;align-items:center;gap:8px;}\n" +
-                ".user-list-card{background:var(--bg-card);border-radius:24px;padding:24px;box-shadow:var(--shadow);border:1px solid var(--border-color);margin-bottom:32px;}\n" +
+                ".chart-card{background:#ffffff;border-radius:12px;padding:24px;border:1px solid #e8ecf1;box-shadow:0 1px 3px rgba(0,0,0,0.04);transition:all 0.3s;}\n" +
+                ".chart-card:hover{box-shadow:0 4px 12px rgba(0,0,0,0.06);}\n" +
+                ".chart-card h3{font-size:16px;font-weight:600;color:#1e293b;margin-bottom:20px;display:flex;align-items:center;gap:8px;}\n" +
+                ".user-list-card{background:#ffffff;border-radius:12px;padding:24px;border:1px solid #e8ecf1;box-shadow:0 1px 3px rgba(0,0,0,0.04);margin-bottom:32px;}\n" +
                 ".user-list-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px;}\n" +
-                ".user-list-header h3{font-size:16px;font-weight:600;color:var(--text-primary);display:flex;align-items:center;gap:8px;}\n" +
-                ".user-badge{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white;border-radius:20px;padding:4px 12px;font-size:12px;font-weight:500;}\n" +
+                ".user-list-header h3{font-size:16px;font-weight:600;color:#1e293b;display:flex;align-items:center;gap:8px;}\n" +
+                ".user-badge{background:linear-gradient(135deg,#1677ff 0%,#4096ff 100%);color:white;border-radius:20px;padding:4px 12px;font-size:12px;font-weight:500;}\n" +
                 ".user-items{display:flex;flex-wrap:wrap;gap:12px;}\n" +
-                ".user-item{background:var(--bg-primary);border:1px solid var(--border-color);border-radius:40px;padding:8px 20px;font-size:14px;color:var(--text-primary);transition:all 0.3s;display:inline-flex;align-items:center;gap:8px;}\n" +
-                ".user-item:hover{transform:translateY(-2px);border-color:#667eea;box-shadow:0 4px 12px rgba(102,126,234,0.15);}\n" +
-                ".user-item .user-avatar{width:24px;height:24px;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:12px;color:white;}\n" +
-                ".empty-users{color:var(--text-muted);text-align:center;padding:32px;font-size:14px;}\n" +
-                ".footer{text-align:center;padding:32px 0;color:var(--text-secondary);font-size:12px;border-top:1px solid var(--border-color);margin-top:16px;}\n" +
+                ".user-item{background:#f8fafc;border:1px solid #e8ecf1;border-radius:40px;padding:8px 20px;font-size:14px;color:#1e293b;transition:all 0.3s;display:inline-flex;align-items:center;gap:8px;}\n" +
+                ".user-item:hover{transform:translateY(-2px);border-color:#1677ff;box-shadow:0 2px 8px rgba(22,119,255,0.1);}\n" +
+                ".user-item .user-avatar{width:24px;height:24px;background:linear-gradient(135deg,#1677ff 0%,#4096ff 100%);border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:12px;color:white;}\n" +
+                ".empty-users{color:#94a3b8;text-align:center;padding:32px;font-size:14px;}\n" +
+                ".footer{text-align:center;padding:32px 0;color:#94a3b8;font-size:12px;border-top:1px solid #e8ecf1;margin-top:16px;}\n" +
                 "@media(max-width:1024px){.stats-grid{grid-template-columns:repeat(3,1fr);}}\n" +
                 "@media(max-width:768px){.nav-container{padding:0 20px;}.menu a{padding:6px 14px;font-size:12px;}.stats-grid{grid-template-columns:repeat(2,1fr);}.chart-row{grid-template-columns:1fr;}.page-wrap{padding:20px;}}\n" +
                 "@media(max-width:480px){.stats-grid{grid-template-columns:1fr;}}\n" +
@@ -2073,9 +2073,8 @@ public class LogMonitorController {
                 "</div>\n" +
                 "<div class=\"user-info\">\n" +
                 "<span class=\"user-name\" id=\"currentUsername\">加载中...</span>\n" +
-                "<span class=\"user-role\" id=\"currentUserRole\" style=\"background:rgba(255,255,255,0.2);padding:4px 12px;border-radius:20px;font-size:12px;\">加载中...</span>\n" +
+                "<span class=\"user-role\" id=\"currentUserRole\">加载中...</span>\n" +
                 "<button class=\"logout-btn\" onclick=\"logout()\">退出</button>\n" +
-                "</div>\n" +
                 "</div>\n" +
                 "</div>\n" +
                 "</div>\n" +
@@ -2114,10 +2113,9 @@ public class LogMonitorController {
                 "                document.getElementById('currentUsername').innerText = data.data.username;\n" +
                 "                var roleSpan = document.getElementById('currentUserRole');\n" +
                 "                var roleText = data.data.role === 'ADMIN' ? '👑 管理员' : '🔧 NOC';\n" +
-                "                roleSpan.innerHTML = roleText;\n" +
-                "                // 更新欢迎语\n" +
+                "                roleSpan.innerText = roleText;\n" +
                 "                var welcomeTitle = document.getElementById('welcomeTitle');\n" +
-                "                if (welcomeTitle) welcomeTitle.innerHTML = '欢迎回来，' + data.data.username;\n" +
+                "                if (welcomeTitle) welcomeTitle.innerText = '欢迎回来，' + data.data.username;\n" +
                 "            }\n" +
                 "        }).catch(function(err) { console.error('获取用户信息失败:', err); });\n" +
                 "}\n" +
@@ -2164,90 +2162,87 @@ public class LogMonitorController {
                 "<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap\" rel=\"stylesheet\">\n" +
                 "<style>\n" +
                 ":root {\n" +
-                "  --bg-primary: #f0f2f8;\n" +
+                "  --bg-primary: #f5f7fa;\n" +
                 "  --bg-card: #ffffff;\n" +
-                "  --text-primary: #1a1a2e;\n" +
-                "  --text-secondary: #666;\n" +
-                "  --text-muted: #8c8c8c;\n" +
-                "  --border-color: rgba(0,0,0,0.04);\n" +
-                "  --shadow: 0 2px 12px rgba(0,0,0,0.06);\n" +
-                "  --navbar-bg: linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);\n" +
-                "  --log-header-bg: #fafafa;\n" +
-                "  --table-hover: #fafafa;\n" +
-                "  --status-header-bg: linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);\n" +
-                "}\n" +
-                "[data-theme=\"dark\"] {\n" +
-                "  --bg-primary: #0f172a;\n" +
-                "  --bg-card: #1e293b;\n" +
-                "  --text-primary: #f1f5f9;\n" +
-                "  --text-secondary: #94a3b8;\n" +
-                "  --text-muted: #64748b;\n" +
-                "  --border-color: rgba(255,255,255,0.08);\n" +
-                "  --shadow: 0 2px 12px rgba(0,0,0,0.3);\n" +
-                "  --navbar-bg: linear-gradient(135deg,#0f172a 0%,#0f172a 100%);\n" +
-                "  --log-header-bg: #334155;\n" +
-                "  --table-hover: #334155;\n" +
-                "  --status-header-bg: linear-gradient(135deg,#0f172a 0%,#1e1b4b 100%);\n" +
+                "  --text-primary: #1e293b;\n" +
+                "  --text-secondary: #64748b;\n" +
+                "  --text-muted: #94a3b8;\n" +
+                "  --border-color: #e8ecf1;\n" +
+                "  --shadow: 0 1px 3px rgba(0,0,0,0.06);\n" +
+                "  --navbar-bg: #ffffff;\n" +
+                "  --hover-bg: rgba(0,0,0,0.02);\n" +
+                "  --primary-color: #1677ff;\n" +
+                "  --primary-hover: #4096ff;\n" +
                 "}\n" +
                 "*{margin:0;padding:0;box-sizing:border-box;}\n" +
-                "body{background:var(--bg-primary);font-family:'Inter',sans-serif;min-height:100vh;padding:24px;transition:background 0.3s;}\n" +
-                ".page-wrap{max-width:1600px;margin:0 auto;}\n" +
-                ".navbar{background:var(--navbar-bg);height:64px;display:flex;align-items:center;justify-content:space-between;padding:0 32px;color:white;border-radius:16px;margin-bottom:24px;box-shadow:0 4px 20px rgba(0,0,0,0.08);transition:background 0.3s;}\n" +
-                ".logo{font-size:18px;font-weight:700;}\n" +
-                ".menu{display:flex;gap:8px;}\n" +
-                ".menu a{color:white;text-decoration:none;padding:8px 20px;border-radius:30px;transition:all 0.3s;font-weight:500;}\n" +
-                ".menu a:hover,.menu a.active{background:rgba(255,255,255,0.2);}\n" +
-                ".user-info{display:flex;align-items:center;gap:16px;}\n" +
-                ".user-name{color:white;font-size:14px;}\n" +
-                ".theme-toggle{background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.2);color:white;padding:8px 16px;border-radius:30px;cursor:pointer;font-size:13px;transition:all 0.3s;}\n" +
-                ".theme-toggle:hover{background:rgba(255,255,255,0.25);}\n" +
-                ".logout-btn{background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.2);color:white;padding:8px 20px;border-radius:30px;cursor:pointer;font-weight:500;transition:all 0.3s;}\n" +
-                ".logout-btn:hover{background:rgba(255,255,255,0.25);transform:translateY(-1px);}\n" +
-                ".status-header{background:var(--status-header-bg);border-radius:20px;padding:24px 32px;margin-bottom:28px;color:white;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px;box-shadow:0 4px 20px rgba(0,0,0,0.08);transition:background 0.3s;}\n" +
+                "body{background:#f5f7fa;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;}\n" +
+                ".page-wrap{max-width:1600px;margin:0 auto;padding:32px;}\n" +
+                ".navbar{background:#ffffff;box-shadow:0 1px 3px rgba(0,0,0,0.06);border:1px solid #e8ecf1;border-radius:12px;margin-bottom:24px;}\n" +
+                ".nav-container{max-width:1600px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:70px;}\n" +
+                ".logo{display:flex;align-items:center;gap:12px;}\n" +
+                ".logo-icon{width:40px;height:40px;background:linear-gradient(135deg,#1677ff 0%,#4096ff 100%);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;}\n" +
+                ".logo-text{font-size:18px;font-weight:700;color:#1e293b;letter-spacing:1px;}\n" +
+                ".logo-sub{font-size:11px;color:#94a3b8;margin-left:8px;}\n" +
+                ".menu{display:flex;gap:12px;}\n" +
+                ".menu a{color:#64748b;text-decoration:none;padding:8px 20px;border-radius:40px;transition:all 0.3s;font-weight:500;font-size:14px;}\n" +
+                ".menu a:hover{background:#f1f5f9;color:#1e293b;}\n" +
+                ".menu a.active{background:#e8f0fe;color:#1677ff;box-shadow:none;}\n" +
+                ".user-info{display:flex;align-items:center;gap:20px;}\n" +
+                ".user-name{color:#475569;font-size:14px;}\n" +
+                ".user-role{background:rgba(22,119,255,0.1);padding:4px 12px;border-radius:20px;font-size:12px;color:#1677ff;}\n" +
+                ".logout-btn{background:#f1f5f9;border:1px solid #e8ecf1;color:#475569;padding:8px 20px;border-radius:40px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;}\n" +
+                ".logout-btn:hover{background:#e8ecf1;transform:translateY(-1px);}\n" +
+                ".status-header{background:#ffffff;border-radius:12px;border:1px solid #e8ecf1;box-shadow:0 1px 3px rgba(0,0,0,0.04);padding:24px 32px;margin-bottom:28px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px;}\n" +
                 ".status-info{display:flex;gap:32px;align-items:center;flex-wrap:wrap;}\n" +
                 ".status-indicator{display:flex;align-items:center;gap:10px;}\n" +
-                ".status-led{width:14px;height:14px;border-radius:50%;background-color:#10b981;box-shadow:0 0 10px #10b981;animation:pulse 2s infinite;}\n" +
+                ".status-led{width:14px;height:14px;border-radius:50%;background-color:#52c41a;box-shadow:0 0 12px rgba(82,196,26,0.3);animation:pulse 2s infinite;}\n" +
                 "@keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.5;}}\n" +
-                ".status-text{font-size:15px;font-weight:500;}\n" +
-                ".time-info{display:flex;gap:28px;font-size:13px;opacity:0.9;}\n" +
-                ".refresh-btn{background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.25);color:white;padding:8px 20px;border-radius:30px;cursor:pointer;font-size:13px;transition:all 0.3s;}\n" +
-                ".refresh-btn:hover{background:rgba(255,255,255,0.25);transform:translateY(-1px);}\n" +
+                ".status-text{font-size:15px;font-weight:500;color:#1e293b;}\n" +
+                ".time-info{display:flex;gap:28px;font-size:13px;color:#64748b;}\n" +
+                ".refresh-btn{background:#f1f5f9;border:1px solid #e8ecf1;color:#475569;padding:8px 20px;border-radius:40px;cursor:pointer;font-size:13px;transition:all 0.3s;}\n" +
+                ".refresh-btn:hover{background:#e8ecf1;transform:translateY(-1px);}\n" +
                 ".metrics-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:24px;margin-bottom:32px;}\n" +
-                ".metric-card{background:var(--bg-card);border-radius:20px;padding:24px;box-shadow:var(--shadow);transition:all 0.3s;border:1px solid var(--border-color);}\n" +
-                ".metric-card:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,0,0,0.1);}\n" +
-                ".metric-title{font-size:14px;color:var(--text-muted);margin-bottom:10px;display:flex;align-items:center;gap:8px;font-weight:500;}\n" +
-                ".metric-value{font-size:34px;font-weight:800;color:var(--text-primary);}\n" +
-                ".metric-unit{font-size:14px;font-weight:400;color:var(--text-muted);margin-left:4px;}\n" +
-                ".metric-sub{font-size:12px;color:var(--text-muted);margin-top:10px;padding-top:8px;border-top:1px solid var(--border-color);}\n" +
+                ".metric-card{background:#ffffff;border-radius:12px;padding:24px;border:1px solid #e8ecf1;box-shadow:0 1px 3px rgba(0,0,0,0.04);transition:all 0.3s;}\n" +
+                ".metric-card:hover{transform:translateY(-2px);box-shadow:0 4px 12px rgba(0,0,0,0.06);border-color:#1677ff;}\n" +
+                ".metric-title{font-size:14px;color:#94a3b8;margin-bottom:10px;display:flex;align-items:center;gap:8px;font-weight:500;}\n" +
+                ".metric-value{font-size:34px;font-weight:800;color:#1e293b;}\n" +
+                ".metric-unit{font-size:14px;font-weight:400;color:#94a3b8;margin-left:4px;}\n" +
+                ".metric-sub{font-size:12px;color:#94a3b8;margin-top:10px;padding-top:8px;border-top:1px solid #e8ecf1;}\n" +
                 ".module-section{margin-bottom:40px;}\n" +
-                ".section-title{font-size:18px;font-weight:600;color:var(--text-primary);margin-bottom:16px;padding-left:8px;border-left:4px solid #667eea;transition:color 0.3s;}\n" +
-                ".log-card{background:var(--bg-card);border-radius:20px;margin-bottom:32px;box-shadow:var(--shadow);overflow:hidden;border:1px solid var(--border-color);transition:background 0.3s;}\n" +
+                ".section-title{font-size:18px;font-weight:700;color:#1e293b;margin-bottom:16px;display:flex;align-items:center;gap:8px;}\n" +
+                ".section-title::before{content:'';width:4px;height:20px;background:linear-gradient(135deg,#1677ff 0%,#4096ff 100%);border-radius:4px;}\n" +
+                ".log-card{background:#ffffff;border-radius:12px;margin-bottom:32px;border:1px solid #e8ecf1;box-shadow:0 1px 3px rgba(0,0,0,0.04);overflow:hidden;}\n" +
                 ".log-card:last-child{margin-bottom:0;}\n" +
-                ".log-header{padding:18px 24px;border-bottom:1px solid var(--border-color);background:var(--log-header-bg);font-weight:600;font-size:16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;transition:background 0.3s;}\n" +
-                ".log-badge{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white;border-radius:20px;padding:4px 12px;font-size:11px;font-weight:500;}\n" +
-                ".log-badge-attack{background:#e53935;color:white;border-radius:20px;padding:4px 12px;font-size:11px;font-weight:500;}\n" +
+                ".log-header{padding:18px 24px;border-bottom:1px solid #e8ecf1;background:#f8fafc;font-weight:600;font-size:16px;color:#1e293b;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;}\n" +
+                ".log-badge{background:linear-gradient(135deg,#1677ff 0%,#4096ff 100%);color:white;border-radius:20px;padding:4px 12px;font-size:11px;font-weight:500;}\n" +
+                ".log-badge-attack{background:#ff4d4f;color:white;border-radius:20px;padding:4px 12px;font-size:11px;font-weight:500;}\n" +
                 ".table-wrapper{overflow-x:auto;}\n" +
                 ".log-table{width:100%;border-collapse:collapse;}\n" +
-                ".log-table th{background:var(--log-header-bg);padding:14px 16px;text-align:left;font-size:13px;font-weight:600;color:var(--text-secondary);border-bottom:1px solid var(--border-color);transition:background 0.3s;}\n" +
-                ".log-table td{padding:14px 16px;font-size:13px;color:var(--text-secondary);border-bottom:1px solid var(--border-color);transition:color 0.3s;}\n" +
-                ".log-table tr:hover td{background:var(--table-hover);}\n" +
-                ".success{color:#10b981;font-weight:600;}.fail{color:#ef4444;font-weight:600;}\n" +
-                ".gc-warn{color:#f59e0b;}.gc-error{color:#ef4444;}\n" +
-                ".attack-critical{color:#ef4444;font-weight:600;}\n" +
-                ".empty{text-align:center;padding:48px;color:var(--text-muted);}\n" +
-                ".pagination{display:flex;justify-content:center;gap:12px;padding:16px 20px;border-top:1px solid var(--border-color);background:var(--log-header-bg);flex-wrap:wrap;}\n" +
-                ".page-btn{padding:8px 16px;border:1px solid var(--border-color);background:var(--bg-card);color:var(--text-primary);border-radius:30px;cursor:pointer;font-size:13px;transition:all 0.3s;font-weight:500;}\n" +
-                ".page-btn:hover:not(:disabled){border-color:#667eea;color:#667eea;transform:translateY(-1px);}\n" +
-                ".page-btn:disabled{opacity:0.5;cursor:not-allowed;}\n" +
-                ".page-info{font-size:13px;color:var(--text-muted);}\n" +
-                ".footer{text-align:center;padding:32px;color:var(--text-muted);font-size:12px;border-top:1px solid var(--border-color);margin-top:40px;}\n" +
+                ".log-table th{background:#f8fafc;padding:14px 16px;text-align:left;font-size:13px;font-weight:600;color:#64748b;border-bottom:1px solid #e8ecf1;}\n" +
+                ".log-table td{padding:14px 16px;font-size:13px;color:#475569;border-bottom:1px solid #e8ecf1;}\n" +
+                ".log-table tr:hover td{background:#f8fafc;}\n" +
+                ".success{color:#52c41a;font-weight:600;}.fail{color:#ff4d4f;font-weight:600;}\n" +
+                ".gc-warn{color:#faad14;}.gc-error{color:#ff4d4f;}\n" +
+                ".attack-critical{color:#ff4d4f;font-weight:600;}\n" +
+                ".empty{text-align:center;padding:48px;color:#94a3b8;}\n" +
+                ".pagination{display:flex;justify-content:center;gap:12px;padding:16px 20px;border-top:1px solid #e8ecf1;background:#f8fafc;flex-wrap:wrap;}\n" +
+                ".page-btn{padding:8px 16px;border:1px solid #e8ecf1;background:#ffffff;color:#1e293b;border-radius:40px;cursor:pointer;font-size:13px;transition:all 0.3s;font-weight:500;}\n" +
+                ".page-btn:hover:not(:disabled){border-color:#1677ff;color:#1677ff;transform:translateY(-1px);}\n" +
+                ".page-btn:disabled{opacity:0.5;cursor:not-allowed;background:#f1f5f9;}\n" +
+                ".page-info{font-size:13px;color:#94a3b8;}\n" +
+                ".footer{text-align:center;padding:32px;color:#94a3b8;font-size:12px;border-top:1px solid #e8ecf1;margin-top:40px;}\n" +
                 "@media(max-width:768px){.metrics-grid{grid-template-columns:repeat(2,1fr);}.status-info{flex-direction:column;align-items:flex-start;}.time-info{flex-direction:column;gap:8px;}}\n" +
                 "</style>\n" +
                 "</head>\n" +
                 "<body>\n" +
-                "<div class=\"page-wrap\">\n" +
+                "<div class=\"page-wrap\">\n" +  // ← 注意这里：page-wrap 包含所有内容
                 "<div class=\"navbar\">\n" +
-                "<div class=\"logo\">📊 TexCell SMS 监控系统</div>\n" +
+                "<div class=\"nav-container\">\n" +
+                "<div class=\"logo\">\n" +
+                "<div class=\"logo-icon\">📊</div>\n" +
+                "<div class=\"logo-text\">ECCOM WEB 监控管理系统</div>\n" +
+                "<div class=\"logo-sub\">v3.0</div>\n" +
+                "</div>\n" +
                 "<div class=\"menu\">\n" +
                 "<a href=\"/monitor/index\">首页</a>\n" +
                 "<a href=\"/monitor/dashboard\" class=\"active\">服务监控</a>\n" +
@@ -2256,13 +2251,13 @@ public class LogMonitorController {
                 "<a href=\"/monitor/customer-management\">API客户管理</a>\n" +
                 "<a href=\"/monitor/user-management\">登录账户管理</a>\n" +
                 "<a href=\"/monitor/ops-management\">运维管理</a>\n" +
-                "<a href=\"/monitor/queue-management\">发送队列管理</a>" +
+                "<a href=\"/monitor/queue-management\">发送队列管理</a>\n" +
                 "</div>\n" +
                 "<div class=\"user-info\">\n" +
-                "    <span class=\"user-name\" id=\"currentUsername\">加载中...</span>\n" +
-                "    <span class=\"user-role\" id=\"currentUserRole\" style=\"background:rgba(255,255,255,0.2);padding:4px 12px;border-radius:30px;font-size:12px;\">加载中...</span>\n" +
-                "    <button class=\"theme-toggle\" onclick=\"toggleTheme()\" id=\"themeBtn\">🌙 深色</button>\n" +
-                "    <button class=\"logout-btn\" onclick=\"logout()\">退出</button>\n" +
+                "<span class=\"user-name\" id=\"currentUsername\">加载中...</span>\n" +
+                "<span class=\"user-role\" id=\"currentUserRole\">加载中...</span>\n" +
+                "<button class=\"logout-btn\" onclick=\"logout()\">退出</button>\n" +
+                "</div>\n" +
                 "</div>\n" +
                 "</div>\n" +
                 "<div class=\"status-header\">\n" +
@@ -2281,28 +2276,6 @@ public class LogMonitorController {
                 "<div class=\"footer\">TexCell SMS 监控管理系统 | 数据实时更新 | 每30秒自动刷新</div>\n" +
                 "</div>\n" +
                 "<script>\n" +
-                "// 主题切换功能\n" +
-                "function toggleTheme() {\n" +
-                "  var html = document.documentElement;\n" +
-                "  var btn = document.getElementById('themeBtn');\n" +
-                "  var currentTheme = html.getAttribute('data-theme');\n" +
-                "  if (currentTheme === 'dark') {\n" +
-                "    html.removeAttribute('data-theme');\n" +
-                "    btn.innerHTML = '🌙 深色';\n" +
-                "    localStorage.setItem('monitor-theme', 'light');\n" +
-                "  } else {\n" +
-                "    html.setAttribute('data-theme', 'dark');\n" +
-                "    btn.innerHTML = '☀️ 浅色';\n" +
-                "    localStorage.setItem('monitor-theme', 'dark');\n" +
-                "  }\n" +
-                "}\n" +
-                "var savedTheme = localStorage.getItem('monitor-theme');\n" +
-                "if (savedTheme === 'dark') {\n" +
-                "  document.documentElement.setAttribute('data-theme', 'dark');\n" +
-                "  if (document.getElementById('themeBtn')) {\n" +
-                "    document.getElementById('themeBtn').innerHTML = '☀️ 浅色';\n" +
-                "  }\n" +
-                "}\n" +
                 "function logout(){fetch('/monitor/logout').then(function(){location.href='/monitor/login';});}\n" +
                 "// 获取当前登录用户信息\n" +
                 "function getCurrentUserInfo() {\n" +
@@ -2313,9 +2286,7 @@ public class LogMonitorController {
                 "                document.getElementById('currentUsername').innerText = data.data.username;\n" +
                 "                var roleSpan = document.getElementById('currentUserRole');\n" +
                 "                var roleText = data.data.role === 'ADMIN' ? '👑 管理员' : '🔧 NOC';\n" +
-                "                roleSpan.innerHTML = roleText;\n" +
-                "                var welcomeTitle = document.querySelector('.welcome-card h1');\n" +
-                "                if (welcomeTitle) welcomeTitle.innerHTML = '欢迎回来，' + data.data.username;\n" +
+                "                roleSpan.innerText = roleText;\n" +
                 "            }\n" +
                 "        }).catch(function(err) { console.error('获取用户信息失败:', err); });\n" +
                 "}\n" +
@@ -2335,7 +2306,7 @@ public class LogMonitorController {
                 "function renderErrorTable(){var container=document.getElementById('errorLogBody');if(!container)return;var start=(errorPage-1)*PAGE_SIZE;var end=start+PAGE_SIZE;var pageData=errorData.slice(start,end);var html='';if(pageData.length===0){html='</table><td colspan=\"3\" class=\"empty\">✅ 暂无异常</td></tr>';}else{for(var i=0;i<pageData.length;i++){var e=pageData[i];var parts=e.match(/\\[(.*?)\\] \\| \\[(.*?)\\] \\| (.*?) \\| (.*)$/);if(parts){html+='<tr><td style=\"white-space:nowrap\">'+parts[1]+'</td><td class=\"fail\">'+parts[2]+'</td><td>'+escapeHtml(parts[3].substring(0,80))+'</td></tr>';}else{html+='<tr><td colspan=\"3\">'+escapeHtml(e.substring(0,100))+'</td></tr>';}}}container.innerHTML=html;var totalPages=Math.ceil(errorData.length/PAGE_SIZE);var dom=document.getElementById('errorPagination');if(!dom)return;if(totalPages<=1){dom.innerHTML='';return;}dom.innerHTML='<button class=\"page-btn\" onclick=\"errorPage=1;renderErrorTable();\"'+(errorPage===1?'disabled':'')+'>首页</button><button class=\"page-btn\" onclick=\"errorPage='+(errorPage-1)+';renderErrorTable();\"'+(errorPage===1?'disabled':'')+'>上一页</button><span class=\"page-info\">第'+errorPage+'/'+totalPages+'页</span><button class=\"page-btn\" onclick=\"errorPage='+(errorPage+1)+';renderErrorTable();\"'+(errorPage===totalPages?'disabled':'')+'>下一页</button><button class=\"page-btn\" onclick=\"errorPage='+totalPages+';renderErrorTable();\"'+(errorPage===totalPages?'disabled':'')+'>尾页</button>';}\n" +
                 "function loadAllData(){fetch('/api/monitor/logs?secret=dn17ORUwf36Znl').then(function(res){return res.json();}).then(function(data){if(data.systemMetrics){var m=data.systemMetrics;var metricsHtml='<div class=\"metric-card\"><div class=\"metric-title\">🧠 堆内存使用</div><div class=\"metric-value\">'+(m.heapUsed||0)+'<span class=\"metric-unit\">MB</span></div><div class=\"metric-sub\">最大: '+(m.heapMax||0)+' MB | 使用率: '+Math.round((m.heapUsed||0)/(m.heapMax||1)*100)+'%</div></div><div class=\"metric-card\"><div class=\"metric-title\">📦 非堆内存</div><div class=\"metric-value\">'+(m.nonHeapUsed||0)+'<span class=\"metric-unit\">MB</span></div><div class=\"metric-sub\">已加载类: '+formatNumber(m.loadedClasses)+' 个</div></div><div class=\"metric-card\"><div class=\"metric-title\">🧵 线程状态</div><div class=\"metric-value\">'+formatNumber(m.threadCount)+'<span class=\"metric-unit\">个</span></div><div class=\"metric-sub\">峰值: '+formatNumber(m.peakThreadCount)+' | 守护: '+formatNumber(m.daemonThreadCount)+'</div></div><div class=\"metric-card\"><div class=\"metric-title\">⚡ CPU使用率</div><div class=\"metric-value\">'+(m.cpuUsage||0)+'<span class=\"metric-unit\">%</span></div><div class=\"metric-sub\">CPU核心: '+formatNumber(m.availableProcessors)+' 核</div></div>';var metricsGrid=document.getElementById('metricsGrid');if(metricsGrid)metricsGrid.innerHTML=metricsHtml;}\n" +
                 "var startTimeElem=document.getElementById('startTime');if(startTimeElem)startTimeElem.innerText=data.startTime||'-';\n" +
-                "var statusLed=document.getElementById('statusLed');if(statusLed)statusLed.style.backgroundColor='#10b981';\n" +
+                "var statusLed=document.getElementById('statusLed');if(statusLed)statusLed.style.backgroundColor='#52c41a';\n" +
                 "var currentIpElem=document.getElementById('currentIp');if(currentIpElem)currentIpElem.innerText=data.clientIp||'-';\n" +
                 "apiData = data.recentApiLogs || [];\n" +
                 "attackData = data.attackStatistics?.recentAttacks || [];\n" +
@@ -2362,91 +2333,79 @@ public class LogMonitorController {
                 "<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap\" rel=\"stylesheet\">\n" +
                 "<style>\n" +
                 ":root {\n" +
-                "  --bg-primary: #f0f2f5;\n" +
+                "  --bg-primary: #f5f7fa;\n" +
                 "  --bg-card: #ffffff;\n" +
                 "  --text-primary: #1e293b;\n" +
-                "  --text-secondary: #475569;\n" +
+                "  --text-secondary: #64748b;\n" +
                 "  --text-muted: #94a3b8;\n" +
-                "  --border-color: rgba(0,0,0,0.04);\n" +
-                "  --shadow: 0 2px 12px rgba(0,0,0,0.06);\n" +
-                "  --navbar-bg: linear-gradient(135deg,#667eea 0%,#764ba2 100%);\n" +
+                "  --border-color: #e8ecf1;\n" +
+                "  --shadow: 0 1px 3px rgba(0,0,0,0.06);\n" +
+                "  --navbar-bg: #ffffff;\n" +
                 "  --search-card-bg: #ffffff;\n" +
-                "  --table-header-bg: #fafafa;\n" +
-                "  --table-hover: #fafafa;\n" +
+                "  --table-header-bg: #f8fafc;\n" +
+                "  --table-hover: #f8fafc;\n" +
                 "  --input-bg: #ffffff;\n" +
-                "  --input-border: #e5e7eb;\n" +
-                "  --btn-reset-bg: #f5f5f5;\n" +
-                "  --btn-reset-hover: #e8e8e8;\n" +
-                "  --badge-google-bg: #e8f4fd;\n" +
+                "  --input-border: #d1d5db;\n" +
+                "  --btn-reset-bg: #f1f5f9;\n" +
+                "  --btn-reset-hover: #e8ecf1;\n" +
+                "  --badge-google-bg: #e8f0fe;\n" +
                 "  --badge-email-bg: #e6f7e6;\n" +
-                "}\n" +
-                "[data-theme=\"dark\"] {\n" +
-                "  --bg-primary: #0f172a;\n" +
-                "  --bg-card: #1e293b;\n" +
-                "  --text-primary: #f1f5f9;\n" +
-                "  --text-secondary: #94a3b8;\n" +
-                "  --text-muted: #64748b;\n" +
-                "  --border-color: rgba(255,255,255,0.08);\n" +
-                "  --shadow: 0 2px 12px rgba(0,0,0,0.3);\n" +
-                "  --navbar-bg: linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);\n" +
-                "  --search-card-bg: #1e293b;\n" +
-                "  --table-header-bg: #334155;\n" +
-                "  --table-hover: #334155;\n" +
-                "  --input-bg: #1e293b;\n" +
-                "  --input-border: #334155;\n" +
-                "  --btn-reset-bg: #334155;\n" +
-                "  --btn-reset-hover: #475569;\n" +
-                "  --badge-google-bg: #1e3a5f;\n" +
-                "  --badge-email-bg: #1a3e2c;\n" +
+                "  --primary-color: #1677ff;\n" +
+                "  --primary-hover: #4096ff;\n" +
                 "}\n" +
                 "*{margin:0;padding:0;box-sizing:border-box;}\n" +
-                "body{background:var(--bg-primary);font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;min-height:100vh;transition:background 0.3s,color 0.3s;}\n" +
+                "body{background:#f5f7fa;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;min-height:100vh;}\n" +
                 ".page-wrap{max-width:1600px;margin:0 auto;padding:20px 24px;}\n" +
-                ".navbar{background:var(--navbar-bg);height:60px;display:flex;align-items:center;justify-content:space-between;padding:0 32px;color:white;border-radius:16px;margin-bottom:24px;box-shadow:0 4px 20px rgba(0,0,0,0.08);transition:background 0.3s;}\n" +
-                ".nav-links{display:flex;gap:8px;}\n" +
-                ".navbar a{color:white;text-decoration:none;padding:8px 20px;border-radius:30px;font-weight:500;transition:all 0.3s;}\n" +
-                ".navbar a:hover,.navbar a.active{background:rgba(255,255,255,0.2);}\n" +
-                ".nav-right{display:flex;align-items:center;gap:16px;}\n" +
-                ".user-name{color:white;font-size:14px;}\n" +
-                ".theme-toggle{background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.2);color:white;padding:8px 16px;border-radius:30px;cursor:pointer;font-size:13px;transition:all 0.3s;}\n" +
-                ".theme-toggle:hover{background:rgba(255,255,255,0.25);}\n" +
-                ".logout-btn{background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.2);color:white;padding:8px 20px;border-radius:30px;cursor:pointer;font-weight:500;transition:all 0.3s;}\n" +
-                ".logout-btn:hover{background:rgba(255,255,255,0.25);transform:translateY(-1px);}\n" +
+                ".navbar{background:#ffffff;box-shadow:0 1px 3px rgba(0,0,0,0.06);border:1px solid #e8ecf1;border-radius:12px;margin-bottom:24px;}\n" +
+                ".nav-container{max-width:1600px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:70px;}\n" +
+                ".logo{display:flex;align-items:center;gap:12px;}\n" +
+                ".logo-icon{width:40px;height:40px;background:linear-gradient(135deg,#1677ff 0%,#4096ff 100%);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;}\n" +
+                ".logo-text{font-size:18px;font-weight:700;color:#1e293b;letter-spacing:1px;}\n" +
+                ".logo-sub{font-size:11px;color:#94a3b8;margin-left:8px;}\n" +
+                ".menu{display:flex;gap:12px;}\n" +
+                ".menu a{color:#64748b;text-decoration:none;padding:8px 20px;border-radius:40px;transition:all 0.3s;font-weight:500;font-size:14px;}\n" +
+                ".menu a:hover{background:#f1f5f9;color:#1e293b;}\n" +
+                ".menu a.active{background:#e8f0fe;color:#1677ff;box-shadow:none;}\n" +
+                ".user-info{display:flex;align-items:center;gap:20px;}\n" +
+                ".user-name{color:#475569;font-size:14px;}\n" +
+                ".user-role{background:rgba(22,119,255,0.1);padding:4px 12px;border-radius:20px;font-size:12px;color:#1677ff;}\n" +
+                ".logout-btn{background:#f1f5f9;border:1px solid #e8ecf1;color:#475569;padding:8px 20px;border-radius:40px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;}\n" +
+                ".logout-btn:hover{background:#e8ecf1;transform:translateY(-1px);}\n" +
                 ".stats-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:16px;margin-bottom:24px;}\n" +
-                ".stat-card{background:var(--bg-card);border-radius:16px;padding:20px;box-shadow:var(--shadow);border-left:4px solid #667eea;transition:all 0.3s;border-left-color:#667eea;}\n" +
-                ".stat-card:hover{transform:translateY(-2px);box-shadow:0 8px 20px rgba(0,0,0,0.08);}\n" +
-                ".stat-number{font-size:32px;font-weight:700;color:#667eea;}\n" +
-                ".stat-label{font-size:12px;color:var(--text-muted);margin-top:6px;}\n" +
-                ".stat-sub{font-size:11px;color:var(--text-muted);margin-top:2px;}\n" +
-                ".search-card{background:var(--search-card-bg);border-radius:16px;padding:20px 24px;margin-bottom:24px;box-shadow:var(--shadow);transition:background 0.3s;}\n" +
+                ".stat-card{background:#ffffff;border-radius:12px;padding:20px;border:1px solid #e8ecf1;box-shadow:0 1px 3px rgba(0,0,0,0.04);border-left:4px solid #1677ff;transition:all 0.3s;}\n" +
+                ".stat-card:hover{transform:translateY(-2px);box-shadow:0 4px 12px rgba(0,0,0,0.06);}\n" +
+                ".stat-number{font-size:32px;font-weight:700;color:#1677ff;}\n" +
+                ".stat-label{font-size:12px;color:#94a3b8;margin-top:6px;}\n" +
+                ".stat-sub{font-size:11px;color:#94a3b8;margin-top:2px;}\n" +
+                ".search-card{background:#ffffff;border-radius:12px;padding:20px 24px;margin-bottom:24px;border:1px solid #e8ecf1;box-shadow:0 1px 3px rgba(0,0,0,0.04);}\n" +
                 ".search-row{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end;margin-bottom:16px;}\n" +
                 ".search-row:last-child{margin-bottom:0;}\n" +
                 ".search-group{display:flex;flex-direction:column;gap:6px;}\n" +
-                ".search-group label{font-size:12px;color:var(--text-secondary);font-weight:500;}\n" +
-                ".search-group input,.search-group select{padding:8px 12px;border:1px solid var(--input-border);border-radius:10px;font-size:13px;min-width:140px;transition:all 0.3s;background:var(--input-bg);color:var(--text-primary);}\n" +
-                ".search-group input:focus,.search-group select:focus{outline:none;border-color:#667eea;box-shadow:0 0 0 3px rgba(102,126,234,0.1);}\n" +
+                ".search-group label{font-size:12px;color:#64748b;font-weight:500;}\n" +
+                ".search-group input,.search-group select{padding:8px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;min-width:140px;transition:all 0.3s;background:#ffffff;color:#1e293b;}\n" +
+                ".search-group input:focus,.search-group select:focus{outline:none;border-color:#1677ff;box-shadow:0 0 0 3px rgba(22,119,255,0.1);}\n" +
                 ".search-group input[type=\"datetime-local\"]{min-width:180px;}\n" +
                 ".search-actions{flex-direction:row;align-items:center;gap:10px;margin-left:auto;}\n" +
-                ".search-btn{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white;border:none;padding:8px 20px;border-radius:30px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;}\n" +
-                ".search-btn:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(102,126,234,0.4);}\n" +
-                ".reset-btn{background:var(--btn-reset-bg);border:1px solid var(--input-border);padding:8px 20px;border-radius:30px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;color:var(--text-secondary);}\n" +
-                ".reset-btn:hover{background:var(--btn-reset-hover);}\n" +
-                ".export-btn{background:linear-gradient(135deg,#10b981 0%,#059669 100%);color:white;border:none;padding:8px 20px;border-radius:30px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;}\n" +
-                ".export-btn:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(16,185,129,0.4);}\n" +
-                ".log-card{background:var(--bg-card);border-radius:16px;overflow:auto;box-shadow:var(--shadow);transition:background 0.3s;}\n" +
+                ".search-btn{background:linear-gradient(135deg,#1677ff 0%,#4096ff 100%);color:white;border:none;padding:8px 20px;border-radius:8px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;}\n" +
+                ".search-btn:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(22,119,255,0.3);}\n" +
+                ".reset-btn{background:#f1f5f9;border:1px solid #d1d5db;padding:8px 20px;border-radius:8px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;color:#64748b;}\n" +
+                ".reset-btn:hover{background:#e8ecf1;}\n" +
+                ".export-btn{background:linear-gradient(135deg,#52c41a 0%,#389e0d 100%);color:white;border:none;padding:8px 20px;border-radius:8px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;}\n" +
+                ".export-btn:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(82,196,26,0.3);}\n" +
+                ".log-card{background:#ffffff;border-radius:12px;overflow:auto;border:1px solid #e8ecf1;box-shadow:0 1px 3px rgba(0,0,0,0.04);}\n" +
                 ".log-table{width:100%;border-collapse:collapse;}\n" +
-                ".log-table th{background:var(--table-header-bg);padding:14px 16px;text-align:left;font-size:13px;font-weight:600;color:var(--text-secondary);border-bottom:1px solid var(--border-color);transition:background 0.3s;}\n" +
-                ".log-table td{padding:14px 16px;font-size:13px;color:var(--text-primary);border-bottom:1px solid var(--border-color);transition:color 0.3s;}\n" +
-                ".log-table tr:hover td{background:var(--table-hover);cursor:pointer;}\n" +
-                ".success{color:#52c41a;font-weight:500;}.fail{color:#e53935;font-weight:500;}\n" +
-                ".pagination{display:flex;justify-content:center;gap:12px;padding:24px;border-top:1px solid var(--border-color);}\n" +
-                ".page-btn{padding:8px 16px;border:1px solid var(--input-border);background:var(--bg-card);color:var(--text-primary);border-radius:30px;cursor:pointer;font-size:13px;transition:all 0.3s;}\n" +
-                ".page-btn:hover:not(:disabled){border-color:#667eea;color:#667eea;}\n" +
-                ".page-btn:disabled{background:var(--btn-reset-bg);color:var(--text-muted);cursor:not-allowed;}\n" +
-                ".page-info{font-size:13px;color:var(--text-muted);align-self:center;}\n" +
-                ".badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:500;}\n" +
-                ".badge-google{background:var(--badge-google-bg);color:#1890ff;}\n" +
-                ".badge-email{background:var(--badge-email-bg);color:#52c41a;}\n" +
+                ".log-table th{background:#f8fafc;padding:14px 16px;text-align:left;font-size:13px;font-weight:600;color:#64748b;border-bottom:1px solid #e8ecf1;}\n" +
+                ".log-table td{padding:14px 16px;font-size:13px;color:#1e293b;border-bottom:1px solid #e8ecf1;}\n" +
+                ".log-table tr:hover td{background:#f8fafc;cursor:pointer;}\n" +
+                ".success{color:#52c41a;font-weight:500;}.fail{color:#ff4d4f;font-weight:500;}\n" +
+                ".pagination{display:flex;justify-content:center;gap:12px;padding:24px;border-top:1px solid #e8ecf1;}\n" +
+                ".page-btn{padding:8px 16px;border:1px solid #d1d5db;background:#ffffff;color:#1e293b;border-radius:8px;cursor:pointer;font-size:13px;transition:all 0.3s;}\n" +
+                ".page-btn:hover:not(:disabled){border-color:#1677ff;color:#1677ff;}\n" +
+                ".page-btn:disabled{background:#f1f5f9;color:#94a3b8;cursor:not-allowed;}\n" +
+                ".page-info{font-size:13px;color:#94a3b8;align-self:center;}\n" +
+                ".badge{display:inline-block;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:500;}\n" +
+                ".badge-google{background:#e8f0fe;color:#1677ff;}\n" +
+                ".badge-email{background:#e6f7e6;color:#52c41a;}\n" +
                 "@media(max-width:900px){.search-actions{margin-left:0;width:100%;justify-content:flex-start;}}\n" +
                 "@media(max-width:768px){.stats-grid{grid-template-columns:repeat(2,1fr);}.search-group input,.search-group select,.search-group input[type=\"datetime-local\"]{min-width:100%;width:100%;}.search-actions{flex-wrap:wrap;}.navbar{padding:0 20px;}.nav-links a{padding:6px 12px;font-size:12px;}}\n" +
                 "@media(max-width:480px){.stats-grid{grid-template-columns:1fr;}}\n" +
@@ -2455,21 +2414,27 @@ public class LogMonitorController {
                 "<body>\n" +
                 "<div class=\"page-wrap\">\n" +
                 "<div class=\"navbar\">\n" +
-                "<div class=\"nav-links\">\n" +
-                "<a href=\"/monitor/index\" class=\"active\">首页</a>\n" +
+                "<div class=\"nav-container\">\n" +
+                "<div class=\"logo\">\n" +
+                "<div class=\"logo-icon\">📊</div>\n" +
+                "<div class=\"logo-text\">ECCOM WEB 监控管理系统</div>\n" +
+                "<div class=\"logo-sub\">v3.0</div>\n" +
+                "</div>\n" +
+                "<div class=\"menu\">\n" +
+                "<a href=\"/monitor/index\">首页</a>\n" +
                 "<a href=\"/monitor/dashboard\">服务监控</a>\n" +
                 "<a href=\"/monitor/login-audit\" class=\"active\">登录审计</a>\n" +
                 "<a href=\"/monitor/number-files\">号码备份</a>\n" +
                 "<a href=\"/monitor/customer-management\">API客户管理</a>\n" +
                 "<a href=\"/monitor/user-management\">登录账户管理</a>\n" +
                 "<a href=\"/monitor/ops-management\">运维管理</a>\n" +
-                "<a href=\"/monitor/queue-management\">发送队列管理</a>" +
+                "<a href=\"/monitor/queue-management\">发送队列管理</a>\n" +
                 "</div>\n" +
-                "<div class=\"nav-right\">\n" +
-                "    <span class=\"user-name\" id=\"currentUsername\">加载中...</span>\n" +
-                "    <span class=\"user-role\" id=\"currentUserRole\" style=\"background:rgba(255,255,255,0.2);padding:4px 12px;border-radius:20px;font-size:12px;\">加载中...</span>\n" +
-                "    <button class=\"theme-toggle\" onclick=\"toggleTheme()\" id=\"themeBtn\">🌙 深色</button>\n" +
-                "    <button class=\"logout-btn\" onclick=\"logout()\">退出</button>\n" +
+                "<div class=\"user-info\">\n" +
+                "<span class=\"user-name\" id=\"currentUsername\">加载中...</span>\n" +
+                "<span class=\"user-role\" id=\"currentUserRole\">加载中...</span>\n" +
+                "<button class=\"logout-btn\" onclick=\"logout()\">退出</button>\n" +
+                "</div>\n" +
                 "</div>\n" +
                 "</div>\n" +
                 "<div class=\"stats-grid\" id=\"statsGrid\"></div>\n" +
@@ -2494,28 +2459,7 @@ public class LogMonitorController {
                 "</div>\n" +
                 "</div>\n" +
                 "<script>\n" +
-                "// 主题切换功能\n" +
-                "function toggleTheme() {\n" +
-                "  var html = document.documentElement;\n" +
-                "  var btn = document.getElementById('themeBtn');\n" +
-                "  var currentTheme = html.getAttribute('data-theme');\n" +
-                "  if (currentTheme === 'dark') {\n" +
-                "    html.removeAttribute('data-theme');\n" +
-                "    btn.innerHTML = '🌙 深色';\n" +
-                "    localStorage.setItem('monitor-theme', 'light');\n" +
-                "  } else {\n" +
-                "    html.setAttribute('data-theme', 'dark');\n" +
-                "    btn.innerHTML = '☀️ 浅色';\n" +
-                "    localStorage.setItem('monitor-theme', 'dark');\n" +
-                "  }\n" +
-                "}\n" +
                 "function logout(){fetch('/monitor/logout').then(function(){location.href='/monitor/login';});}\n" +
-                "var savedTheme = localStorage.getItem('monitor-theme');\n" +
-                "if (savedTheme === 'dark') {\n" +
-                "  document.documentElement.setAttribute('data-theme', 'dark');\n" +
-                "  var themeBtn = document.getElementById('themeBtn');\n" +
-                "  if (themeBtn) themeBtn.innerHTML = '☀️ 浅色';\n" +
-                "}\n" +
                 "let page=1,size=20,totalPages=1;\n" +
                 "// 获取当前登录用户信息\n" +
                 "function getCurrentUserInfo() {\n" +
@@ -2526,7 +2470,7 @@ public class LogMonitorController {
                 "                document.getElementById('currentUsername').innerText = data.data.username;\n" +
                 "                var roleSpan = document.getElementById('currentUserRole');\n" +
                 "                var roleText = data.data.role === 'ADMIN' ? '👑 管理员' : '🔧 NOC';\n" +
-                "                roleSpan.innerHTML = roleText;\n" +
+                "                roleSpan.innerText = roleText;\n" +
                 "            }\n" +
                 "        }).catch(function(err) { console.error('获取用户信息失败:', err); });\n" +
                 "}\n" +
@@ -2592,10 +2536,10 @@ public class LogMonitorController {
                 "    var modal = document.createElement('div');\n" +
                 "    modal.id = 'detailModal';\n" +
                 "    modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:10000;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);';\n" +
-                "    modal.innerHTML = '<div style=\"background:var(--bg-card);border-radius:24px;max-width:550px;width:90%;max-height:80vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,0.3);\">' +\n" +
-                "        '<div style=\"padding:20px 24px;border-bottom:1px solid var(--border-color);display:flex;justify-content:space-between;align-items:center;\">' +\n" +
-                "        '<h3 style=\"color:var(--text-primary);margin:0;display:flex;align-items:center;gap:8px;\"><span>📋</span> 登录详情</h3>' +\n" +
-                "        '<button onclick=\"closeDetailModal()\" style=\"background:none;border:none;font-size:28px;cursor:pointer;color:var(--text-muted);line-height:1;\">&times;</button>' +\n" +
+                "    modal.innerHTML = '<div style=\"background:#ffffff;border-radius:12px;max-width:550px;width:90%;max-height:80vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,0.15);\">' +\n" +
+                "        '<div style=\"padding:20px 24px;border-bottom:1px solid #e8ecf1;display:flex;justify-content:space-between;align-items:center;\">' +\n" +
+                "        '<h3 style=\"color:#1e293b;margin:0;display:flex;align-items:center;gap:8px;\"><span>📋</span> 登录详情</h3>' +\n" +
+                "        '<button onclick=\"closeDetailModal()\" style=\"background:none;border:none;font-size:28px;cursor:pointer;color:#94a3b8;line-height:1;\">&times;</button>' +\n" +
                 "        '</div>' +\n" +
                 "        '<div style=\"padding:24px;overflow-y:auto;flex:1;\"><div style=\"text-align:center;padding:40px;\">加载中...</div></div>' +\n" +
                 "        '</div>';\n" +
@@ -2638,10 +2582,10 @@ public class LogMonitorController {
                 "        var field = fields[i];\n" +
                 "        var value = detail[field.key];\n" +
                 "        if(value !== undefined && value !== null && value !== ''){\n" +
-                "            html += '<div style=\"display:flex;border-bottom:1px solid var(--border-color);padding:10px 0;\">' +\n" +
-                "                '<div style=\"width:100px;font-weight:500;color:var(--text-secondary);display:flex;align-items:center;gap:6px;\">' +\n" +
+                "            html += '<div style=\"display:flex;border-bottom:1px solid #e8ecf1;padding:10px 0;\">' +\n" +
+                "                '<div style=\"width:100px;font-weight:500;color:#64748b;display:flex;align-items:center;gap:6px;\">' +\n" +
                 "                '<span>' + field.icon + '</span> ' + field.key + ':</div>' +\n" +
-                "                '<div style=\"flex:1;color:var(--text-primary);word-break:break-all;\">' + escapeHtml(String(value)) + '</div>' +\n" +
+                "                '<div style=\"flex:1;color:#1e293b;word-break:break-all;\">' + escapeHtml(String(value)) + '</div>' +\n" +
                 "                '</div>';\n" +
                 "        }\n" +
                 "    }\n" +
@@ -2651,7 +2595,7 @@ public class LogMonitorController {
                 "function renderDetailError(msg) {\n" +
                 "    var container = document.querySelector('#detailModal > div > div:last-child');\n" +
                 "    if(container){\n" +
-                "        container.innerHTML = '<div style=\"text-align:center;padding:40px;color:#e53935;\">❌ ' + escapeHtml(msg) + '</div>';\n" +
+                "        container.innerHTML = '<div style=\"text-align:center;padding:40px;color:#ff4d4f;\">❌ ' + escapeHtml(msg) + '</div>';\n" +
                 "    }\n" +
                 "}\n" +
                 "function closeDetailModal() {\n" +
@@ -3331,6 +3275,7 @@ public class LogMonitorController {
                 "<div class=\"modal-content\">\n" +
                 "<div class=\"modal-header\"><h3 id=\"modalTitle\">编辑用户</h3><button class=\"modal-close\" onclick=\"closeModal()\">&times;</button></div>\n" +
                 "<input type=\"hidden\" id=\"editId\">\n" +
+                "<input type=\"hidden\" id=\"originalRole\">\n" +
                 "<div class=\"form-group\"><label>用户名 *</label><input type=\"text\" id=\"inputUsername\" placeholder=\"请输入用户名\"></div>\n" +
                 "<div class=\"form-group\"><label>新密码</label><input type=\"password\" id=\"inputPassword\" placeholder=\"留空则不修改密码\"><div class=\"info-text\">如需修改密码，请输入新密码</div></div>\n" +
                 "<div class=\"form-group\" id=\"roleGroup\"><label>角色</label><select id=\"inputRole\"><option value=\"ADMIN\">管理员</option><option value=\"NOC\">NOC</option></select></div>\n" +
@@ -3505,6 +3450,8 @@ public class LogMonitorController {
                 "                    document.getElementById('inputStatus').value=user.status;\n" +
                 "                    document.getElementById('inputAllowedIps').value=user.allowedIps||'';\n" +
                 "                    document.getElementById('inputRemark').value=user.remark||'';\n" +
+                "                    // 保存原始角色到隐藏域\n" +
+                "                    document.getElementById('originalRole').value = user.role || 'NOC';\n" +
                 "                    \n" +
                 "                    // NOC用户不能修改角色，隐藏角色选择框\n" +
                 "                    if(currentUserRole === 'NOC'){\n" +
@@ -3540,6 +3487,14 @@ public class LogMonitorController {
                 "    if(currentUserRole === 'ADMIN'){\n" +
                 "        var role=document.getElementById('inputRole').value;\n" +
                 "        data.role=role;\n" +
+                "    } else {\n" +
+                "        // NOC用户：使用隐藏域保存的原始角色\n" +
+                "        var originalRole = document.getElementById('originalRole');\n" +
+                "        if(originalRole && originalRole.value){\n" +
+                "            data.role = originalRole.value;\n" +
+                "        } else {\n" +
+                "            data.role = 'NOC';\n" +
+                "        }\n" +
                 "    }\n" +
                 "    \n" +
                 "    if(id)data.id=parseInt(id);\n" +
@@ -4319,7 +4274,7 @@ public class LogMonitorController {
                 "var currentTaskId='';\n" +
                 "var detailPage=1,detailSize=10,detailTotalPages=1;\n" +
                 "var rankingChart=null;\n" +
-                "function decodeSmsContent(str){if(!str)return'';try{var decoded=atob(str);try{return decodeURIComponent(decoded);}catch(e){return decoded;}}catch(e){return str;}}\n" +
+                "function decodeSmsContent(str){if(!str)return'';try{var decoded=atob(str);var bytes=new Uint8Array(decoded.split('').map(function(c){return c.charCodeAt(0);}));return new TextDecoder('utf-8').decode(bytes);}catch(e){return str;}}\n" +
                 "function toggleTheme(){var html=document.documentElement;var isDark=html.getAttribute('data-theme')==='dark';if(isDark){html.removeAttribute('data-theme');localStorage.setItem('monitor-theme','light');}else{html.setAttribute('data-theme','dark');localStorage.setItem('monitor-theme','dark');}}\n" +
                 "function logout(){fetch('/monitor/logout').then(function(){location.href='/monitor/login';});}\n" +
                 "if(localStorage.getItem('monitor-theme')==='dark'){document.documentElement.setAttribute('data-theme','dark');}\n" +
