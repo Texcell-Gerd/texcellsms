@@ -2018,7 +2018,7 @@ public class LogMonitorController {
                 ".user-role{background:rgba(22,119,255,0.1);padding:4px 12px;border-radius:20px;font-size:12px;color:#1677ff;}\n" +
                 ".logout-btn{background:#f1f5f9;border:1px solid #e8ecf1;color:#475569;padding:8px 20px;border-radius:40px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;}\n" +
                 ".logout-btn:hover{background:#e8ecf1;transform:translateY(-1px);}\n" +
-                ".page-wrap{max-width:1600px;margin:0 auto;padding:32px;}\n" +
+                ".page-wrap{max-width:1800px;margin:0 auto;padding:32px;}\n" +
                 ".welcome-card{background:#ffffff;border-radius:16px;padding:36px 40px;margin-bottom:32px;color:#1e293b;position:relative;overflow:hidden;border:1px solid #e8ecf1;box-shadow:0 1px 3px rgba(0,0,0,0.04);}\n" +
                 ".welcome-card::before{content:'📊';position:absolute;right:-20px;bottom:-30px;font-size:160px;opacity:0.06;pointer-events:none;}\n" +
                 ".welcome-card h1{font-size:28px;font-weight:700;margin-bottom:8px;}\n" +
@@ -2176,7 +2176,7 @@ public class LogMonitorController {
                 "}\n" +
                 "*{margin:0;padding:0;box-sizing:border-box;}\n" +
                 "body{background:#f5f7fa;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;}\n" +
-                ".page-wrap{max-width:1600px;margin:0 auto;padding:32px;}\n" +
+                ".page-wrap{max-width:1800px;margin:0 auto;padding:32px;}\n" +
                 ".navbar{background:#ffffff;box-shadow:0 1px 3px rgba(0,0,0,0.06);border:1px solid #e8ecf1;border-radius:12px;margin-bottom:24px;}\n" +
                 ".nav-container{max-width:1600px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:70px;}\n" +
                 ".logo{display:flex;align-items:center;gap:12px;}\n" +
@@ -2355,7 +2355,7 @@ public class LogMonitorController {
                 "}\n" +
                 "*{margin:0;padding:0;box-sizing:border-box;}\n" +
                 "body{background:#f5f7fa;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;min-height:100vh;}\n" +
-                ".page-wrap{max-width:1600px;margin:0 auto;padding:20px 24px;}\n" +
+                ".page-wrap{max-width:1800px;margin:0 auto;padding:20px 24px;}\n" +
                 ".navbar{background:#ffffff;box-shadow:0 1px 3px rgba(0,0,0,0.06);border:1px solid #e8ecf1;border-radius:12px;margin-bottom:24px;}\n" +
                 ".nav-container{max-width:1600px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:70px;}\n" +
                 ".logo{display:flex;align-items:center;gap:12px;}\n" +
@@ -2623,109 +2623,98 @@ public class LogMonitorController {
                 "<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap\" rel=\"stylesheet\">\n" +
                 "<style>\n" +
                 ":root {\n" +
-                "  --bg-primary: #f0f2f5;\n" +
+                "  --bg-primary: #f5f7fa;\n" +
                 "  --bg-card: #ffffff;\n" +
                 "  --text-primary: #1e293b;\n" +
-                "  --text-secondary: #475569;\n" +
+                "  --text-secondary: #64748b;\n" +
                 "  --text-muted: #94a3b8;\n" +
-                "  --border-color: rgba(0,0,0,0.04);\n" +
-                "  --shadow: 0 2px 12px rgba(0,0,0,0.06);\n" +
-                "  --navbar-bg: linear-gradient(135deg,#667eea 0%,#764ba2 100%);\n" +
-                "  --search-card-bg: #ffffff;\n" +
-                "  --table-header-bg: #fafafa;\n" +
-                "  --table-hover: #fafafa;\n" +
-                "  --input-bg: #ffffff;\n" +
-                "  --input-border: #e5e7eb;\n" +
-                "  --btn-reset-bg: #f5f5f5;\n" +
-                "  --btn-reset-hover: #e8e8e8;\n" +
-                "}\n" +
-                "[data-theme=\"dark\"] {\n" +
-                "  --bg-primary: #0f172a;\n" +
-                "  --bg-card: #1e293b;\n" +
-                "  --text-primary: #f1f5f9;\n" +
-                "  --text-secondary: #94a3b8;\n" +
-                "  --text-muted: #64748b;\n" +
-                "  --border-color: rgba(255,255,255,0.08);\n" +
-                "  --shadow: 0 2px 12px rgba(0,0,0,0.3);\n" +
-                "  --navbar-bg: linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);\n" +
-                "  --search-card-bg: #1e293b;\n" +
-                "  --table-header-bg: #334155;\n" +
-                "  --table-hover: #334155;\n" +
-                "  --input-bg: #1e293b;\n" +
-                "  --input-border: #334155;\n" +
-                "  --btn-reset-bg: #334155;\n" +
-                "  --btn-reset-hover: #475569;\n" +
+                "  --border-color: #e8ecf1;\n" +
+                "  --shadow: 0 1px 3px rgba(0,0,0,0.06);\n" +
+                "  --navbar-bg: #ffffff;\n" +
+                "  --hover-bg: rgba(0,0,0,0.02);\n" +
+                "  --primary-color: #1677ff;\n" +
+                "  --primary-hover: #4096ff;\n" +
                 "}\n" +
                 "*{margin:0;padding:0;box-sizing:border-box;}\n" +
-                "body{background:var(--bg-primary);font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;min-height:100vh;transition:background 0.3s,color 0.3s;}\n" +
-                ".page-wrap{max-width:1600px;margin:0 auto;padding:20px 24px;}\n" +
-                ".navbar{background:var(--navbar-bg);height:60px;display:flex;align-items:center;justify-content:space-between;padding:0 32px;color:white;border-radius:16px;margin-bottom:24px;box-shadow:0 4px 20px rgba(0,0,0,0.08);transition:background 0.3s;}\n" +
-                ".nav-links{display:flex;gap:8px;}\n" +
-                ".navbar a{color:white;text-decoration:none;padding:8px 20px;border-radius:30px;font-weight:500;transition:all 0.3s;}\n" +
-                ".navbar a:hover,.navbar a.active{background:rgba(255,255,255,0.2);}\n" +
-                ".nav-right{display:flex;align-items:center;gap:16px;}\n" +
-                ".user-name{color:white;font-size:14px;}\n" +
-                ".theme-toggle{background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.2);color:white;padding:8px 16px;border-radius:30px;cursor:pointer;font-size:13px;transition:all 0.3s;}\n" +
-                ".theme-toggle:hover{background:rgba(255,255,255,0.25);}\n" +
-                ".logout-btn{background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.2);color:white;padding:8px 20px;border-radius:30px;cursor:pointer;font-weight:500;transition:all 0.3s;}\n" +
-                ".logout-btn:hover{background:rgba(255,255,255,0.25);transform:translateY(-1px);}\n" +
-                ".search-card{background:var(--search-card-bg);border-radius:16px;padding:20px 24px;margin-bottom:24px;box-shadow:var(--shadow);transition:background 0.3s;}\n" +
+                "body{background:#f5f7fa;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;min-height:100vh;}\n" +
+                ".page-wrap{max-width:1800px;margin:0 auto;padding:20px 24px;}\n" +
+                ".navbar{background:#ffffff;box-shadow:0 1px 3px rgba(0,0,0,0.06);border:1px solid #e8ecf1;border-radius:12px;margin-bottom:24px;}\n" +
+                ".nav-container{max-width:1600px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:70px;}\n" +
+                ".logo{display:flex;align-items:center;gap:12px;}\n" +
+                ".logo-icon{width:40px;height:40px;background:linear-gradient(135deg,#1677ff 0%,#4096ff 100%);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;}\n" +
+                ".logo-text{font-size:18px;font-weight:700;color:#1e293b;letter-spacing:1px;}\n" +
+                ".logo-sub{font-size:11px;color:#94a3b8;margin-left:8px;}\n" +
+                ".menu{display:flex;gap:12px;}\n" +
+                ".menu a{color:#64748b;text-decoration:none;padding:8px 20px;border-radius:40px;transition:all 0.3s;font-weight:500;font-size:14px;}\n" +
+                ".menu a:hover{background:#f1f5f9;color:#1e293b;}\n" +
+                ".menu a.active{background:#e8f0fe;color:#1677ff;box-shadow:none;}\n" +
+                ".user-info{display:flex;align-items:center;gap:20px;}\n" +
+                ".user-name{color:#475569;font-size:14px;}\n" +
+                ".user-role{background:rgba(22,119,255,0.1);padding:4px 12px;border-radius:20px;font-size:12px;color:#1677ff;}\n" +
+                ".logout-btn{background:#f1f5f9;border:1px solid #e8ecf1;color:#475569;padding:8px 20px;border-radius:40px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;}\n" +
+                ".logout-btn:hover{background:#e8ecf1;transform:translateY(-1px);}\n" +
+                ".search-card{background:#ffffff;border-radius:12px;padding:20px 24px;margin-bottom:24px;border:1px solid #e8ecf1;box-shadow:0 1px 3px rgba(0,0,0,0.04);}\n" +
                 ".search-row{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end;margin-bottom:16px;}\n" +
                 ".search-row:last-child{margin-bottom:0;}\n" +
                 ".search-group{display:flex;flex-direction:column;gap:6px;}\n" +
-                ".search-group label{font-size:12px;color:var(--text-secondary);font-weight:500;}\n" +
-                ".search-group input,.search-group select{padding:8px 12px;border:1px solid var(--input-border);border-radius:10px;font-size:13px;min-width:160px;transition:all 0.3s;background:var(--input-bg);color:var(--text-primary);}\n" +
-                ".search-group input:focus,.search-group select:focus{outline:none;border-color:#667eea;box-shadow:0 0 0 3px rgba(102,126,234,0.1);}\n" +
+                ".search-group label{font-size:12px;color:#64748b;font-weight:500;}\n" +
+                ".search-group input,.search-group select{padding:8px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;min-width:160px;transition:all 0.3s;background:#ffffff;color:#1e293b;}\n" +
+                ".search-group input:focus,.search-group select:focus{outline:none;border-color:#1677ff;box-shadow:0 0 0 3px rgba(22,119,255,0.1);}\n" +
                 ".search-group input[type=\"datetime-local\"]{min-width:180px;}\n" +
                 ".search-actions{flex-direction:row;align-items:center;gap:10px;margin-left:auto;}\n" +
-                ".search-btn{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white;border:none;padding:8px 20px;border-radius:30px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;}\n" +
-                ".search-btn:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(102,126,234,0.4);}\n" +
-                ".reset-btn{background:var(--btn-reset-bg);border:1px solid var(--input-border);padding:8px 20px;border-radius:30px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;color:var(--text-secondary);}\n" +
-                ".reset-btn:hover{background:var(--btn-reset-hover);}\n" +
-                ".stats-card{background:var(--bg-card);border-radius:16px;padding:20px 24px;margin-bottom:24px;box-shadow:var(--shadow);display:flex;gap:32px;flex-wrap:wrap;}\n" +
+                ".search-btn{background:linear-gradient(135deg,#1677ff 0%,#4096ff 100%);color:white;border:none;padding:8px 20px;border-radius:8px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;}\n" +
+                ".search-btn:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(22,119,255,0.3);}\n" +
+                ".reset-btn{background:#f1f5f9;border:1px solid #d1d5db;padding:8px 20px;border-radius:8px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;color:#64748b;}\n" +
+                ".reset-btn:hover{background:#e8ecf1;}\n" +
+                ".stats-card{background:#ffffff;border-radius:12px;padding:20px 24px;margin-bottom:24px;border:1px solid #e8ecf1;box-shadow:0 1px 3px rgba(0,0,0,0.04);display:flex;gap:32px;flex-wrap:wrap;}\n" +
                 ".stat-item{display:flex;align-items:center;gap:12px;}\n" +
                 ".stat-icon{font-size:28px;}\n" +
                 ".stat-info{display:flex;flex-direction:column;}\n" +
-                ".stat-number{font-size:24px;font-weight:700;color:#667eea;}\n" +
-                ".stat-label{font-size:12px;color:var(--text-muted);}\n" +
-                ".log-card{background:var(--bg-card);border-radius:16px;overflow:auto;box-shadow:var(--shadow);transition:background 0.3s;}\n" +
+                ".stat-number{font-size:24px;font-weight:700;color:#1677ff;}\n" +
+                ".stat-label{font-size:12px;color:#94a3b8;}\n" +
+                ".log-card{background:#ffffff;border-radius:12px;overflow:auto;border:1px solid #e8ecf1;box-shadow:0 1px 3px rgba(0,0,0,0.04);}\n" +
                 ".log-table{width:100%;border-collapse:collapse;min-width:800px;}\n" +
-                ".log-table th{background:var(--table-header-bg);padding:14px 16px;text-align:left;font-size:13px;font-weight:600;color:var(--text-secondary);border-bottom:1px solid var(--border-color);transition:background 0.3s;}\n" +
-                ".log-table td{padding:14px 16px;font-size:13px;color:var(--text-primary);border-bottom:1px solid var(--border-color);transition:color 0.3s;}\n" +
-                ".log-table tr:hover td{background:var(--table-hover);}\n" +
-                ".download-btn{background:linear-gradient(135deg,#10b981 0%,#059669 100%);color:white;border:none;padding:6px 16px;border-radius:20px;cursor:pointer;font-size:12px;font-weight:500;transition:all 0.3s;}\n" +
-                ".download-btn:hover{transform:translateY(-1px);box-shadow:0 2px 8px rgba(16,185,129,0.4);}\n" +
-                ".pagination{display:flex;justify-content:center;gap:12px;padding:24px;border-top:1px solid var(--border-color);}\n" +
-                ".page-btn{padding:8px 16px;border:1px solid var(--input-border);background:var(--bg-card);color:var(--text-primary);border-radius:30px;cursor:pointer;font-size:13px;transition:all 0.3s;}\n" +
-                ".page-btn:hover:not(:disabled){border-color:#667eea;color:#667eea;}\n" +
-                ".page-btn:disabled{background:var(--btn-reset-bg);color:var(--text-muted);cursor:not-allowed;}\n" +
-                ".page-info{font-size:13px;color:var(--text-muted);align-self:center;}\n" +
-                ".footer{text-align:center;padding:32px 0;color:var(--text-secondary);font-size:12px;border-top:1px solid var(--border-color);margin-top:16px;}\n" +
-                ".empty{text-align:center;padding:48px;color:var(--text-muted);}\n" +
-                ".size-badge{background:#e8f4fd;color:#1890ff;padding:2px 8px;border-radius:12px;font-size:11px;display:inline-block;}\n" +
-                "[data-theme=\"dark\"] .size-badge{background:#1e3a5f;}\n" +
+                ".log-table th{background:#f8fafc;padding:14px 16px;text-align:left;font-size:13px;font-weight:600;color:#64748b;border-bottom:1px solid #e8ecf1;}\n" +
+                ".log-table td{padding:14px 16px;font-size:13px;color:#1e293b;border-bottom:1px solid #e8ecf1;}\n" +
+                ".log-table tr:hover td{background:#f8fafc;}\n" +
+                ".download-btn{background:linear-gradient(135deg,#52c41a 0%,#389e0d 100%);color:white;border:none;padding:6px 16px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:500;transition:all 0.3s;}\n" +
+                ".download-btn:hover{transform:translateY(-1px);box-shadow:0 2px 8px rgba(82,196,26,0.4);}\n" +
+                ".pagination{display:flex;justify-content:center;gap:12px;padding:24px;border-top:1px solid #e8ecf1;}\n" +
+                ".page-btn{padding:8px 16px;border:1px solid #d1d5db;background:#ffffff;color:#1e293b;border-radius:8px;cursor:pointer;font-size:13px;transition:all 0.3s;}\n" +
+                ".page-btn:hover:not(:disabled){border-color:#1677ff;color:#1677ff;}\n" +
+                ".page-btn:disabled{background:#f1f5f9;color:#94a3b8;cursor:not-allowed;}\n" +
+                ".page-info{font-size:13px;color:#94a3b8;align-self:center;}\n" +
+                ".footer{text-align:center;padding:32px 0;color:#94a3b8;font-size:12px;border-top:1px solid #e8ecf1;margin-top:16px;}\n" +
+                ".empty{text-align:center;padding:48px;color:#94a3b8;}\n" +
+                ".size-badge{background:#e8f0fe;color:#1677ff;padding:2px 8px;border-radius:4px;font-size:11px;display:inline-block;}\n" +
                 "@media(max-width:900px){.search-actions{margin-left:0;width:100%;justify-content:flex-start;}}\n" +
-                "@media(max-width:768px){.search-group input,.search-group select,.search-group input[type=\"datetime-local\"]{min-width:100%;width:100%;}.navbar{padding:0 20px;}.nav-links a{padding:6px 12px;font-size:12px;}}\n" +
+                "@media(max-width:768px){.search-group input,.search-group select,.search-group input[type=\"datetime-local\"]{min-width:100%;width:100%;}.navbar{padding:0 20px;}.menu a{padding:4px 8px;font-size:11px;}}\n" +
                 "</style>\n" +
                 "</head>\n" +
                 "<body>\n" +
                 "<div class=\"page-wrap\">\n" +
                 "<div class=\"navbar\">\n" +
-                "<div class=\"nav-links\">\n" +
-                "<a href=\"/monitor/index\" class=\"active\">首页</a>\n" +
+                "<div class=\"nav-container\">\n" +
+                "<div class=\"logo\">\n" +
+                "<div class=\"logo-icon\">📊</div>\n" +
+                "<div class=\"logo-text\">ECCOM WEB 监控管理系统</div>\n" +
+                "<div class=\"logo-sub\">v3.0</div>\n" +
+                "</div>\n" +
+                "<div class=\"menu\">\n" +
+                "<a href=\"/monitor/index\">首页</a>\n" +
                 "<a href=\"/monitor/dashboard\">服务监控</a>\n" +
                 "<a href=\"/monitor/login-audit\">登录审计</a>\n" +
                 "<a href=\"/monitor/number-files\" class=\"active\">号码备份</a>\n" +
                 "<a href=\"/monitor/customer-management\">API客户管理</a>\n" +
                 "<a href=\"/monitor/user-management\">登录账户管理</a>\n" +
                 "<a href=\"/monitor/ops-management\">运维管理</a>\n" +
-                "<a href=\"/monitor/queue-management\">发送队列管理</a>" +
+                "<a href=\"/monitor/queue-management\">发送队列管理</a>\n" +
                 "</div>\n" +
-                "<div class=\"nav-right\">\n" +
-                "    <span class=\"user-name\" id=\"currentUsername\">加载中...</span>\n" +
-                "    <span class=\"user-role\" id=\"currentUserRole\" style=\"background:rgba(255,255,255,0.2);padding:4px 12px;border-radius:20px;font-size:12px;\">加载中...</span>\n" +
-                "    <button class=\"theme-toggle\" onclick=\"toggleTheme()\" id=\"themeBtn\">🌙 深色</button>\n" +
-                "    <button class=\"logout-btn\" onclick=\"logout()\">退出</button>\n" +
+                "<div class=\"user-info\">\n" +
+                "<span class=\"user-name\" id=\"currentUsername\">加载中...</span>\n" +
+                "<span class=\"user-role\" id=\"currentUserRole\">加载中...</span>\n" +
+                "<button class=\"logout-btn\" onclick=\"logout()\">退出</button>\n" +
+                "</div>\n" +
                 "</div>\n" +
                 "</div>\n" +
                 "<div class=\"search-card\">\n" +
@@ -2763,32 +2752,12 @@ public class LogMonitorController {
                 "                document.getElementById('currentUsername').innerText = data.data.username;\n" +
                 "                var roleSpan = document.getElementById('currentUserRole');\n" +
                 "                var roleText = data.data.role === 'ADMIN' ? '👑 管理员' : '🔧 NOC';\n" +
-                "                roleSpan.innerHTML = roleText;\n" +
+                "                roleSpan.innerText = roleText;\n" +
                 "            }\n" +
                 "        }).catch(function(err) { console.error('获取用户信息失败:', err); });\n" +
                 "}\n" +
                 "getCurrentUserInfo();\n" +
-                "function toggleTheme(){\n" +
-                "  var html=document.documentElement;\n" +
-                "  var btn=document.getElementById('themeBtn');\n" +
-                "  var currentTheme=html.getAttribute('data-theme');\n" +
-                "  if(currentTheme==='dark'){\n" +
-                "    html.removeAttribute('data-theme');\n" +
-                "    btn.innerHTML='🌙 深色';\n" +
-                "    localStorage.setItem('monitor-theme','light');\n" +
-                "  }else{\n" +
-                "    html.setAttribute('data-theme','dark');\n" +
-                "    btn.innerHTML='☀️ 浅色';\n" +
-                "    localStorage.setItem('monitor-theme','dark');\n" +
-                "  }\n" +
-                "}\n" +
                 "function logout(){fetch('/monitor/logout').then(function(){location.href='/monitor/login';});}\n" +
-                "var savedTheme=localStorage.getItem('monitor-theme');\n" +
-                "if(savedTheme==='dark'){\n" +
-                "  document.documentElement.setAttribute('data-theme','dark');\n" +
-                "  var themeBtn=document.getElementById('themeBtn');\n" +
-                "  if(themeBtn) themeBtn.innerHTML='☀️ 浅色';\n" +
-                "}\n" +
                 "function formatFileSize(bytes){\n" +
                 "  if(bytes===0) return '0 B';\n" +
                 "  var k=1024;\n" +
@@ -2910,112 +2879,106 @@ public class LogMonitorController {
                 "<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap\" rel=\"stylesheet\">\n" +
                 "<style>\n" +
                 ":root {\n" +
-                "  --bg-primary: #f0f2f5;\n" +
+                "  --bg-primary: #f5f7fa;\n" +
                 "  --bg-card: #ffffff;\n" +
                 "  --text-primary: #1e293b;\n" +
-                "  --text-secondary: #475569;\n" +
+                "  --text-secondary: #64748b;\n" +
                 "  --text-muted: #94a3b8;\n" +
-                "  --border-color: rgba(0,0,0,0.04);\n" +
-                "  --shadow: 0 2px 12px rgba(0,0,0,0.06);\n" +
-                "  --navbar-bg: linear-gradient(135deg,#667eea 0%,#764ba2 100%);\n" +
+                "  --border-color: #e8ecf1;\n" +
+                "  --shadow: 0 1px 3px rgba(0,0,0,0.06);\n" +
+                "  --navbar-bg: #ffffff;\n" +
                 "  --search-card-bg: #ffffff;\n" +
-                "  --table-header-bg: #fafafa;\n" +
-                "  --table-hover: #fafafa;\n" +
+                "  --table-header-bg: #f8fafc;\n" +
+                "  --table-hover: #f8fafc;\n" +
                 "  --input-bg: #ffffff;\n" +
-                "  --input-border: #e5e7eb;\n" +
-                "  --btn-reset-bg: #f5f5f5;\n" +
-                "  --btn-reset-hover: #e8e8e8;\n" +
-                "  --status-enabled: #10b981;\n" +
-                "  --status-disabled: #ef4444;\n" +
-                "}\n" +
-                "[data-theme=\"dark\"] {\n" +
-                "  --bg-primary: #0f172a;\n" +
-                "  --bg-card: #1e293b;\n" +
-                "  --text-primary: #f1f5f9;\n" +
-                "  --text-secondary: #94a3b8;\n" +
-                "  --text-muted: #64748b;\n" +
-                "  --border-color: rgba(255,255,255,0.08);\n" +
-                "  --shadow: 0 2px 12px rgba(0,0,0,0.3);\n" +
-                "  --navbar-bg: linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);\n" +
-                "  --search-card-bg: #1e293b;\n" +
-                "  --table-header-bg: #334155;\n" +
-                "  --table-hover: #334155;\n" +
-                "  --input-bg: #1e293b;\n" +
-                "  --input-border: #334155;\n" +
-                "  --btn-reset-bg: #334155;\n" +
-                "  --btn-reset-hover: #475569;\n" +
-                "  --status-enabled: #34d399;\n" +
-                "  --status-disabled: #f87171;\n" +
+                "  --input-border: #d1d5db;\n" +
+                "  --btn-reset-bg: #f1f5f9;\n" +
+                "  --btn-reset-hover: #e8ecf1;\n" +
+                "  --status-enabled: #52c41a;\n" +
+                "  --status-disabled: #ff4d4f;\n" +
+                "  --primary-color: #1677ff;\n" +
+                "  --primary-hover: #4096ff;\n" +
                 "}\n" +
                 "*{margin:0;padding:0;box-sizing:border-box;}\n" +
-                "body{background:var(--bg-primary);font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;min-height:100vh;transition:background 0.3s,color 0.3s;}\n" +
-                ".page-wrap{max-width:1600px;margin:0 auto;padding:20px 24px;}\n" +
-                ".navbar{background:var(--navbar-bg);height:60px;display:flex;align-items:center;justify-content:space-between;padding:0 32px;color:white;border-radius:16px;margin-bottom:24px;box-shadow:0 4px 20px rgba(0,0,0,0.08);transition:background 0.3s;}\n" +
-                ".nav-links{display:flex;gap:8px;}\n" +
-                ".navbar a{color:white;text-decoration:none;padding:8px 20px;border-radius:30px;font-weight:500;transition:all 0.3s;}\n" +
-                ".navbar a:hover,.navbar a.active{background:rgba(255,255,255,0.2);}\n" +
-                ".nav-right{display:flex;align-items:center;gap:16px;}\n" +
-                ".user-name{color:white;font-size:14px;}\n" +
-                ".theme-toggle{background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.2);color:white;padding:8px 16px;border-radius:30px;cursor:pointer;font-size:13px;transition:all 0.3s;}\n" +
-                ".theme-toggle:hover{background:rgba(255,255,255,0.25);}\n" +
-                ".logout-btn{background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.2);color:white;padding:8px 20px;border-radius:30px;cursor:pointer;font-weight:500;transition:all 0.3s;}\n" +
-                ".logout-btn:hover{background:rgba(255,255,255,0.25);transform:translateY(-1px);}\n" +
-                ".stats-card{background:var(--bg-card);border-radius:16px;padding:20px 24px;margin-bottom:24px;box-shadow:var(--shadow);display:flex;gap:32px;flex-wrap:wrap;}\n" +
+                "body{background:#f5f7fa;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;min-height:100vh;}\n" +
+                ".page-wrap{max-width:1800px;margin:0 auto;padding:20px 24px;}\n" +
+                ".navbar{background:#ffffff;box-shadow:0 1px 3px rgba(0,0,0,0.06);border:1px solid #e8ecf1;border-radius:12px;margin-bottom:24px;}\n" +
+                ".nav-container{max-width:1600px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:70px;}\n" +
+                ".logo{display:flex;align-items:center;gap:12px;}\n" +
+                ".logo-icon{width:40px;height:40px;background:linear-gradient(135deg,#1677ff 0%,#4096ff 100%);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;}\n" +
+                ".logo-text{font-size:18px;font-weight:700;color:#1e293b;letter-spacing:1px;}\n" +
+                ".logo-sub{font-size:11px;color:#94a3b8;margin-left:8px;}\n" +
+                ".menu{display:flex;gap:12px;}\n" +
+                ".menu a{color:#64748b;text-decoration:none;padding:8px 20px;border-radius:40px;transition:all 0.3s;font-weight:500;font-size:14px;}\n" +
+                ".menu a:hover{background:#f1f5f9;color:#1e293b;}\n" +
+                ".menu a.active{background:#e8f0fe;color:#1677ff;box-shadow:none;}\n" +
+                ".user-info{display:flex;align-items:center;gap:20px;}\n" +
+                ".user-name{color:#475569;font-size:14px;}\n" +
+                ".user-role{background:rgba(22,119,255,0.1);padding:4px 12px;border-radius:20px;font-size:12px;color:#1677ff;}\n" +
+                ".logout-btn{background:#f1f5f9;border:1px solid #e8ecf1;color:#475569;padding:8px 20px;border-radius:40px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;}\n" +
+                ".logout-btn:hover{background:#e8ecf1;transform:translateY(-1px);}\n" +
+                ".stats-card{background:#ffffff;border-radius:12px;padding:20px 24px;margin-bottom:24px;border:1px solid #e8ecf1;box-shadow:0 1px 3px rgba(0,0,0,0.04);display:flex;gap:32px;flex-wrap:wrap;}\n" +
                 ".stat-item{display:flex;align-items:center;gap:12px;}\n" +
                 ".stat-icon{font-size:28px;}\n" +
-                ".stat-number{font-size:24px;font-weight:700;color:#667eea;}\n" +
-                ".stat-label{font-size:12px;color:var(--text-muted);}\n" +
-                ".search-card{background:var(--search-card-bg);border-radius:16px;padding:20px 24px;margin-bottom:24px;box-shadow:var(--shadow);transition:background 0.3s;}\n" +
+                ".stat-number{font-size:24px;font-weight:700;color:#1677ff;}\n" +
+                ".stat-label{font-size:12px;color:#94a3b8;}\n" +
+                ".search-card{background:#ffffff;border-radius:12px;padding:20px 24px;margin-bottom:24px;border:1px solid #e8ecf1;box-shadow:0 1px 3px rgba(0,0,0,0.04);}\n" +
                 ".search-row{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end;}\n" +
                 ".search-group{display:flex;flex-direction:column;gap:6px;}\n" +
-                ".search-group label{font-size:12px;color:var(--text-secondary);font-weight:500;}\n" +
-                ".search-group input,.search-group select{padding:8px 12px;border:1px solid var(--input-border);border-radius:10px;font-size:13px;min-width:160px;transition:all 0.3s;background:var(--input-bg);color:var(--text-primary);}\n" +
-                ".search-group input:focus,.search-group select:focus{outline:none;border-color:#667eea;box-shadow:0 0 0 3px rgba(102,126,234,0.1);}\n" +
+                ".search-group label{font-size:12px;color:#64748b;font-weight:500;}\n" +
+                ".search-group input,.search-group select{padding:8px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;min-width:160px;transition:all 0.3s;background:#ffffff;color:#1e293b;}\n" +
+                ".search-group input:focus,.search-group select:focus{outline:none;border-color:#1677ff;box-shadow:0 0 0 3px rgba(22,119,255,0.1);}\n" +
                 ".search-actions{display:flex;gap:10px;margin-left:auto;align-items:center;}\n" +
-                ".search-btn{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white;border:none;padding:8px 20px;border-radius:30px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;}\n" +
-                ".search-btn:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(102,126,234,0.4);}\n" +
-                ".reset-btn{background:var(--btn-reset-bg);border:1px solid var(--input-border);padding:8px 20px;border-radius:30px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;color:var(--text-secondary);}\n" +
-                ".reset-btn:hover{background:var(--btn-reset-hover);}\n" +
-                ".add-btn{background:linear-gradient(135deg,#10b981 0%,#059669 100%);color:white;border:none;padding:8px 20px;border-radius:30px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;}\n" +
-                ".add-btn:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(16,185,129,0.4);}\n" +
-                ".log-card{background:var(--bg-card);border-radius:16px;overflow:auto;box-shadow:var(--shadow);transition:background 0.3s;}\n" +
+                ".search-btn{background:linear-gradient(135deg,#1677ff 0%,#4096ff 100%);color:white;border:none;padding:8px 20px;border-radius:8px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;}\n" +
+                ".search-btn:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(22,119,255,0.3);}\n" +
+                ".reset-btn{background:#f1f5f9;border:1px solid #d1d5db;padding:8px 20px;border-radius:8px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;color:#64748b;}\n" +
+                ".reset-btn:hover{background:#e8ecf1;}\n" +
+                ".add-btn{background:linear-gradient(135deg,#52c41a 0%,#389e0d 100%);color:white;border:none;padding:8px 20px;border-radius:8px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;}\n" +
+                ".add-btn:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(82,196,26,0.3);}\n" +
+                ".log-card{background:#ffffff;border-radius:12px;overflow:auto;border:1px solid #e8ecf1;box-shadow:0 1px 3px rgba(0,0,0,0.04);}\n" +
                 ".log-table{width:100%;border-collapse:collapse;min-width:800px;}\n" +
-                ".log-table th{background:var(--table-header-bg);padding:14px 16px;text-align:left;font-size:13px;font-weight:600;color:var(--text-secondary);border-bottom:1px solid var(--border-color);transition:background 0.3s;}\n" +
-                ".log-table td{padding:14px 16px;font-size:13px;color:var(--text-primary);border-bottom:1px solid var(--border-color);transition:color 0.3s;}\n" +
-                ".log-table tr:hover td{background:var(--table-hover);}\n" +
-                ".status-badge{display:inline-block;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:500;}\n" +
-                ".status-enabled{background:rgba(16,185,129,0.15);color:var(--status-enabled);}\n" +
-                ".status-disabled{background:rgba(239,68,68,0.15);color:var(--status-disabled);}\n" +
-                ".action-btn{padding:4px 12px;border-radius:20px;cursor:pointer;font-size:12px;transition:all 0.3s;border:none;}\n" +
-                ".edit-btn{background:#667eea;color:white;}\n" +
-                ".edit-btn:hover{background:#5a67d8;}\n" +
-                ".delete-btn{background:#e53935;color:white;margin-left:8px;}\n" +
-                ".delete-btn:hover{background:#c62828;}\n" +
-                ".pagination{display:flex;justify-content:center;gap:12px;padding:24px;border-top:1px solid var(--border-color);}\n" +
-                ".page-btn{padding:8px 16px;border:1px solid var(--input-border);background:var(--bg-card);color:var(--text-primary);border-radius:30px;cursor:pointer;font-size:13px;transition:all 0.3s;}\n" +
-                ".page-btn:hover:not(:disabled){border-color:#667eea;color:#667eea;}\n" +
-                ".page-btn:disabled{background:var(--btn-reset-bg);color:var(--text-muted);cursor:not-allowed;}\n" +
-                ".page-info{font-size:13px;color:var(--text-muted);align-self:center;}\n" +
-                ".footer{text-align:center;padding:32px 0;color:var(--text-secondary);font-size:12px;border-top:1px solid var(--border-color);margin-top:16px;}\n" +
+                ".log-table th{background:#f8fafc;padding:14px 16px;text-align:left;font-size:13px;font-weight:600;color:#64748b;border-bottom:1px solid #e8ecf1;}\n" +
+                ".log-table td{padding:14px 16px;font-size:13px;color:#1e293b;border-bottom:1px solid #e8ecf1;}\n" +
+                ".log-table tr:hover td{background:#f8fafc;}\n" +
+                ".status-badge{display:inline-block;padding:2px 10px;border-radius:12px;font-size:11px;font-weight:500;}\n" +
+                ".status-enabled{background:rgba(82,196,26,0.1);color:#52c41a;}\n" +
+                ".status-disabled{background:rgba(255,77,79,0.1);color:#ff4d4f;}\n" +
+                ".action-btn{padding:4px 12px;border-radius:6px;cursor:pointer;font-size:12px;transition:all 0.3s;border:none;}\n" +
+                ".edit-btn{background:#1677ff;color:white;}\n" +
+                ".edit-btn:hover{background:#4096ff;}\n" +
+                ".delete-btn{background:#ff4d4f;color:white;margin-left:8px;}\n" +
+                ".delete-btn:hover{background:#ff7875;}\n" +
+                ".pagination{display:flex;justify-content:center;gap:12px;padding:24px;border-top:1px solid #e8ecf1;}\n" +
+                ".page-btn{padding:8px 16px;border:1px solid #d1d5db;background:#ffffff;color:#1e293b;border-radius:8px;cursor:pointer;font-size:13px;transition:all 0.3s;}\n" +
+                ".page-btn:hover:not(:disabled){border-color:#1677ff;color:#1677ff;}\n" +
+                ".page-btn:disabled{background:#f1f5f9;color:#94a3b8;cursor:not-allowed;}\n" +
+                ".page-info{font-size:13px;color:#94a3b8;align-self:center;}\n" +
+                ".footer{text-align:center;padding:32px 0;color:#94a3b8;font-size:12px;border-top:1px solid #e8ecf1;margin-top:16px;}\n" +
                 ".modal{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:10000;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);}\n" +
-                ".modal-content{background:var(--bg-card);border-radius:20px;width:500px;max-width:90%;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,0.3);}\n" +
-                ".modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;padding-bottom:12px;border-bottom:1px solid var(--border-color);}\n" +
-                ".modal-header h3{color:var(--text-primary);margin:0;}\n" +
-                ".modal-close{background:none;border:none;font-size:28px;cursor:pointer;color:var(--text-muted);}\n" +
-                ".modal-close:hover{color:var(--text-primary);}\n" +
+                ".modal-content{background:#ffffff;border-radius:12px;width:500px;max-width:90%;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,0.15);}\n" +
+                ".modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;padding-bottom:12px;border-bottom:1px solid #e8ecf1;}\n" +
+                ".modal-header h3{color:#1e293b;margin:0;}\n" +
+                ".modal-close{background:none;border:none;font-size:28px;cursor:pointer;color:#94a3b8;}\n" +
+                ".modal-close:hover{color:#1e293b;}\n" +
                 ".form-group{margin-bottom:16px;}\n" +
-                ".form-group label{display:block;font-size:13px;font-weight:500;color:var(--text-secondary);margin-bottom:6px;}\n" +
-                ".form-group input,.form-group select,.form-group textarea{width:100%;padding:10px 12px;border:1px solid var(--input-border);border-radius:10px;font-size:14px;background:var(--input-bg);color:var(--text-primary);}\n" +
-                ".form-group input:focus,.form-group select:focus,.form-group textarea:focus{outline:none;border-color:#667eea;box-shadow:0 0 0 3px rgba(102,126,234,0.1);}\n" +
+                ".form-group label{display:block;font-size:13px;font-weight:500;color:#64748b;margin-bottom:6px;}\n" +
+                ".form-group input,.form-group select,.form-group textarea{width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:14px;background:#ffffff;color:#1e293b;}\n" +
+                ".form-group input:focus,.form-group select:focus,.form-group textarea:focus{outline:none;border-color:#1677ff;box-shadow:0 0 0 3px rgba(22,119,255,0.1);}\n" +
                 ".modal-buttons{display:flex;gap:12px;justify-content:flex-end;margin-top:20px;}\n" +
-                ".confirm-btn{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white;border:none;padding:8px 24px;border-radius:30px;cursor:pointer;font-weight:500;}\n" +
-                ".cancel-btn{background:var(--btn-reset-bg);border:1px solid var(--input-border);padding:8px 24px;border-radius:30px;cursor:pointer;color:var(--text-secondary);}\n" +
+                ".confirm-btn{background:linear-gradient(135deg,#1677ff 0%,#4096ff 100%);color:white;border:none;padding:8px 24px;border-radius:8px;cursor:pointer;font-weight:500;}\n" +
+                ".cancel-btn{background:#f1f5f9;border:1px solid #d1d5db;padding:8px 24px;border-radius:8px;cursor:pointer;color:#64748b;}\n" +
                 "</style>\n" +
                 "</head>\n" +
                 "<body>\n" +
                 "<div class=\"page-wrap\">\n" +
                 "<div class=\"navbar\">\n" +
-                "<div class=\"nav-links\">\n" +
+                "<div class=\"nav-container\">\n" +
+                "<div class=\"logo\">\n" +
+                "<div class=\"logo-icon\">📊</div>\n" +
+                "<div class=\"logo-text\">ECCOM WEB 监控管理系统</div>\n" +
+                "<div class=\"logo-sub\">v3.0</div>\n" +
+                "</div>\n" +
+                "<div class=\"menu\">\n" +
                 "<a href=\"/monitor/index\">首页</a>\n" +
                 "<a href=\"/monitor/dashboard\">服务监控</a>\n" +
                 "<a href=\"/monitor/login-audit\">登录审计</a>\n" +
@@ -3023,13 +2986,13 @@ public class LogMonitorController {
                 "<a href=\"/monitor/customer-management\" class=\"active\">API客户管理</a>\n" +
                 "<a href=\"/monitor/user-management\">登录账户管理</a>\n" +
                 "<a href=\"/monitor/ops-management\">运维管理</a>\n" +
-                "<a href=\"/monitor/queue-management\">发送队列管理</a>" +
+                "<a href=\"/monitor/queue-management\">发送队列管理</a>\n" +
                 "</div>\n" +
-                "<div class=\"nav-right\">\n" +
-                "    <span class=\"user-name\" id=\"currentUsername\">加载中...</span>\n" +
-                "    <span class=\"user-role\" id=\"currentUserRole\" style=\"background:rgba(255,255,255,0.2);padding:4px 12px;border-radius:20px;font-size:12px;\">加载中...</span>\n" +
-                "    <button class=\"theme-toggle\" onclick=\"toggleTheme()\" id=\"themeBtn\">🌙 深色</button>\n" +
-                "    <button class=\"logout-btn\" onclick=\"logout()\">退出</button>\n" +
+                "<div class=\"user-info\">\n" +
+                "<span class=\"user-name\" id=\"currentUsername\">加载中...</span>\n" +
+                "<span class=\"user-role\" id=\"currentUserRole\">加载中...</span>\n" +
+                "<button class=\"logout-btn\" onclick=\"logout()\">退出</button>\n" +
+                "</div>\n" +
                 "</div>\n" +
                 "</div>\n" +
                 "<div class=\"stats-card\" id=\"statsCard\">\n" +
@@ -3057,7 +3020,7 @@ public class LogMonitorController {
                 "</table>\n" +
                 "<div class=\"pagination\" id=\"pagination\"></div>\n" +
                 "</div>\n" +
-                "<div class=\"footer\">👥 APIAPI客户管理 | 新增/编辑客户后需重启应用生效</div>\n" +
+                "<div class=\"footer\">👥 API客户管理 | 新增/编辑客户后需重启应用生效</div>\n" +
                 "</div>\n" +
                 "<div id=\"modal\" class=\"modal\" style=\"display:none;\">\n" +
                 "<div class=\"modal-content\">\n" +
@@ -3081,14 +3044,12 @@ public class LogMonitorController {
                 "                document.getElementById('currentUsername').innerText = data.data.username;\n" +
                 "                var roleSpan = document.getElementById('currentUserRole');\n" +
                 "                var roleText = data.data.role === 'ADMIN' ? '👑 管理员' : '🔧 NOC';\n" +
-                "                roleSpan.innerHTML = roleText;\n" +
+                "                roleSpan.innerText = roleText;\n" +
                 "            }\n" +
                 "        }).catch(function(err) { console.error('获取用户信息失败:', err); });\n" +
                 "}\n" +
                 "getCurrentUserInfo();\n" +
-                "function toggleTheme(){var html=document.documentElement;var btn=document.getElementById('themeBtn');var currentTheme=html.getAttribute('data-theme');if(currentTheme==='dark'){html.removeAttribute('data-theme');btn.innerHTML='🌙 深色';localStorage.setItem('monitor-theme','light');}else{html.setAttribute('data-theme','dark');btn.innerHTML='☀️ 浅色';localStorage.setItem('monitor-theme','dark');}}\n" +
                 "function logout(){fetch('/monitor/logout').then(function(){location.href='/monitor/login';});}\n" +
-                "var savedTheme=localStorage.getItem('monitor-theme');if(savedTheme==='dark'){document.documentElement.setAttribute('data-theme','dark');var themeBtn=document.getElementById('themeBtn');if(themeBtn)themeBtn.innerHTML='☀️ 浅色';}\n" +
                 "function loadStats(){fetch('/api/monitor/customers/statistics?secret=dn17ORUwf36Znl').then(res=>res.json()).then(data=>{if(data.code===200&&data.data){document.getElementById('totalCount').innerText=data.data.total||0;document.getElementById('activeCount').innerText=data.data.active||0;document.getElementById('disabledCount').innerText=data.data.disabled||0;}}).catch(err=>console.error('加载统计失败:',err));}\n" +
                 "function searchCustomers(){page=1;loadCustomers();}\n" +
                 "function resetSearch(){document.getElementById('searchUsername').value='';document.getElementById('searchStatus').value='';page=1;loadCustomers();}\n" +
@@ -3117,6 +3078,7 @@ public class LogMonitorController {
                 "</html>";
     }
 
+
     private String generateUserManagementHtml() {
         return "<!DOCTYPE html>\n" +
                 "<html lang=\"zh-CN\">\n" +
@@ -3128,110 +3090,104 @@ public class LogMonitorController {
                 "<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap\" rel=\"stylesheet\">\n" +
                 "<style>\n" +
                 ":root {\n" +
-                "  --bg-primary: #f0f2f5;\n" +
+                "  --bg-primary: #f5f7fa;\n" +
                 "  --bg-card: #ffffff;\n" +
                 "  --text-primary: #1e293b;\n" +
-                "  --text-secondary: #475569;\n" +
+                "  --text-secondary: #64748b;\n" +
                 "  --text-muted: #94a3b8;\n" +
-                "  --border-color: rgba(0,0,0,0.04);\n" +
-                "  --shadow: 0 2px 12px rgba(0,0,0,0.06);\n" +
-                "  --navbar-bg: linear-gradient(135deg,#667eea 0%,#764ba2 100%);\n" +
+                "  --border-color: #e8ecf1;\n" +
+                "  --shadow: 0 1px 3px rgba(0,0,0,0.06);\n" +
+                "  --navbar-bg: #ffffff;\n" +
                 "  --search-card-bg: #ffffff;\n" +
-                "  --table-header-bg: #fafafa;\n" +
-                "  --table-hover: #fafafa;\n" +
+                "  --table-header-bg: #f8fafc;\n" +
+                "  --table-hover: #f8fafc;\n" +
                 "  --input-bg: #ffffff;\n" +
-                "  --input-border: #e5e7eb;\n" +
-                "  --btn-reset-bg: #f5f5f5;\n" +
-                "  --btn-reset-hover: #e8e8e8;\n" +
-                "  --status-enabled: #10b981;\n" +
-                "  --status-disabled: #ef4444;\n" +
-                "}\n" +
-                "[data-theme=\"dark\"] {\n" +
-                "  --bg-primary: #0f172a;\n" +
-                "  --bg-card: #1e293b;\n" +
-                "  --text-primary: #f1f5f9;\n" +
-                "  --text-secondary: #94a3b8;\n" +
-                "  --text-muted: #64748b;\n" +
-                "  --border-color: rgba(255,255,255,0.08);\n" +
-                "  --shadow: 0 2px 12px rgba(0,0,0,0.3);\n" +
-                "  --navbar-bg: linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);\n" +
-                "  --search-card-bg: #1e293b;\n" +
-                "  --table-header-bg: #334155;\n" +
-                "  --table-hover: #334155;\n" +
-                "  --input-bg: #1e293b;\n" +
-                "  --input-border: #334155;\n" +
-                "  --btn-reset-bg: #334155;\n" +
-                "  --btn-reset-hover: #475569;\n" +
-                "  --status-enabled: #34d399;\n" +
-                "  --status-disabled: #f87171;\n" +
+                "  --input-border: #d1d5db;\n" +
+                "  --btn-reset-bg: #f1f5f9;\n" +
+                "  --btn-reset-hover: #e8ecf1;\n" +
+                "  --status-enabled: #52c41a;\n" +
+                "  --status-disabled: #ff4d4f;\n" +
+                "  --primary-color: #1677ff;\n" +
+                "  --primary-hover: #4096ff;\n" +
                 "}\n" +
                 "*{margin:0;padding:0;box-sizing:border-box;}\n" +
-                "body{background:var(--bg-primary);font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;min-height:100vh;transition:background 0.3s,color 0.3s;}\n" +
-                ".page-wrap{max-width:1600px;margin:0 auto;padding:20px 24px;}\n" +
-                ".navbar{background:var(--navbar-bg);height:60px;display:flex;align-items:center;justify-content:space-between;padding:0 32px;color:white;border-radius:16px;margin-bottom:24px;box-shadow:0 4px 20px rgba(0,0,0,0.08);transition:background 0.3s;}\n" +
-                ".nav-links{display:flex;gap:8px;}\n" +
-                ".navbar a{color:white;text-decoration:none;padding:8px 20px;border-radius:30px;font-weight:500;transition:all 0.3s;}\n" +
-                ".navbar a:hover,.navbar a.active{background:rgba(255,255,255,0.2);}\n" +
-                ".nav-right{display:flex;align-items:center;gap:16px;}\n" +
-                ".user-name{color:white;font-size:14px;}\n" +
-                ".theme-toggle{background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.2);color:white;padding:8px 16px;border-radius:30px;cursor:pointer;font-size:13px;transition:all 0.3s;}\n" +
-                ".theme-toggle:hover{background:rgba(255,255,255,0.25);}\n" +
-                ".logout-btn{background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.2);color:white;padding:8px 20px;border-radius:30px;cursor:pointer;font-weight:500;transition:all 0.3s;}\n" +
-                ".logout-btn:hover{background:rgba(255,255,255,0.25);transform:translateY(-1px);}\n" +
-                ".search-card{background:var(--search-card-bg);border-radius:16px;padding:20px 24px;margin-bottom:24px;box-shadow:var(--shadow);transition:background 0.3s;}\n" +
+                "body{background:#f5f7fa;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;min-height:100vh;}\n" +
+                ".page-wrap{max-width:1800px;margin:0 auto;padding:20px 24px;}\n" +
+                ".navbar{background:#ffffff;box-shadow:0 1px 3px rgba(0,0,0,0.06);border:1px solid #e8ecf1;border-radius:12px;margin-bottom:24px;}\n" +
+                ".nav-container{max-width:1600px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:70px;}\n" +
+                ".logo{display:flex;align-items:center;gap:12px;}\n" +
+                ".logo-icon{width:40px;height:40px;background:linear-gradient(135deg,#1677ff 0%,#4096ff 100%);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;}\n" +
+                ".logo-text{font-size:18px;font-weight:700;color:#1e293b;letter-spacing:1px;}\n" +
+                ".logo-sub{font-size:11px;color:#94a3b8;margin-left:8px;}\n" +
+                ".menu{display:flex;gap:12px;}\n" +
+                ".menu a{color:#64748b;text-decoration:none;padding:8px 20px;border-radius:40px;transition:all 0.3s;font-weight:500;font-size:14px;}\n" +
+                ".menu a:hover{background:#f1f5f9;color:#1e293b;}\n" +
+                ".menu a.active{background:#e8f0fe;color:#1677ff;box-shadow:none;}\n" +
+                ".user-info{display:flex;align-items:center;gap:20px;}\n" +
+                ".user-name{color:#475569;font-size:14px;}\n" +
+                ".user-role{background:rgba(22,119,255,0.1);padding:4px 12px;border-radius:20px;font-size:12px;color:#1677ff;}\n" +
+                ".logout-btn{background:#f1f5f9;border:1px solid #e8ecf1;color:#475569;padding:8px 20px;border-radius:40px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;}\n" +
+                ".logout-btn:hover{background:#e8ecf1;transform:translateY(-1px);}\n" +
+                ".search-card{background:#ffffff;border-radius:12px;padding:20px 24px;margin-bottom:24px;border:1px solid #e8ecf1;box-shadow:0 1px 3px rgba(0,0,0,0.04);}\n" +
                 ".search-row{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end;}\n" +
                 ".search-group{display:flex;flex-direction:column;gap:6px;}\n" +
-                ".search-group label{font-size:12px;color:var(--text-secondary);font-weight:500;}\n" +
-                ".search-group input,.search-group select{padding:8px 12px;border:1px solid var(--input-border);border-radius:10px;font-size:13px;min-width:160px;transition:all 0.3s;background:var(--input-bg);color:var(--text-primary);}\n" +
-                ".search-group input:focus,.search-group select:focus{outline:none;border-color:#667eea;box-shadow:0 0 0 3px rgba(102,126,234,0.1);}\n" +
+                ".search-group label{font-size:12px;color:#64748b;font-weight:500;}\n" +
+                ".search-group input,.search-group select{padding:8px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;min-width:160px;transition:all 0.3s;background:#ffffff;color:#1e293b;}\n" +
+                ".search-group input:focus,.search-group select:focus{outline:none;border-color:#1677ff;box-shadow:0 0 0 3px rgba(22,119,255,0.1);}\n" +
                 ".search-actions{display:flex;gap:10px;margin-left:auto;align-items:center;}\n" +
-                ".search-btn{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white;border:none;padding:8px 20px;border-radius:30px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;}\n" +
-                ".search-btn:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(102,126,234,0.4);}\n" +
-                ".reset-btn{background:var(--btn-reset-bg);border:1px solid var(--input-border);padding:8px 20px;border-radius:30px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;color:var(--text-secondary);}\n" +
-                ".reset-btn:hover{background:var(--btn-reset-hover);}\n" +
-                ".add-btn{background:linear-gradient(135deg,#10b981 0%,#059669 100%);color:white;border:none;padding:8px 20px;border-radius:30px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;}\n" +
-                ".add-btn:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(16,185,129,0.4);}\n" +
-                ".log-card{background:var(--bg-card);border-radius:16px;overflow:auto;box-shadow:var(--shadow);transition:background 0.3s;}\n" +
+                ".search-btn{background:linear-gradient(135deg,#1677ff 0%,#4096ff 100%);color:white;border:none;padding:8px 20px;border-radius:8px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;}\n" +
+                ".search-btn:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(22,119,255,0.3);}\n" +
+                ".reset-btn{background:#f1f5f9;border:1px solid #d1d5db;padding:8px 20px;border-radius:8px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;color:#64748b;}\n" +
+                ".reset-btn:hover{background:#e8ecf1;}\n" +
+                ".add-btn{background:linear-gradient(135deg,#52c41a 0%,#389e0d 100%);color:white;border:none;padding:8px 20px;border-radius:8px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;}\n" +
+                ".add-btn:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(82,196,26,0.3);}\n" +
+                ".log-card{background:#ffffff;border-radius:12px;overflow:auto;border:1px solid #e8ecf1;box-shadow:0 1px 3px rgba(0,0,0,0.04);}\n" +
                 ".log-table{width:100%;border-collapse:collapse;min-width:900px;}\n" +
-                ".log-table th{background:var(--table-header-bg);padding:14px 16px;text-align:left;font-size:13px;font-weight:600;color:var(--text-secondary);border-bottom:1px solid var(--border-color);transition:background 0.3s;}\n" +
-                ".log-table td{padding:14px 16px;font-size:13px;color:var(--text-primary);border-bottom:1px solid var(--border-color);transition:color 0.3s;}\n" +
-                ".log-table tr:hover td{background:var(--table-hover);}\n" +
-                ".status-badge{display:inline-block;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:500;}\n" +
-                ".status-enabled{background:rgba(16,185,129,0.15);color:var(--status-enabled);}\n" +
-                ".status-disabled{background:rgba(239,68,68,0.15);color:var(--status-disabled);}\n" +
-                ".action-btn{padding:4px 12px;border-radius:20px;cursor:pointer;font-size:12px;transition:all 0.3s;border:none;}\n" +
-                ".edit-btn{background:#667eea;color:white;}\n" +
-                ".edit-btn:hover{background:#5a67d8;}\n" +
-                ".delete-btn{background:#e53935;color:white;margin-left:8px;}\n" +
-                ".delete-btn:hover{background:#c62828;}\n" +
-                ".reset-pwd-btn{background:#f59e0b;color:white;margin-left:8px;}\n" +
-                ".reset-pwd-btn:hover{background:#d97706;}\n" +
-                ".pagination{display:flex;justify-content:center;gap:12px;padding:24px;border-top:1px solid var(--border-color);}\n" +
-                ".page-btn{padding:8px 16px;border:1px solid var(--input-border);background:var(--bg-card);color:var(--text-primary);border-radius:30px;cursor:pointer;font-size:13px;transition:all 0.3s;}\n" +
-                ".page-btn:hover:not(:disabled){border-color:#667eea;color:#667eea;}\n" +
-                ".page-btn:disabled{background:var(--btn-reset-bg);color:var(--text-muted);cursor:not-allowed;}\n" +
-                ".page-info{font-size:13px;color:var(--text-muted);align-self:center;}\n" +
-                ".footer{text-align:center;padding:32px 0;color:var(--text-secondary);font-size:12px;border-top:1px solid var(--border-color);margin-top:16px;}\n" +
+                ".log-table th{background:#f8fafc;padding:14px 16px;text-align:left;font-size:13px;font-weight:600;color:#64748b;border-bottom:1px solid #e8ecf1;}\n" +
+                ".log-table td{padding:14px 16px;font-size:13px;color:#1e293b;border-bottom:1px solid #e8ecf1;}\n" +
+                ".log-table tr:hover td{background:#f8fafc;}\n" +
+                ".status-badge{display:inline-block;padding:2px 10px;border-radius:12px;font-size:11px;font-weight:500;}\n" +
+                ".status-enabled{background:rgba(82,196,26,0.1);color:#52c41a;}\n" +
+                ".status-disabled{background:rgba(255,77,79,0.1);color:#ff4d4f;}\n" +
+                ".action-btn{padding:4px 12px;border-radius:6px;cursor:pointer;font-size:12px;transition:all 0.3s;border:none;}\n" +
+                ".edit-btn{background:#1677ff;color:white;}\n" +
+                ".edit-btn:hover{background:#4096ff;}\n" +
+                ".delete-btn{background:#ff4d4f;color:white;margin-left:8px;}\n" +
+                ".delete-btn:hover{background:#ff7875;}\n" +
+                ".reset-pwd-btn{background:#faad14;color:white;margin-left:8px;}\n" +
+                ".reset-pwd-btn:hover{background:#ffc53d;}\n" +
+                ".pagination{display:flex;justify-content:center;gap:12px;padding:24px;border-top:1px solid #e8ecf1;}\n" +
+                ".page-btn{padding:8px 16px;border:1px solid #d1d5db;background:#ffffff;color:#1e293b;border-radius:8px;cursor:pointer;font-size:13px;transition:all 0.3s;}\n" +
+                ".page-btn:hover:not(:disabled){border-color:#1677ff;color:#1677ff;}\n" +
+                ".page-btn:disabled{background:#f1f5f9;color:#94a3b8;cursor:not-allowed;}\n" +
+                ".page-info{font-size:13px;color:#94a3b8;align-self:center;}\n" +
+                ".footer{text-align:center;padding:32px 0;color:#94a3b8;font-size:12px;border-top:1px solid #e8ecf1;margin-top:16px;}\n" +
                 ".modal{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:10000;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);}\n" +
-                ".modal-content{background:var(--bg-card);border-radius:20px;width:500px;max-width:90%;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,0.3);}\n" +
-                ".modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;padding-bottom:12px;border-bottom:1px solid var(--border-color);}\n" +
-                ".modal-header h3{color:var(--text-primary);margin:0;}\n" +
-                ".modal-close{background:none;border:none;font-size:28px;cursor:pointer;color:var(--text-muted);}\n" +
-                ".modal-close:hover{color:var(--text-primary);}\n" +
+                ".modal-content{background:#ffffff;border-radius:12px;width:500px;max-width:90%;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,0.15);}\n" +
+                ".modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;padding-bottom:12px;border-bottom:1px solid #e8ecf1;}\n" +
+                ".modal-header h3{color:#1e293b;margin:0;}\n" +
+                ".modal-close{background:none;border:none;font-size:28px;cursor:pointer;color:#94a3b8;}\n" +
+                ".modal-close:hover{color:#1e293b;}\n" +
                 ".form-group{margin-bottom:16px;}\n" +
-                ".form-group label{display:block;font-size:13px;font-weight:500;color:var(--text-secondary);margin-bottom:6px;}\n" +
-                ".form-group input,.form-group select,.form-group textarea{width:100%;padding:10px 12px;border:1px solid var(--input-border);border-radius:10px;font-size:14px;background:var(--input-bg);color:var(--text-primary);}\n" +
-                ".form-group input:focus,.form-group select:focus,.form-group textarea:focus{outline:none;border-color:#667eea;box-shadow:0 0 0 3px rgba(102,126,234,0.1);}\n" +
+                ".form-group label{display:block;font-size:13px;font-weight:500;color:#64748b;margin-bottom:6px;}\n" +
+                ".form-group input,.form-group select,.form-group textarea{width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:14px;background:#ffffff;color:#1e293b;}\n" +
+                ".form-group input:focus,.form-group select:focus,.form-group textarea:focus{outline:none;border-color:#1677ff;box-shadow:0 0 0 3px rgba(22,119,255,0.1);}\n" +
                 ".modal-buttons{display:flex;gap:12px;justify-content:flex-end;margin-top:20px;}\n" +
-                ".confirm-btn{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white;border:none;padding:8px 24px;border-radius:30px;cursor:pointer;font-weight:500;}\n" +
-                ".cancel-btn{background:var(--btn-reset-bg);border:1px solid var(--input-border);padding:8px 24px;border-radius:30px;cursor:pointer;color:var(--text-secondary);}\n" +
-                ".info-text{font-size:12px;color:var(--text-muted);margin-top:4px;}\n" +
+                ".confirm-btn{background:linear-gradient(135deg,#1677ff 0%,#4096ff 100%);color:white;border:none;padding:8px 24px;border-radius:8px;cursor:pointer;font-weight:500;}\n" +
+                ".cancel-btn{background:#f1f5f9;border:1px solid #d1d5db;padding:8px 24px;border-radius:8px;cursor:pointer;color:#64748b;}\n" +
+                ".info-text{font-size:12px;color:#94a3b8;margin-top:4px;}\n" +
                 "</style>\n" +
                 "</head>\n" +
                 "<body>\n" +
                 "<div class=\"page-wrap\">\n" +
                 "<div class=\"navbar\">\n" +
-                "<div class=\"nav-links\">\n" +
+                "<div class=\"nav-container\">\n" +
+                "<div class=\"logo\">\n" +
+                "<div class=\"logo-icon\">📊</div>\n" +
+                "<div class=\"logo-text\">ECCOM WEB 监控管理系统</div>\n" +
+                "<div class=\"logo-sub\">v3.0</div>\n" +
+                "</div>\n" +
+                "<div class=\"menu\">\n" +
                 "<a href=\"/monitor/index\">首页</a>\n" +
                 "<a href=\"/monitor/dashboard\">服务监控</a>\n" +
                 "<a href=\"/monitor/login-audit\">登录审计</a>\n" +
@@ -3241,11 +3197,11 @@ public class LogMonitorController {
                 "<a href=\"/monitor/ops-management\">运维管理</a>\n" +
                 "<a href=\"/monitor/queue-management\">发送队列管理</a>\n" +
                 "</div>\n" +
-                "<div class=\"nav-right\">\n" +
+                "<div class=\"user-info\">\n" +
                 "<span class=\"user-name\" id=\"currentUsername\">加载中...</span>\n" +
-                "<span class=\"user-name\" id=\"currentUserRole\" style=\"background:rgba(255,255,255,0.2);padding:4px 12px;border-radius:20px;font-size:12px;\">加载中...</span>\n" +
-                "<button class=\"theme-toggle\" onclick=\"toggleTheme()\" id=\"themeBtn\">🌙 深色</button>\n" +
+                "<span class=\"user-role\" id=\"currentUserRole\">加载中...</span>\n" +
                 "<button class=\"logout-btn\" onclick=\"logout()\">退出</button>\n" +
+                "</div>\n" +
                 "</div>\n" +
                 "</div>\n" +
                 "<div class=\"search-card\">\n" +
@@ -3301,10 +3257,7 @@ public class LogMonitorController {
                 "var currentUserRole = '';\n" +
                 "var currentUsername = '';\n" +
                 "\n" +
-                "function toggleTheme(){var html=document.documentElement;var btn=document.getElementById('themeBtn');var currentTheme=html.getAttribute('data-theme');if(currentTheme==='dark'){html.removeAttribute('data-theme');btn.innerHTML='🌙 深色';localStorage.setItem('monitor-theme','light');}else{html.setAttribute('data-theme','dark');btn.innerHTML='☀️ 浅色';localStorage.setItem('monitor-theme','dark');}}\n" +
                 "function logout(){fetch('/monitor/logout').then(function(){location.href='/monitor/login';});}\n" +
-                "\n" +
-                "var savedTheme=localStorage.getItem('monitor-theme');if(savedTheme==='dark'){document.documentElement.setAttribute('data-theme','dark');var themeBtn=document.getElementById('themeBtn');if(themeBtn)themeBtn.innerHTML='☀️ 浅色';}\n" +
                 "\n" +
                 "// 获取当前登录用户信息\n" +
                 "function getCurrentUserInfo(){\n" +
@@ -3315,15 +3268,13 @@ public class LogMonitorController {
                 "                currentUsername = data.data.username;\n" +
                 "                currentUserRole = data.data.role;\n" +
                 "                document.getElementById('currentUsername').innerText = currentUsername;\n" +
-                "                document.getElementById('currentUserRole').innerHTML = currentUserRole === 'ADMIN' ? '👑 管理员' : '🔧 NOC';\n" +
+                "                document.getElementById('currentUserRole').innerText = currentUserRole === 'ADMIN' ? '👑 管理员' : '🔧 NOC';\n" +
                 "                \n" +
                 "                // 根据角色控制UI显示\n" +
                 "                if(currentUserRole === 'NOC'){\n" +
-                "                    // NOC用户：隐藏新增按钮，编辑时只能编辑自己的账户\n" +
                 "                    var searchActions = document.getElementById('searchActions');\n" +
                 "                    if(searchActions) searchActions.style.display = 'flex';\n" +
                 "                } else {\n" +
-                "                    // ADMIN用户：显示新增按钮\n" +
                 "                    var searchActions = document.getElementById('searchActions');\n" +
                 "                    if(searchActions && !document.getElementById('addBtnExists')){\n" +
                 "                        var addBtn = document.createElement('button');\n" +
@@ -3373,11 +3324,10 @@ public class LogMonitorController {
                 "        var statusClass=u.status===1?'status-enabled':'status-disabled';\n" +
                 "        var statusText=u.status===1?'启用':'禁用';\n" +
                 "        \n" +
-                "        // 根据角色控制操作按钮显示\n" +
                 "        var isSelf = (u.username === currentUsername);\n" +
                 "        var isAdmin = (currentUserRole === 'ADMIN');\n" +
                 "        var canEdit = isAdmin || isSelf;\n" +
-                "        var canDelete = isAdmin && (u.username !== 'Administrator'); // 不能删除默认管理员\n" +
+                "        var canDelete = isAdmin && (u.username !== 'Administrator');\n" +
                 "        var canResetPwd = isAdmin || isSelf;\n" +
                 "        \n" +
                 "        var actionsHtml = '';\n" +
@@ -3413,7 +3363,6 @@ public class LogMonitorController {
                 "function goPage(p){page=p;loadUsers();}\n" +
                 "\n" +
                 "function showAddModal(){\n" +
-                "    // NOC用户不能新增\n" +
                 "    if(currentUserRole !== 'ADMIN'){\n" +
                 "        alert('权限不足，只有管理员可以新增用户');\n" +
                 "        return;\n" +
@@ -3437,7 +3386,6 @@ public class LogMonitorController {
                 "            if(data.code===200){\n" +
                 "                var user=data.data.find(u=>u.id===id);\n" +
                 "                if(user){\n" +
-                "                    // NOC用户只能编辑自己的账户\n" +
                 "                    if(currentUserRole === 'NOC' && user.username !== currentUsername){\n" +
                 "                        alert('权限不足，NOC用户只能编辑自己的账户');\n" +
                 "                        return;\n" +
@@ -3450,10 +3398,8 @@ public class LogMonitorController {
                 "                    document.getElementById('inputStatus').value=user.status;\n" +
                 "                    document.getElementById('inputAllowedIps').value=user.allowedIps||'';\n" +
                 "                    document.getElementById('inputRemark').value=user.remark||'';\n" +
-                "                    // 保存原始角色到隐藏域\n" +
                 "                    document.getElementById('originalRole').value = user.role || 'NOC';\n" +
                 "                    \n" +
-                "                    // NOC用户不能修改角色，隐藏角色选择框\n" +
                 "                    if(currentUserRole === 'NOC'){\n" +
                 "                        document.getElementById('roleGroup').style.display = 'none';\n" +
                 "                    } else {\n" +
@@ -3461,7 +3407,6 @@ public class LogMonitorController {
                 "                        document.getElementById('inputRole').value=user.role||'NOC';\n" +
                 "                    }\n" +
                 "                    \n" +
-                "                    // 用户名输入框设为只读（不能修改用户名）\n" +
                 "                    document.getElementById('inputUsername').readOnly = true;\n" +
                 "                    document.getElementById('inputUsername').style.background = 'var(--btn-reset-bg)';\n" +
                 "                    \n" +
@@ -3483,12 +3428,10 @@ public class LogMonitorController {
                 "    \n" +
                 "    var data={username:username,status:parseInt(status),allowedIps:allowedIps,remark:remark};\n" +
                 "    \n" +
-                "    // 角色处理：ADMIN可以修改角色，NOC不能\n" +
                 "    if(currentUserRole === 'ADMIN'){\n" +
                 "        var role=document.getElementById('inputRole').value;\n" +
                 "        data.role=role;\n" +
                 "    } else {\n" +
-                "        // NOC用户：使用隐藏域保存的原始角色\n" +
                 "        var originalRole = document.getElementById('originalRole');\n" +
                 "        if(originalRole && originalRole.value){\n" +
                 "            data.role = originalRole.value;\n" +
@@ -3532,7 +3475,6 @@ public class LogMonitorController {
                 "        }).catch(err=>{alert('删除失败:'+err.message);});\n" +
                 "}\n" +
                 "\n" +
-                "// 重置密码弹窗\n" +
                 "function showResetPwdModal(userId, username){\n" +
                 "    document.getElementById('resetUserId').value = userId;\n" +
                 "    document.getElementById('resetUsername').value = username;\n" +
@@ -3576,7 +3518,6 @@ public class LogMonitorController {
                 "\n" +
                 "function closeModal(){\n" +
                 "    document.getElementById('modal').style.display='none';\n" +
-                "    // 恢复用户名输入框状态\n" +
                 "    var usernameInput = document.getElementById('inputUsername');\n" +
                 "    usernameInput.readOnly = false;\n" +
                 "    usernameInput.style.background = '';\n" +
@@ -3588,7 +3529,6 @@ public class LogMonitorController {
                 "\n" +
                 "function escapeHtml(s){if(!s)return'';return String(s).replace(/[&<>]/g,function(m){if(m==='&')return'&amp;';if(m==='<')return'&lt;';if(m==='>')return'&gt;';return m;});}\n" +
                 "\n" +
-                "// 初始化\n" +
                 "getCurrentUserInfo();\n" +
                 "loadUsers();\n" +
                 "</script>\n" +
@@ -3608,122 +3548,118 @@ public class LogMonitorController {
                 "<script src=\"https://cdn.jsdelivr.net/npm/chart.js\"></script>\n" +
                 "<style>\n" +
                 ":root {\n" +
-                "  --bg-primary: #f0f2f5;\n" +
+                "  --bg-primary: #f5f7fa;\n" +
                 "  --bg-card: #ffffff;\n" +
                 "  --text-primary: #1e293b;\n" +
-                "  --text-secondary: #475569;\n" +
+                "  --text-secondary: #64748b;\n" +
                 "  --text-muted: #94a3b8;\n" +
-                "  --border-color: rgba(0,0,0,0.04);\n" +
-                "  --shadow: 0 2px 12px rgba(0,0,0,0.06);\n" +
-                "  --navbar-bg: linear-gradient(135deg,#667eea 0%,#764ba2 100%);\n" +
+                "  --border-color: #e8ecf1;\n" +
+                "  --shadow: 0 1px 3px rgba(0,0,0,0.06);\n" +
+                "  --navbar-bg: #ffffff;\n" +
                 "  --search-card-bg: #ffffff;\n" +
                 "  --input-bg: #ffffff;\n" +
-                "  --input-border: #e5e7eb;\n" +
-                "  --btn-reset-bg: #f5f5f5;\n" +
-                "  --btn-reset-hover: #e8e8e8;\n" +
-                "  --card-hover: #f5f5f5;\n" +
-                "  --log-header-bg: #fafafa;\n" +
-                "  --table-hover: #fafafa;\n" +
-                "}\n" +
-                "[data-theme=\"dark\"] {\n" +
-                "  --bg-primary: #0f172a;\n" +
-                "  --bg-card: #1e293b;\n" +
-                "  --text-primary: #f1f5f9;\n" +
-                "  --text-secondary: #94a3b8;\n" +
-                "  --text-muted: #64748b;\n" +
-                "  --border-color: rgba(255,255,255,0.08);\n" +
-                "  --shadow: 0 2px 12px rgba(0,0,0,0.3);\n" +
-                "  --navbar-bg: linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);\n" +
-                "  --search-card-bg: #1e293b;\n" +
-                "  --input-bg: #1e293b;\n" +
-                "  --input-border: #334155;\n" +
-                "  --btn-reset-bg: #334155;\n" +
-                "  --btn-reset-hover: #475569;\n" +
-                "  --card-hover: #334155;\n" +
-                "  --log-header-bg: #334155;\n" +
-                "  --table-hover: #334155;\n" +
+                "  --input-border: #d1d5db;\n" +
+                "  --btn-reset-bg: #f1f5f9;\n" +
+                "  --btn-reset-hover: #e8ecf1;\n" +
+                "  --card-hover: #f8fafc;\n" +
+                "  --log-header-bg: #f8fafc;\n" +
+                "  --table-hover: #f8fafc;\n" +
+                "  --primary-color: #1677ff;\n" +
+                "  --primary-hover: #4096ff;\n" +
                 "}\n" +
                 "*{margin:0;padding:0;box-sizing:border-box;}\n" +
-                "body{background:var(--bg-primary);font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;min-height:100vh;transition:background 0.3s,color 0.3s;}\n" +
-                ".page-wrap{max-width:1600px;margin:0 auto;padding:20px 24px;}\n" +
-                ".navbar{background:var(--navbar-bg);min-height:60px;display:flex;align-items:center;justify-content:space-between;padding:12px 32px;color:white;border-radius:16px;margin-bottom:24px;box-shadow:0 4px 20px rgba(0,0,0,0.08);transition:background 0.3s;flex-wrap:wrap;gap:12px;}\n" +
-                ".nav-links{display:flex;gap:8px;flex-wrap:wrap;flex:1;}\n" +
-                ".navbar a{color:white;text-decoration:none;padding:8px 20px;border-radius:30px;font-weight:500;transition:all 0.3s;white-space:nowrap;}\n" +
-                ".navbar a:hover,.navbar a.active{background:rgba(255,255,255,0.2);}\n" +
-                ".nav-right{display:flex;align-items:center;gap:16px;flex-shrink:0;}\n" +
-                ".user-name{color:white;font-size:14px;white-space:nowrap;}\n" +
-                ".theme-toggle{background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.2);color:white;padding:8px 16px;border-radius:30px;cursor:pointer;font-size:13px;transition:all 0.3s;white-space:nowrap;}\n" +
-                ".theme-toggle:hover{background:rgba(255,255,255,0.25);}\n" +
-                ".logout-btn{background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.2);color:white;padding:8px 20px;border-radius:30px;cursor:pointer;font-weight:500;transition:all 0.3s;white-space:nowrap;}\n" +
-                ".logout-btn:hover{background:rgba(255,255,255,0.25);transform:translateY(-1px);}\n" +
-                ".title{font-size:20px;font-weight:700;color:var(--text-primary);margin-bottom:20px;display:flex;align-items:center;gap:10px;}\n" +
+                "body{background:#f5f7fa;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;min-height:100vh;}\n" +
+                ".page-wrap{max-width:1800px;margin:0 auto;padding:20px 24px;}\n" +
+                ".navbar{background:#ffffff;box-shadow:0 1px 3px rgba(0,0,0,0.06);border:1px solid #e8ecf1;border-radius:12px;margin-bottom:24px;}\n" +
+                ".nav-container{max-width:1600px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:70px;}\n" +
+                ".logo{display:flex;align-items:center;gap:12px;}\n" +
+                ".logo-icon{width:40px;height:40px;background:linear-gradient(135deg,#1677ff 0%,#4096ff 100%);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;}\n" +
+                ".logo-text{font-size:18px;font-weight:700;color:#1e293b;letter-spacing:1px;}\n" +
+                ".logo-sub{font-size:11px;color:#94a3b8;margin-left:8px;}\n" +
+                ".menu{display:flex;gap:12px;}\n" +
+                ".menu a{color:#64748b;text-decoration:none;padding:8px 20px;border-radius:40px;transition:all 0.3s;font-weight:500;font-size:14px;}\n" +
+                ".menu a:hover{background:#f1f5f9;color:#1e293b;}\n" +
+                ".menu a.active{background:#e8f0fe;color:#1677ff;box-shadow:none;}\n" +
+                ".user-info{display:flex;align-items:center;gap:20px;}\n" +
+                ".user-name{color:#475569;font-size:14px;}\n" +
+                ".user-role{background:rgba(22,119,255,0.1);padding:4px 12px;border-radius:20px;font-size:12px;color:#1677ff;}\n" +
+                ".logout-btn{background:#f1f5f9;border:1px solid #e8ecf1;color:#475569;padding:8px 20px;border-radius:40px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;}\n" +
+                ".logout-btn:hover{background:#e8ecf1;transform:translateY(-1px);}\n" +
+                ".title{font-size:20px;font-weight:700;color:#1e293b;margin-bottom:20px;display:flex;align-items:center;gap:10px;}\n" +
                 ".title-icon{font-size:28px;}\n" +
                 ".cards-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:24px;margin-bottom:32px;}\n" +
-                ".card{background:var(--bg-card);border-radius:20px;padding:24px;box-shadow:var(--shadow);border:1px solid var(--border-color);transition:all 0.3s;}\n" +
-                ".card:hover{transform:translateY(-4px);box-shadow:0 12px 30px -12px rgba(0,0,0,0.2);border-color:rgba(102,126,234,0.3);}\n" +
-                ".card-header{display:flex;align-items:center;gap:12px;margin-bottom:20px;padding-bottom:12px;border-bottom:1px solid var(--border-color);}\n" +
+                ".card{background:#ffffff;border-radius:12px;padding:24px;border:1px solid #e8ecf1;box-shadow:0 1px 3px rgba(0,0,0,0.04);transition:all 0.3s;}\n" +
+                ".card:hover{transform:translateY(-2px);box-shadow:0 4px 12px rgba(0,0,0,0.06);border-color:#1677ff;}\n" +
+                ".card-header{display:flex;align-items:center;gap:12px;margin-bottom:20px;padding-bottom:12px;border-bottom:1px solid #e8ecf1;}\n" +
                 ".card-icon{font-size:32px;}\n" +
-                ".card-title{font-size:18px;font-weight:700;color:var(--text-primary);}\n" +
-                ".card-desc{font-size:13px;color:var(--text-muted);margin-top:4px;}\n" +
+                ".card-title{font-size:18px;font-weight:700;color:#1e293b;}\n" +
+                ".card-desc{font-size:13px;color:#94a3b8;margin-top:4px;}\n" +
                 ".form-group{margin-bottom:16px;}\n" +
-                ".form-group label{display:block;font-size:13px;font-weight:500;color:var(--text-secondary);margin-bottom:6px;}\n" +
-                ".form-group input{width:100%;padding:10px 12px;border:1px solid var(--input-border);border-radius:10px;font-size:14px;background:var(--input-bg);color:var(--text-primary);}\n" +
-                ".form-group input:focus{outline:none;border-color:#667eea;box-shadow:0 0 0 3px rgba(102,126,234,0.1);}\n" +
-                ".card-btn{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white;border:none;padding:10px 20px;border-radius:30px;cursor:pointer;font-weight:600;font-size:14px;transition:all 0.3s;width:100%;margin-top:8px;}\n" +
-                ".card-btn:hover{transform:translateY(-2px);box-shadow:0 6px 14px rgba(102,126,234,0.4);}\n" +
-                ".card-btn.danger{background:linear-gradient(135deg,#f59e0b 0%,#e53935 100%);}\n" +
-                ".card-btn.warning{background:linear-gradient(135deg,#f59e0b 0%,#d97706 100%);}\n" +
-                ".card-btn.danger:hover{box-shadow:0 6px 14px rgba(229,57,53,0.4);}\n" +
-                ".result-area{margin-top:16px;padding:12px;background:var(--btn-reset-bg);border-radius:10px;font-size:13px;color:var(--text-secondary);display:none;}\n" +
+                ".form-group label{display:block;font-size:13px;font-weight:500;color:#64748b;margin-bottom:6px;}\n" +
+                ".form-group input{width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:14px;background:#ffffff;color:#1e293b;}\n" +
+                ".form-group input:focus{outline:none;border-color:#1677ff;box-shadow:0 0 0 3px rgba(22,119,255,0.1);}\n" +
+                ".card-btn{background:linear-gradient(135deg,#1677ff 0%,#4096ff 100%);color:white;border:none;padding:10px 20px;border-radius:8px;cursor:pointer;font-weight:600;font-size:14px;transition:all 0.3s;width:100%;margin-top:8px;}\n" +
+                ".card-btn:hover{transform:translateY(-2px);box-shadow:0 4px 12px rgba(22,119,255,0.3);}\n" +
+                ".card-btn.danger{background:linear-gradient(135deg,#ff4d4f 0%,#ff7875 100%);}\n" +
+                ".card-btn.warning{background:linear-gradient(135deg,#faad14 0%,#ffc53d 100%);}\n" +
+                ".card-btn.danger:hover{box-shadow:0 4px 12px rgba(255,77,79,0.3);}\n" +
+                ".result-area{margin-top:16px;padding:12px;background:#f8fafc;border-radius:8px;font-size:13px;color:#64748b;display:none;}\n" +
                 ".result-area.show{display:block;}\n" +
-                ".result-success{color:#10b981;}\n" +
-                ".result-error{color:#e53935;}\n" +
+                ".result-success{color:#52c41a;}\n" +
+                ".result-error{color:#ff4d4f;}\n" +
                 ".loading{opacity:0.6;pointer-events:none;}\n" +
                 ".stats-section{margin-bottom:32px;}\n" +
-                ".stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:20px;margin-bottom:24px;}\n" +
-                ".stat-card{background:var(--bg-card);border-radius:20px;padding:20px;box-shadow:var(--shadow);border:1px solid var(--border-color);}\n" +
-                ".stat-number{font-size:32px;font-weight:800;color:#667eea;}\n" +
-                ".stat-label{font-size:13px;color:var(--text-muted);margin-top:5px;}\n" +
-                ".stat-trend{font-size:12px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border-color);color:var(--text-secondary);}\n" +
-                ".trend-up{color:#10b981;}\n" +
-                ".trend-down{color:#e53935;}\n" +
-                ".chart-row{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:32px;}\n" +
-                ".chart-card{background:var(--bg-card);border-radius:20px;padding:20px;box-shadow:var(--shadow);border:1px solid var(--border-color);}\n" +
-                ".chart-card h3{font-size:16px;font-weight:600;color:var(--text-primary);margin-bottom:16px;display:flex;align-items:center;gap:8px;}\n" +
+                ".stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px;}\n" +
+                ".stat-card{background:#ffffff;border-radius:12px;padding:20px;border:1px solid #e8ecf1;box-shadow:0 1px 3px rgba(0,0,0,0.04);}\n" +
+                ".stat-number{font-size:28px;font-weight:700;color:#1677ff;}\n" +
+                ".stat-label{font-size:13px;color:#94a3b8;margin-top:4px;}\n" +
+                ".stat-trend{font-size:12px;margin-top:8px;padding-top:8px;border-top:1px solid #e8ecf1;color:#64748b;}\n" +
+                ".trend-up{color:#52c41a;}\n" +
+                ".trend-down{color:#ff4d4f;}\n" +
+                ".chart-row{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:24px;}\n" +
+                ".chart-card{background:#ffffff;border-radius:12px;padding:20px;border:1px solid #e8ecf1;box-shadow:0 1px 3px rgba(0,0,0,0.04);}\n" +
+                ".chart-card h3{font-size:15px;font-weight:600;color:#1e293b;margin-bottom:12px;display:flex;align-items:center;gap:8px;}\n" +
                 ".chart-container{height:300px;position:relative;}\n" +
                 ".log-section{margin-top:32px;}\n" +
-                ".section-title{font-size:18px;font-weight:600;color:var(--text-primary);margin-bottom:16px;display:flex;align-items:center;gap:8px;}\n" +
-                ".section-title::before{content:'';width:4px;height:20px;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);border-radius:4px;}\n" +
-                ".search-card{background:var(--search-card-bg);border-radius:16px;padding:20px 24px;margin-bottom:20px;box-shadow:var(--shadow);transition:background 0.3s;}\n" +
+                ".section-title{font-size:17px;font-weight:600;color:#1e293b;margin-bottom:16px;display:flex;align-items:center;gap:8px;}\n" +
+                ".section-title::before{content:'';width:4px;height:20px;background:linear-gradient(135deg,#1677ff 0%,#4096ff 100%);border-radius:4px;}\n" +
+                ".search-card{background:#ffffff;border-radius:12px;padding:16px 20px;margin-bottom:16px;border:1px solid #e8ecf1;box-shadow:0 1px 3px rgba(0,0,0,0.04);}\n" +
                 ".search-row{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end;}\n" +
                 ".search-group{display:flex;flex-direction:column;gap:6px;}\n" +
-                ".search-group label{font-size:12px;color:var(--text-secondary);font-weight:500;}\n" +
-                ".search-group input,.search-group select{padding:8px 12px;border:1px solid var(--input-border);border-radius:10px;font-size:13px;min-width:140px;transition:all 0.3s;background:var(--input-bg);color:var(--text-primary);}\n" +
+                ".search-group label{font-size:12px;color:#64748b;font-weight:500;}\n" +
+                ".search-group input,.search-group select{padding:8px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;min-width:140px;transition:all 0.3s;background:#ffffff;color:#1e293b;}\n" +
                 ".search-actions{display:flex;gap:10px;margin-left:auto;align-items:center;}\n" +
-                ".search-btn{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white;border:none;padding:8px 20px;border-radius:30px;cursor:pointer;font-weight:500;font-size:13px;}\n" +
-                ".reset-btn{background:var(--btn-reset-bg);border:1px solid var(--input-border);padding:8px 20px;border-radius:30px;cursor:pointer;font-weight:500;font-size:13px;color:var(--text-secondary);}\n" +
-                ".log-card{background:var(--bg-card);border-radius:16px;overflow:auto;box-shadow:var(--shadow);transition:background 0.3s;}\n" +
+                ".search-btn{background:linear-gradient(135deg,#1677ff 0%,#4096ff 100%);color:white;border:none;padding:8px 20px;border-radius:8px;cursor:pointer;font-weight:500;font-size:13px;}\n" +
+                ".reset-btn{background:#f1f5f9;border:1px solid #d1d5db;padding:8px 20px;border-radius:8px;cursor:pointer;font-weight:500;font-size:13px;color:#64748b;}\n" +
+                ".log-card{background:#ffffff;border-radius:12px;overflow:auto;border:1px solid #e8ecf1;box-shadow:0 1px 3px rgba(0,0,0,0.04);}\n" +
                 ".log-table{width:100%;border-collapse:collapse;min-width:800px;}\n" +
-                ".log-table th{background:var(--log-header-bg);padding:12px 16px;text-align:left;font-size:12px;font-weight:600;color:var(--text-secondary);border-bottom:1px solid var(--border-color);}\n" +
-                ".log-table td{padding:12px 16px;font-size:12px;color:var(--text-primary);border-bottom:1px solid var(--border-color);}\n" +
-                ".log-table tr:hover td{background:var(--table-hover);}\n" +
-                ".status-badge{display:inline-block;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:500;}\n" +
-                ".status-success{background:rgba(16,185,129,0.15);color:#10b981;}\n" +
-                ".status-fail{background:rgba(239,68,68,0.15);color:#e53935;}\n" +
-                ".pagination{display:flex;justify-content:center;gap:12px;padding:16px;border-top:1px solid var(--border-color);flex-wrap:wrap;}\n" +
-                ".page-btn{padding:6px 14px;border:1px solid var(--input-border);background:var(--bg-card);color:var(--text-primary);border-radius:30px;cursor:pointer;font-size:12px;transition:all 0.3s;}\n" +
-                ".page-btn:hover:not(:disabled){border-color:#667eea;color:#667eea;}\n" +
-                ".page-btn:disabled{opacity:0.5;cursor:not-allowed;}\n" +
-                ".page-info{font-size:12px;color:var(--text-muted);align-self:center;}\n" +
-                ".footer{text-align:center;padding:32px 0;color:var(--text-secondary);font-size:12px;border-top:1px solid var(--border-color);margin-top:16px;}\n" +
+                ".log-table th{background:#f8fafc;padding:12px 16px;text-align:left;font-size:12px;font-weight:600;color:#64748b;border-bottom:1px solid #e8ecf1;}\n" +
+                ".log-table td{padding:12px 16px;font-size:12px;color:#1e293b;border-bottom:1px solid #e8ecf1;}\n" +
+                ".log-table tr:hover td{background:#f8fafc;}\n" +
+                ".status-badge{display:inline-block;padding:2px 10px;border-radius:12px;font-size:11px;font-weight:500;}\n" +
+                ".status-success{background:rgba(82,196,26,0.1);color:#52c41a;}\n" +
+                ".status-fail{background:rgba(255,77,79,0.1);color:#ff4d4f;}\n" +
+                ".pagination{display:flex;justify-content:center;gap:12px;padding:16px;border-top:1px solid #e8ecf1;flex-wrap:wrap;}\n" +
+                ".page-btn{padding:6px 14px;border:1px solid #d1d5db;background:#ffffff;color:#1e293b;border-radius:8px;cursor:pointer;font-size:12px;transition:all 0.3s;}\n" +
+                ".page-btn:hover:not(:disabled){border-color:#1677ff;color:#1677ff;}\n" +
+                ".page-btn:disabled{opacity:0.5;cursor:not-allowed;background:#f1f5f9;}\n" +
+                ".page-info{font-size:12px;color:#94a3b8;align-self:center;}\n" +
+                ".footer{text-align:center;padding:32px 0;color:#94a3b8;font-size:12px;border-top:1px solid #e8ecf1;margin-top:16px;}\n" +
+                ".empty{text-align:center;padding:48px;color:#94a3b8;}\n" +
                 "@media(max-width:1024px){.stats-grid{grid-template-columns:repeat(2,1fr);}}\n" +
-                "@media(max-width:768px){.stats-grid{grid-template-columns:1fr;}.chart-row{grid-template-columns:1fr;}.cards-grid{grid-template-columns:1fr;}.navbar{padding:12px 20px;}.nav-links{gap:4px;}.navbar a{padding:6px 12px;font-size:12px;}.nav-right{gap:8px;}}\n" +
+                "@media(max-width:768px){.stats-grid{grid-template-columns:1fr;}.chart-row{grid-template-columns:1fr;}.cards-grid{grid-template-columns:1fr;}.navbar{padding:12px 20px;}.menu a{padding:6px 12px;font-size:12px;}}\n" +
                 "</style>\n" +
                 "</head>\n" +
                 "<body>\n" +
                 "<div class=\"page-wrap\">\n" +
                 "<div class=\"navbar\">\n" +
-                "<div class=\"nav-links\">\n" +
+                "<div class=\"nav-container\">\n" +
+                "<div class=\"logo\">\n" +
+                "<div class=\"logo-icon\">📊</div>\n" +
+                "<div class=\"logo-text\">ECCOM WEB 监控管理系统</div>\n" +
+                "<div class=\"logo-sub\">v3.0</div>\n" +
+                "</div>\n" +
+                "<div class=\"menu\">\n" +
                 "<a href=\"/monitor/index\">首页</a>\n" +
                 "<a href=\"/monitor/dashboard\">服务监控</a>\n" +
                 "<a href=\"/monitor/login-audit\">登录审计</a>\n" +
@@ -3733,11 +3669,11 @@ public class LogMonitorController {
                 "<a href=\"/monitor/ops-management\" class=\"active\">运维管理</a>\n" +
                 "<a href=\"/monitor/queue-management\">发送队列管理</a>\n" +
                 "</div>\n" +
-                "<div class=\"nav-right\">\n" +
-                "    <span class=\"user-name\" id=\"currentUsername\">加载中...</span>\n" +
-                "    <span class=\"user-role\" id=\"currentUserRole\" style=\"background:rgba(255,255,255,0.2);padding:4px 12px;border-radius:20px;font-size:12px;\">加载中...</span>\n" +
-                "    <button class=\"theme-toggle\" onclick=\"toggleTheme()\" id=\"themeBtn\">🌙 深色</button>\n" +
-                "    <button class=\"logout-btn\" onclick=\"logout()\">退出</button>\n" +
+                "<div class=\"user-info\">\n" +
+                "<span class=\"user-name\" id=\"currentUsername\">加载中...</span>\n" +
+                "<span class=\"user-role\" id=\"currentUserRole\">加载中...</span>\n" +
+                "<button class=\"logout-btn\" onclick=\"logout()\">退出</button>\n" +
+                "</div>\n" +
                 "</div>\n" +
                 "</div>\n" +
                 "<div class=\"title\"><span class=\"title-icon\">🔧</span> 运维管理工具</div>\n" +
@@ -3806,34 +3742,10 @@ public class LogMonitorController {
                 "<div class=\"footer\">🔧 EC WEB运维管理 | 操作请谨慎，所有操作均有日志记录 | 仅限内部使用</div>\n" +
                 "</div>\n" +
                 "<script>\n" +
-                "// 全局变量\n" +
                 "let page = 1, size = 20, totalPages = 1;\n" +
                 "let trendChart = null, typeChart = null, operatorChart = null, successRateChart = null;\n" +
                 "\n" +
-                "// 主题切换\n" +
-                "function toggleTheme(){\n" +
-                "    var html = document.documentElement;\n" +
-                "    var btn = document.getElementById('themeBtn');\n" +
-                "    var currentTheme = html.getAttribute('data-theme');\n" +
-                "    if(currentTheme === 'dark'){\n" +
-                "        html.removeAttribute('data-theme');\n" +
-                "        btn.innerHTML = '🌙 深色';\n" +
-                "        localStorage.setItem('monitor-theme', 'light');\n" +
-                "    }else{\n" +
-                "        html.setAttribute('data-theme', 'dark');\n" +
-                "        btn.innerHTML = '☀️ 浅色';\n" +
-                "        localStorage.setItem('monitor-theme', 'dark');\n" +
-                "    }\n" +
-                "}\n" +
-                "\n" +
                 "function logout(){ fetch('/monitor/logout').then(function(){ location.href = '/monitor/login'; }); }\n" +
-                "\n" +
-                "var savedTheme = localStorage.getItem('monitor-theme');\n" +
-                "if(savedTheme === 'dark'){\n" +
-                "    document.documentElement.setAttribute('data-theme', 'dark');\n" +
-                "    var themeBtn = document.getElementById('themeBtn');\n" +
-                "    if(themeBtn) themeBtn.innerHTML = '☀️ 浅色';\n" +
-                "}\n" +
                 "\n" +
                 "// 获取当前登录用户信息\n" +
                 "function getCurrentUserInfo() {\n" +
@@ -3844,13 +3756,12 @@ public class LogMonitorController {
                 "                document.getElementById('currentUsername').innerText = data.data.username;\n" +
                 "                var roleSpan = document.getElementById('currentUserRole');\n" +
                 "                var roleText = data.data.role === 'ADMIN' ? '👑 管理员' : '🔧 NOC';\n" +
-                "                roleSpan.innerHTML = roleText;\n" +
+                "                roleSpan.innerText = roleText;\n" +
                 "            }\n" +
                 "        }).catch(function(err) { console.error('获取用户信息失败:', err); });\n" +
                 "}\n" +
                 "getCurrentUserInfo();\n" +
                 "\n" +
-                "// 操作函数\n" +
                 "function showResult(elementId, success, message){\n" +
                 "    var el = document.getElementById(elementId);\n" +
                 "    if(!el) return;\n" +
@@ -3945,7 +3856,6 @@ public class LogMonitorController {
                 "        }).catch(err => { setLoading(btn, false); showResult('unlockIpResult', false, '网络错误: ' + err.message); });\n" +
                 "}\n" +
                 "\n" +
-                "// 加载统计数据\n" +
                 "function loadStats(){\n" +
                 "    fetch('/api/monitor/ops-logs/stats?secret=dn17ORUwf36Znl')\n" +
                 "        .then(res => res.json())\n" +
@@ -3977,13 +3887,11 @@ public class LogMonitorController {
                 "        }).catch(err => console.error('加载统计失败:', err));\n" +
                 "}\n" +
                 "\n" +
-                "// 加载图表\n" +
                 "function loadCharts(){\n" +
                 "    fetch('/api/monitor/ops-logs/stats?secret=dn17ORUwf36Znl')\n" +
                 "        .then(res => res.json())\n" +
                 "        .then(data => {\n" +
                 "            if(data.code === 200 && data.data){\n" +
-                "                // 近7天趋势图\n" +
                 "                var trendData = data.data.last7DaysTrend || [];\n" +
                 "                var dates = [], counts = [];\n" +
                 "                for(var i = 0; i < trendData.length; i++){\n" +
@@ -3994,11 +3902,10 @@ public class LogMonitorController {
                 "                if(trendChart) trendChart.destroy();\n" +
                 "                trendChart = new Chart(ctx1, {\n" +
                 "                    type: 'line',\n" +
-                "                    data: { labels: dates, datasets: [{ label: '操作次数', data: counts, borderColor: '#667eea', backgroundColor: 'rgba(102,126,234,0.1)', fill: true, tension: 0.3 }] },\n" +
+                "                    data: { labels: dates, datasets: [{ label: '操作次数', data: counts, borderColor: '#1677ff', backgroundColor: 'rgba(22,119,255,0.1)', fill: true, tension: 0.3 }] },\n" +
                 "                    options: { responsive: true, maintainAspectRatio: true }\n" +
                 "                });\n" +
                 "                \n" +
-                "                // 操作类型分布图\n" +
                 "                var typeData = data.data.monthStatsByType || [];\n" +
                 "                var typeLabels = [], typeCounts = [];\n" +
                 "                var typeNameMap = { 'RESET_2FA': '重置2FA', 'DISABLE_2FA': '解除2FA', 'UNLOCK_ACCOUNT': '解锁账户', 'UNLOCK_IP': '解锁IP' };\n" +
@@ -4010,11 +3917,10 @@ public class LogMonitorController {
                 "                if(typeChart) typeChart.destroy();\n" +
                 "                typeChart = new Chart(ctx2, {\n" +
                 "                    type: 'pie',\n" +
-                "                    data: { labels: typeLabels, datasets: [{ data: typeCounts, backgroundColor: ['#667eea', '#764ba2', '#f59e0b', '#10b981'] }] },\n" +
+                "                    data: { labels: typeLabels, datasets: [{ data: typeCounts, backgroundColor: ['#1677ff', '#4096ff', '#52c41a', '#faad14'] }] },\n" +
                 "                    options: { responsive: true, maintainAspectRatio: true, plugins: { legend: { position: 'right' } } }\n" +
                 "                });\n" +
                 "                \n" +
-                "                // 操作人排行图\n" +
                 "                var operatorData = data.data.monthStatsByOperator || [];\n" +
                 "                var operatorLabels = [], operatorCounts = [];\n" +
                 "                for(var i = 0; i < Math.min(operatorData.length, 10); i++){\n" +
@@ -4025,11 +3931,10 @@ public class LogMonitorController {
                 "                if(operatorChart) operatorChart.destroy();\n" +
                 "                operatorChart = new Chart(ctx3, {\n" +
                 "                    type: 'bar',\n" +
-                "                    data: { labels: operatorLabels, datasets: [{ label: '操作次数', data: operatorCounts, backgroundColor: '#667eea', borderRadius: 8 }] },\n" +
+                "                    data: { labels: operatorLabels, datasets: [{ label: '操作次数', data: operatorCounts, backgroundColor: '#1677ff', borderRadius: 8 }] },\n" +
                 "                    options: { responsive: true, maintainAspectRatio: true, indexAxis: 'y' }\n" +
                 "                });\n" +
                 "                \n" +
-                "                // 成功率分析图\n" +
                 "                var successData = data.data.monthStatsByOperator || [];\n" +
                 "                var successLabels = [], successRates = [];\n" +
                 "                for(var i = 0; i < Math.min(successData.length, 10); i++){\n" +
@@ -4043,14 +3948,13 @@ public class LogMonitorController {
                 "                if(successRateChart) successRateChart.destroy();\n" +
                 "                successRateChart = new Chart(ctx4, {\n" +
                 "                    type: 'bar',\n" +
-                "                    data: { labels: successLabels, datasets: [{ label: '成功率 (%)', data: successRates, backgroundColor: '#10b981', borderRadius: 8 }] },\n" +
+                "                    data: { labels: successLabels, datasets: [{ label: '成功率 (%)', data: successRates, backgroundColor: '#52c41a', borderRadius: 8 }] },\n" +
                 "                    options: { responsive: true, maintainAspectRatio: true, scales: { y: { max: 100, min: 0, ticks: { callback: function(val){ return val + '%'; } } } } }\n" +
                 "                });\n" +
                 "            }\n" +
                 "        }).catch(err => console.error('加载图表失败:', err));\n" +
                 "}\n" +
                 "\n" +
-                "// 日志列表相关函数\n" +
                 "function searchLogs(){ page = 1; loadLogs(); }\n" +
                 "\n" +
                 "function resetSearch(){\n" +
@@ -4130,11 +4034,9 @@ public class LogMonitorController {
                 "\n" +
                 "function escapeHtml(s){ if(!s) return ''; return String(s).replace(/[&<>]/g, function(m){ if(m === '&') return '&amp;'; if(m === '<') return '&lt;'; if(m === '>') return '&gt;'; return m; }); }\n" +
                 "\n" +
-                "// 初始化加载\n" +
                 "loadStats();\n" +
                 "loadLogs();\n" +
                 "loadCharts();\n" +
-                "// 每30秒自动刷新统计数据\n" +
                 "setInterval(function(){ loadStats(); loadCharts(); }, 30000);\n" +
                 "</script>\n" +
                 "</body>\n" +
@@ -4152,74 +4054,105 @@ public class LogMonitorController {
                 "<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap\" rel=\"stylesheet\">\n" +
                 "<script src=\"https://cdn.jsdelivr.net/npm/chart.js\"></script>\n" +
                 "<style>\n" +
+                ":root {\n" +
+                "  --bg-primary: #f5f7fa;\n" +
+                "  --bg-card: #ffffff;\n" +
+                "  --text-primary: #1e293b;\n" +
+                "  --text-secondary: #64748b;\n" +
+                "  --text-muted: #94a3b8;\n" +
+                "  --border-color: #e8ecf1;\n" +
+                "  --shadow: 0 1px 3px rgba(0,0,0,0.06);\n" +
+                "  --navbar-bg: #ffffff;\n" +
+                "  --search-card-bg: #ffffff;\n" +
+                "  --table-header-bg: #f8fafc;\n" +
+                "  --table-hover: #f8fafc;\n" +
+                "  --input-bg: #ffffff;\n" +
+                "  --input-border: #d1d5db;\n" +
+                "  --btn-reset-bg: #f1f5f9;\n" +
+                "  --btn-reset-hover: #e8ecf1;\n" +
+                "  --primary-color: #1677ff;\n" +
+                "  --primary-hover: #4096ff;\n" +
+                "}\n" +
                 "*{margin:0;padding:0;box-sizing:border-box;}\n" +
-                ":root{--bg-primary:#f0f2f5;--bg-card:#ffffff;--text-primary:#1e293b;--text-secondary:#475569;--text-muted:#94a3b8;--border-color:rgba(0,0,0,0.04);--shadow:0 2px 12px rgba(0,0,0,0.06);--navbar-bg:linear-gradient(135deg,#667eea 0%,#764ba2 100%);--search-card-bg:#ffffff;--table-header-bg:#fafafa;--table-hover:#fafafa;--input-bg:#ffffff;--input-border:#e5e7eb;--btn-reset-bg:#f5f5f5;--btn-reset-hover:#e8e8e8;}\n" +
-                "[data-theme=\"dark\"]{--bg-primary:#0f172a;--bg-card:#1e293b;--text-primary:#f1f5f9;--text-secondary:#94a3b8;--text-muted:#64748b;--border-color:rgba(255,255,255,0.08);--shadow:0 2px 12px rgba(0,0,0,0.3);--navbar-bg:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);--search-card-bg:#1e293b;--table-header-bg:#334155;--table-hover:#334155;--input-bg:#1e293b;--input-border:#334155;--btn-reset-bg:#334155;--btn-reset-hover:#475569;}\n" +
-                "body{background:var(--bg-primary);font-family:'Inter',sans-serif;min-height:100vh;transition:all 0.3s;}\n" +
-                ".page-wrap{max-width:1600px;margin:0 auto;padding:20px 24px;}\n" +
-                ".navbar{background:var(--navbar-bg);height:60px;display:flex;align-items:center;justify-content:space-between;padding:0 32px;color:white;border-radius:16px;margin-bottom:24px;}\n" +
-                ".nav-links{display:flex;gap:8px;}\n" +
-                ".navbar a{color:white;text-decoration:none;padding:8px 20px;border-radius:30px;font-weight:500;transition:all 0.3s;}\n" +
-                ".navbar a:hover,.navbar a.active{background:rgba(255,255,255,0.2);}\n" +
-                ".nav-right{display:flex;align-items:center;gap:16px;}\n" +
-                ".user-name{color:white;font-size:14px;}\n" +
-                ".theme-toggle,.logout-btn{background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.2);color:white;padding:8px 16px;border-radius:30px;cursor:pointer;transition:all 0.3s;}\n" +
-                ".theme-toggle:hover,.logout-btn:hover{background:rgba(255,255,255,0.25);}\n" +
-                ".rank-card{background:var(--bg-card);border-radius:16px;padding:20px;margin-bottom:24px;box-shadow:var(--shadow);}\n" +
-                ".rank-title{font-size:16px;font-weight:600;color:var(--text-primary);margin-bottom:16px;display:flex;align-items:center;gap:8px;}\n" +
+                "body{background:#f5f7fa;font-family:'Inter',sans-serif;min-height:100vh;}\n" +
+                ".page-wrap{max-width:1800px;margin:0 auto;padding:20px 24px;}\n" +
+                ".navbar{background:#ffffff;box-shadow:0 1px 3px rgba(0,0,0,0.06);border:1px solid #e8ecf1;border-radius:12px;margin-bottom:24px;}\n" +
+                ".nav-container{max-width:1600px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:70px;}\n" +
+                ".logo{display:flex;align-items:center;gap:12px;}\n" +
+                ".logo-icon{width:40px;height:40px;background:linear-gradient(135deg,#1677ff 0%,#4096ff 100%);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;}\n" +
+                ".logo-text{font-size:18px;font-weight:700;color:#1e293b;letter-spacing:1px;}\n" +
+                ".logo-sub{font-size:11px;color:#94a3b8;margin-left:8px;}\n" +
+                ".menu{display:flex;gap:12px;}\n" +
+                ".menu a{color:#64748b;text-decoration:none;padding:8px 20px;border-radius:40px;transition:all 0.3s;font-weight:500;font-size:14px;}\n" +
+                ".menu a:hover{background:#f1f5f9;color:#1e293b;}\n" +
+                ".menu a.active{background:#e8f0fe;color:#1677ff;box-shadow:none;}\n" +
+                ".user-info{display:flex;align-items:center;gap:20px;}\n" +
+                ".user-name{color:#475569;font-size:14px;}\n" +
+                ".user-role{background:rgba(22,119,255,0.1);padding:4px 12px;border-radius:20px;font-size:12px;color:#1677ff;}\n" +
+                ".logout-btn{background:#f1f5f9;border:1px solid #e8ecf1;color:#475569;padding:8px 20px;border-radius:40px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;}\n" +
+                ".logout-btn:hover{background:#e8ecf1;transform:translateY(-1px);}\n" +
+                ".rank-card{background:#ffffff;border-radius:12px;padding:20px;margin-bottom:24px;border:1px solid #e8ecf1;box-shadow:0 1px 3px rgba(0,0,0,0.04);}\n" +
+                ".rank-title{font-size:16px;font-weight:600;color:#1e293b;margin-bottom:16px;display:flex;align-items:center;gap:8px;}\n" +
                 ".rank-chart-container{height:300px;position:relative;}\n" +
-                ".search-card{background:var(--search-card-bg);border-radius:16px;padding:20px 24px;margin-bottom:24px;box-shadow:var(--shadow);}\n" +
+                ".search-card{background:#ffffff;border-radius:12px;padding:20px 24px;margin-bottom:24px;border:1px solid #e8ecf1;box-shadow:0 1px 3px rgba(0,0,0,0.04);}\n" +
                 ".search-row{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end;}\n" +
                 ".search-group{display:flex;flex-direction:column;gap:6px;}\n" +
-                ".search-group label{font-size:12px;color:var(--text-secondary);font-weight:500;}\n" +
-                ".search-group input,.search-group select{padding:8px 12px;border:1px solid var(--input-border);border-radius:10px;font-size:13px;min-width:160px;background:var(--input-bg);color:var(--text-primary);}\n" +
+                ".search-group label{font-size:12px;color:#64748b;font-weight:500;}\n" +
+                ".search-group input,.search-group select{padding:8px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;min-width:160px;background:#ffffff;color:#1e293b;}\n" +
                 ".search-actions{display:flex;gap:10px;margin-left:auto;}\n" +
-                ".search-btn{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white;border:none;padding:8px 20px;border-radius:30px;cursor:pointer;font-weight:500;}\n" +
-                ".reset-btn{background:var(--btn-reset-bg);border:1px solid var(--input-border);padding:8px 20px;border-radius:30px;cursor:pointer;font-weight:500;color:var(--text-secondary);}\n" +
-                ".log-card{background:var(--bg-card);border-radius:16px;overflow:auto;box-shadow:var(--shadow);}\n" +
+                ".search-btn{background:linear-gradient(135deg,#1677ff 0%,#4096ff 100%);color:white;border:none;padding:8px 20px;border-radius:8px;cursor:pointer;font-weight:500;}\n" +
+                ".reset-btn{background:#f1f5f9;border:1px solid #d1d5db;padding:8px 20px;border-radius:8px;cursor:pointer;font-weight:500;color:#64748b;}\n" +
+                ".log-card{background:#ffffff;border-radius:12px;overflow:auto;border:1px solid #e8ecf1;box-shadow:0 1px 3px rgba(0,0,0,0.04);}\n" +
                 ".log-table{width:100%;border-collapse:collapse;min-width:1200px;}\n" +
-                ".log-table th{background:var(--table-header-bg);padding:12px 16px;text-align:left;font-size:13px;font-weight:600;color:var(--text-secondary);border-bottom:1px solid var(--border-color);}\n" +
-                ".log-table td{padding:12px 16px;font-size:13px;color:var(--text-primary);border-bottom:1px solid var(--border-color);}\n" +
-                ".log-table tr:hover td{background:var(--table-hover);}\n" +
+                ".log-table th{background:#f8fafc;padding:12px 16px;text-align:left;font-size:13px;font-weight:600;color:#64748b;border-bottom:1px solid #e8ecf1;}\n" +
+                ".log-table td{padding:12px 16px;font-size:13px;color:#1e293b;border-bottom:1px solid #e8ecf1;}\n" +
+                ".log-table tr:hover td{background:#f8fafc;}\n" +
                 ".sms-content{max-width:350px;word-break:break-all;white-space:normal;line-height:1.4;}\n" +
-                ".badge-subaccount{background:#e8f4fd;color:#1890ff;padding:2px 10px;border-radius:20px;font-size:11px;display:inline-block;}\n" +
+                ".badge-subaccount{background:#e8f0fe;color:#1677ff;padding:2px 10px;border-radius:12px;font-size:11px;display:inline-block;}\n" +
                 ".badge-delivered{color:#52c41a;font-weight:500;}\n" +
                 ".badge-failed{color:#ff4d4f;font-weight:500;}\n" +
-                ".view-btn{background:#667eea;color:white;border:none;padding:6px 16px;border-radius:20px;cursor:pointer;font-size:12px;transition:all 0.3s;}\n" +
-                ".view-btn:hover{background:#5a67d8;}\n" +
-                ".pagination{display:flex;justify-content:center;gap:12px;padding:24px;border-top:1px solid var(--border-color);}\n" +
-                ".page-btn{padding:8px 16px;border:1px solid var(--input-border);background:var(--bg-card);color:var(--text-primary);border-radius:30px;cursor:pointer;font-size:13px;}\n" +
-                ".page-btn:hover:not(:disabled){border-color:#667eea;color:#667eea;}\n" +
-                ".page-btn:disabled{opacity:0.5;cursor:not-allowed;}\n" +
-                ".page-info{font-size:13px;color:var(--text-muted);align-self:center;}\n" +
-                ".footer{text-align:center;padding:32px 0;color:var(--text-secondary);font-size:12px;border-top:1px solid var(--border-color);margin-top:16px;}\n" +
+                ".view-btn{background:#1677ff;color:white;border:none;padding:6px 16px;border-radius:6px;cursor:pointer;font-size:12px;transition:all 0.3s;}\n" +
+                ".view-btn:hover{background:#4096ff;}\n" +
+                ".pagination{display:flex;justify-content:center;gap:12px;padding:24px;border-top:1px solid #e8ecf1;}\n" +
+                ".page-btn{padding:8px 16px;border:1px solid #d1d5db;background:#ffffff;color:#1e293b;border-radius:8px;cursor:pointer;font-size:13px;}\n" +
+                ".page-btn:hover:not(:disabled){border-color:#1677ff;color:#1677ff;}\n" +
+                ".page-btn:disabled{opacity:0.5;cursor:not-allowed;background:#f1f5f9;}\n" +
+                ".page-info{font-size:13px;color:#94a3b8;align-self:center;}\n" +
+                ".footer{text-align:center;padding:32px 0;color:#94a3b8;font-size:12px;border-top:1px solid #e8ecf1;margin-top:16px;}\n" +
+                ".empty{text-align:center;padding:48px;color:#94a3b8;}\n" +
                 ".modal{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);z-index:10000;display:flex;align-items:center;justify-content:center;}\n" +
-                ".modal-content{background:var(--bg-card);border-radius:20px;width:1000px;max-width:90%;max-height:85vh;display:flex;flex-direction:column;}\n" +
-                ".modal-header{display:flex;justify-content:space-between;align-items:center;padding:16px 24px;border-bottom:1px solid var(--border-color);}\n" +
-                ".modal-header h3{color:var(--text-primary);margin:0;}\n" +
-                ".modal-close{background:none;border:none;font-size:24px;cursor:pointer;color:var(--text-muted);}\n" +
+                ".modal-content{background:#ffffff;border-radius:12px;width:1000px;max-width:90%;max-height:85vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,0.15);}\n" +
+                ".modal-header{display:flex;justify-content:space-between;align-items:center;padding:16px 24px;border-bottom:1px solid #e8ecf1;}\n" +
+                ".modal-header h3{color:#1e293b;margin:0;}\n" +
+                ".modal-close{background:none;border:none;font-size:24px;cursor:pointer;color:#94a3b8;}\n" +
                 ".modal-body{padding:20px 24px;overflow-y:auto;flex:1;}\n" +
-                ".detail-summary{background:linear-gradient(135deg, rgba(102,126,234,0.1) 0%, rgba(118,75,162,0.1) 100%);border-radius:12px;padding:12px 16px;margin-bottom:20px;display:flex;gap:20px;flex-wrap:wrap;}\n" +
+                ".detail-summary{background:#f8fafc;border-radius:8px;padding:12px 16px;margin-bottom:20px;display:flex;gap:20px;flex-wrap:wrap;}\n" +
                 ".detail-summary-item{display:flex;align-items:center;gap:8px;}\n" +
-                ".detail-summary-label{font-size:12px;color:var(--text-muted);}\n" +
-                ".detail-summary-value{font-size:16px;font-weight:600;color:var(--text-primary);}\n" +
+                ".detail-summary-label{font-size:12px;color:#94a3b8;}\n" +
+                ".detail-summary-value{font-size:16px;font-weight:600;color:#1e293b;}\n" +
                 ".detail-search{margin-bottom:16px;display:flex;gap:10px;}\n" +
-                ".detail-search input{flex:1;padding:8px 12px;border:1px solid var(--input-border);border-radius:10px;background:var(--input-bg);color:var(--text-primary);}\n" +
-                ".detail-search button{padding:8px 20px;background:#667eea;color:white;border:none;border-radius:30px;cursor:pointer;}\n" +
+                ".detail-search input{flex:1;padding:8px 12px;border:1px solid #d1d5db;border-radius:8px;background:#ffffff;color:#1e293b;}\n" +
+                ".detail-search button{padding:8px 20px;background:#1677ff;color:white;border:none;border-radius:8px;cursor:pointer;}\n" +
                 ".detail-table{width:100%;border-collapse:collapse;}\n" +
-                ".detail-table th,.detail-table td{padding:10px 12px;text-align:left;border-bottom:1px solid var(--border-color);}\n" +
-                ".detail-table th{background:var(--table-header-bg);font-weight:600;color:var(--text-secondary);}\n" +
+                ".detail-table th,.detail-table td{padding:10px 12px;text-align:left;border-bottom:1px solid #e8ecf1;}\n" +
+                ".detail-table th{background:#f8fafc;font-weight:600;color:#64748b;}\n" +
                 ".detail-status-success{color:#52c41a;font-weight:500;}\n" +
                 ".detail-status-failed{color:#ff4d4f;font-weight:500;}\n" +
                 ".detail-status-pending{color:#faad14;font-weight:500;}\n" +
-                ".detail-pagination{display:flex;justify-content:center;gap:12px;margin-top:20px;padding-top:16px;border-top:1px solid var(--border-color);}\n" +
-                "@media(max-width:768px){.search-actions{margin-left:0;}.navbar{padding:0 20px;}.nav-links a{padding:6px 12px;font-size:12px;}.rank-chart-container{height:250px;}}\n" +
+                ".detail-pagination{display:flex;justify-content:center;gap:12px;margin-top:20px;padding-top:16px;border-top:1px solid #e8ecf1;}\n" +
+                "@media(max-width:768px){.search-actions{margin-left:0;}.navbar{padding:0 20px;}.menu a{padding:6px 12px;font-size:12px;}.rank-chart-container{height:250px;}}\n" +
                 "</style>\n" +
                 "</head>\n" +
                 "<body>\n" +
                 "<div class=\"page-wrap\">\n" +
                 "<div class=\"navbar\">\n" +
-                "<div class=\"nav-links\">\n" +
+                "<div class=\"nav-container\">\n" +
+                "<div class=\"logo\">\n" +
+                "<div class=\"logo-icon\">📊</div>\n" +
+                "<div class=\"logo-text\">ECCOM WEB 监控管理系统</div>\n" +
+                "<div class=\"logo-sub\">v3.0</div>\n" +
+                "</div>\n" +
+                "<div class=\"menu\">\n" +
                 "<a href=\"/monitor/index\">首页</a>\n" +
                 "<a href=\"/monitor/dashboard\">服务监控</a>\n" +
                 "<a href=\"/monitor/login-audit\">登录审计</a>\n" +
@@ -4229,11 +4162,11 @@ public class LogMonitorController {
                 "<a href=\"/monitor/ops-management\">运维管理</a>\n" +
                 "<a href=\"/monitor/queue-management\" class=\"active\">发送队列管理</a>\n" +
                 "</div>\n" +
-                "<div class=\"nav-right\">\n" +
-                "    <span class=\"user-name\" id=\"currentUsername\">加载中...</span>\n" +
-                "    <span class=\"user-role\" id=\"currentUserRole\" style=\"background:rgba(255,255,255,0.2);padding:4px 12px;border-radius:20px;font-size:12px;\">加载中...</span>\n" +
-                "    <button class=\"theme-toggle\" onclick=\"toggleTheme()\">🌙 深色</button>\n" +
-                "    <button class=\"logout-btn\" onclick=\"logout()\">退出</button>\n" +
+                "<div class=\"user-info\">\n" +
+                "<span class=\"user-name\" id=\"currentUsername\">加载中...</span>\n" +
+                "<span class=\"user-role\" id=\"currentUserRole\">加载中...</span>\n" +
+                "<button class=\"logout-btn\" onclick=\"logout()\">退出</button>\n" +
+                "</div>\n" +
                 "</div>\n" +
                 "</div>\n" +
                 "<div class=\"rank-card\">\n" +
@@ -4275,9 +4208,7 @@ public class LogMonitorController {
                 "var detailPage=1,detailSize=10,detailTotalPages=1;\n" +
                 "var rankingChart=null;\n" +
                 "function decodeSmsContent(str){if(!str)return'';try{var decoded=atob(str);var bytes=new Uint8Array(decoded.split('').map(function(c){return c.charCodeAt(0);}));return new TextDecoder('utf-8').decode(bytes);}catch(e){return str;}}\n" +
-                "function toggleTheme(){var html=document.documentElement;var isDark=html.getAttribute('data-theme')==='dark';if(isDark){html.removeAttribute('data-theme');localStorage.setItem('monitor-theme','light');}else{html.setAttribute('data-theme','dark');localStorage.setItem('monitor-theme','dark');}}\n" +
                 "function logout(){fetch('/monitor/logout').then(function(){location.href='/monitor/login';});}\n" +
-                "if(localStorage.getItem('monitor-theme')==='dark'){document.documentElement.setAttribute('data-theme','dark');}\n" +
                 "// 获取当前登录用户信息\n" +
                 "function getCurrentUserInfo() {\n" +
                 "    fetch('/api/monitor/current-user?secret=dn17ORUwf36Znl')\n" +
@@ -4287,12 +4218,12 @@ public class LogMonitorController {
                 "                document.getElementById('currentUsername').innerText = data.data.username;\n" +
                 "                var roleSpan = document.getElementById('currentUserRole');\n" +
                 "                var roleText = data.data.role === 'ADMIN' ? '👑 管理员' : '🔧 NOC';\n" +
-                "                roleSpan.innerHTML = roleText;\n" +
+                "                roleSpan.innerText = roleText;\n" +
                 "            }\n" +
                 "        }).catch(function(err) { console.error('获取用户信息失败:', err); });\n" +
                 "}\n" +
                 "getCurrentUserInfo();\n" +
-                "function loadRanking(){fetch('/api/monitor/queue/customer-ranking?secret=dn17ORUwf36Znl').then(function(res){return res.json();}).then(function(data){var ctx=document.getElementById('rankingChart').getContext('2d');if(rankingChart)rankingChart.destroy();if(data.code===200&&data.data&&data.data.length){var list=data.data;var labels=list.map(function(i){return i.subAccount||i.username||'-';});var counts=list.map(function(i){return i.totalCount||0;});rankingChart=new Chart(ctx,{type:'bar',data:{labels:labels,datasets:[{label:'提交数量(条)',data:counts,backgroundColor:'#667eea',borderRadius:8}]},options:{responsive:true,maintainAspectRatio:true}});}else{rankingChart=new Chart(ctx,{type:'bar',data:{labels:['暂无数据'],datasets:[{label:'提交数量',data:[0]}]},options:{responsive:true}});}}).catch(function(){var ctx=document.getElementById('rankingChart').getContext('2d');if(rankingChart)rankingChart.destroy();rankingChart=new Chart(ctx,{type:'bar',data:{labels:['加载失败'],datasets:[{label:'提交数量',data:[0]}]},options:{responsive:true}});});}\n" +
+                "function loadRanking(){fetch('/api/monitor/queue/customer-ranking?secret=dn17ORUwf36Znl').then(function(res){return res.json();}).then(function(data){var ctx=document.getElementById('rankingChart').getContext('2d');if(rankingChart)rankingChart.destroy();if(data.code===200&&data.data&&data.data.length){var list=data.data;var labels=list.map(function(i){return i.subAccount||i.username||'-';});var counts=list.map(function(i){return i.totalCount||0;});rankingChart=new Chart(ctx,{type:'bar',data:{labels:labels,datasets:[{label:'提交数量(条)',data:counts,backgroundColor:'#1677ff',borderRadius:8}]},options:{responsive:true,maintainAspectRatio:true}});}else{rankingChart=new Chart(ctx,{type:'bar',data:{labels:['暂无数据'],datasets:[{label:'提交数量',data:[0]}]},options:{responsive:true}});}}).catch(function(){var ctx=document.getElementById('rankingChart').getContext('2d');if(rankingChart)rankingChart.destroy();rankingChart=new Chart(ctx,{type:'bar',data:{labels:['加载失败'],datasets:[{label:'提交数量',data:[0]}]},options:{responsive:true}});});}\n" +
                 "function formatNumber(num){if(!num)return'0';return num.toString().replace(/\\B(?=(\\d{3})+(?!\\d))/g,',');}\n" +
                 "function searchTasks(){page=1;loadTasks();}\n" +
                 "function resetSearch(){document.getElementById('searchSubAccount').value='';document.getElementById('searchTaskId').value='';page=1;loadTasks();}\n" +
