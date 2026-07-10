@@ -1,6 +1,13 @@
 package com.texcellsms.sms.monitor;
 
 import com.texcellsms.sms.interceptor.SecurityMonitorInterceptor;
+import com.texcellsms.sms.mapper.webportal.QueueMonitorLogMapper;
+import com.texcellsms.sms.mapper.webportal.SmsQueueMapper;
+import com.texcellsms.sms.model.entity.QueueMonitorLog;
+import com.texcellsms.sms.util.WeChatRobotUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -16,6 +23,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 @Component
 public class LogMonitorTask {
@@ -48,6 +56,17 @@ public class LogMonitorTask {
     private static final Pattern API_PATTERN = Pattern.compile("\\[API调用\\] (GET|POST) (\\S+) +耗时:(\\d+)ms +状态:(\\S+)");
     private static final Pattern TIMESTAMP_PATTERN = Pattern.compile("^(\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2})");
     private static final Pattern IP_PATTERN = Pattern.compile("\\b(?:[0-9]{1,3}\\.){3}[0-9]{1,3}\\b");
+
+    private static final Logger logger = LoggerFactory.getLogger(LogMonitorTask.class);
+
+    @Autowired
+    private SmsQueueMapper smsQueueMapper;
+
+    @Autowired
+    private QueueMonitorLogMapper queueMonitorLogMapper;
+
+    @Autowired
+    private WeChatRobotUtil weChatRobotUtil;
 
     @PostConstruct
     public void init() {
@@ -338,6 +357,195 @@ public class LogMonitorTask {
             System.err.println("GC日志扫描异常: " + e.getMessage());
         }
     }
+
+    @Scheduled(cron = "0 */10 * * * ?")
+    public void scanQueueTimeoutTasks() {
+        try {
+            logger.info("开始扫描队列任务DR未更新");
+
+            // 1. 查询超时任务（30分钟和60分钟）
+            List<Map<String, Object>> warningTasks = smsQueueMapper.findTimeoutTasks(30);
+            List<Map<String, Object>> criticalTasks = smsQueueMapper.findTimeoutTasks(60);
+
+            // 2. 获取当前所有待处理的任务ID（用于检测已恢复的任务）
+            List<QueueMonitorLog> pendingLogs = queueMonitorLogMapper.findPendingAlerts();
+            Set<String> pendingTaskIds = pendingLogs.stream()
+                    .map(QueueMonitorLog::getTaskId)
+                    .collect(Collectors.toSet());
+
+            // 3. 当前超时任务ID集合
+            Map<String, Map<String, Object>> allTasks = new LinkedHashMap<>();
+            for (Map<String, Object> task : warningTasks) {
+                allTasks.putIfAbsent((String) task.get("taskId"), task);
+            }
+            for (Map<String, Object> task : criticalTasks) {
+                allTasks.put((String) task.get("taskId"), task);
+            }
+            Set<String> currentTimeoutTaskIds = allTasks.keySet();
+
+            // 4. 自动关闭已恢复的任务（不再超时的任务）
+            int autoClosed = 0;
+            for (String taskId : pendingTaskIds) {
+                if (!currentTimeoutTaskIds.contains(taskId)) {
+                    // 这个任务已经不在超时列表中了，说明已恢复
+                    queueMonitorLogMapper.updateStatus(taskId, "PROCESSED", "系统自动", LocalDateTime.now());
+                    autoClosed++;
+                    logger.info("任务 {} 已恢复（DR已更新），自动关闭告警", taskId);
+                }
+            }
+
+            if (allTasks.isEmpty()) {
+                logger.info("未发现DR未更新任务，自动关闭 {} 条告警", autoClosed);
+                return;
+            }
+
+            // 5. 处理仍在超时中的任务
+            int newAlerts = 0;
+            int updatedAlerts = 0;
+            int weChatAlerts = 0;
+
+            for (Map<String, Object> task : allTasks.values()) {
+                String taskId = (String) task.get("taskId");
+                Integer totalCount = ((Number) task.getOrDefault("totalCount", 0)).intValue();
+                Integer detailPendingCount = ((Number) task.getOrDefault("detailPendingCount", 0)).intValue();
+
+                // 如果 detailPendingCount = 0，说明已经没有未更新的记录了，跳过
+                if (detailPendingCount == 0) {
+                    continue;
+                }
+
+                QueueMonitorLog existing = queueMonitorLogMapper.selectLatestByTaskId(taskId);
+
+                if (existing != null) {
+                    // 已处理或已忽略的，跳过
+                    if ("PROCESSED".equals(existing.getStatus()) || "IGNORED".equals(existing.getStatus())) {
+                        continue;
+                    }
+
+                    // 🔧 更新现有记录
+                    QueueMonitorLog updatedLog = buildQueueMonitorLog(task);
+                    updatedLog.setId(existing.getId());
+                    queueMonitorLogMapper.update(updatedLog);
+                    updatedAlerts++;
+
+                    // 如果告警未发送过，发送企微
+                    if (totalCount > 5000 && existing.getAlertSent() == 0) {
+                        sendQueueAlertToWeChat(updatedLog);
+                        queueMonitorLogMapper.updateAlertSent(taskId);
+                        weChatAlerts++;
+                    }
+                    continue;
+                }
+
+                // 新记录：插入
+                QueueMonitorLog log = buildQueueMonitorLog(task);
+                queueMonitorLogMapper.insert(log);
+
+                if (totalCount > 5000) {
+                    sendQueueAlertToWeChat(log);
+                    queueMonitorLogMapper.updateAlertSent(taskId);
+                    weChatAlerts++;
+                }
+                newAlerts++;
+            }
+
+            logger.info("扫描完成：新增 {} 条，更新 {} 条，自动关闭 {} 条，企微发送 {} 条",
+                    newAlerts, updatedAlerts, autoClosed, weChatAlerts);
+        } catch (Exception e) {
+            logger.error("扫描DR未更新任务失败", e);
+        }
+    }
+
+    private QueueMonitorLog buildQueueMonitorLog(Map<String, Object> task) {
+        QueueMonitorLog log = new QueueMonitorLog();
+        log.setTaskId((String) task.get("taskId"));
+        log.setSubAccount((String) task.get("subAccount"));
+        log.setTaskName((String) task.get("taskName"));
+        log.setTotalCount(((Number) task.getOrDefault("totalCount", 0)).intValue());
+        log.setSubmitSuccCount(((Number) task.getOrDefault("submitSuccCount", 0)).intValue());
+        log.setDrSuccCount(((Number) task.getOrDefault("drSuccCount", 0)).intValue());
+        log.setDrFailCount(((Number) task.getOrDefault("drFailCount", 0)).intValue());
+        log.setPendingCount(((Number) task.getOrDefault("pendingCount", 0)).intValue());
+        log.setDetailPendingCount(((Number) task.getOrDefault("detailPendingCount", 0)).intValue());
+
+        String taskTimeStr = (String) task.get("taskTimeStr");
+
+        if (taskTimeStr != null && !taskTimeStr.trim().isEmpty()) {
+            try {
+                String timeStr = taskTimeStr.trim();
+                // 如果有微秒，截断到秒
+                if (timeStr.contains(".")) {
+                    timeStr = timeStr.substring(0, timeStr.indexOf("."));
+                }
+                DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+                LocalDateTime taskTime = LocalDateTime.parse(timeStr, formatter);
+                log.setTaskTime(taskTime);
+            } catch (Exception e) {
+                log.setTaskTime(LocalDateTime.now().withNano(0));
+            }
+        } else {
+            log.setTaskTime(LocalDateTime.now().withNano(0));
+        }
+
+        log.setElapsedMinutes(((Number) task.getOrDefault("elapsedMinutes", 0)).intValue());
+        log.setAlertLevel(((Number) task.getOrDefault("elapsedMinutes", 0)).intValue() >= 60 ? "CRITICAL" : "WARNING");
+        log.setAlertSent(0);
+        log.setStatus("PENDING");
+        return log;
+    }
+
+    private void sendQueueAlertToWeChat(QueueMonitorLog log) {
+        try {
+            // 检查是否启用
+            if (!weChatRobotUtil.isEnabled()) {
+                logger.info("企业微信机器人未启用，跳过发送");
+                return;
+            }
+
+            String levelText = "CRITICAL".equals(log.getAlertLevel())
+                    ? "🔴【严重】超过60分钟"
+                    : "🟡【警告】超过30分钟";
+
+            String msg = String.format(
+                    "## 📨 队列任务DR未更新告警\n\n" +
+                            "### %s\n\n" +
+                            "| 项目 | 数值 |\n" +
+                            "|------|------|\n" +
+                            "| 任务ID | `%s` |\n" +
+                            "| 客户账号 | %s |\n" +
+                            "| 总发送数 | **%d** ⚠️ |\n" +
+                            "| 已提交数 | %d |\n" +
+                            "| 成功数 | %d |\n" +
+                            "| 失败数 | %d |\n" +
+                            "| **DR未更新数** | **%d 条** |\n" +
+                            "| 已过时间 | **%d 分钟** |\n\n" +
+                            "> ⏰ 任务已完成但部分DR一直未更新，请留意检查处理！\n\n" +
+                            "> 🔗 [点击查看监控详情](https://internalsms.texcellsms.com:1443/monitor/queue-monitor)",
+                    levelText,
+                    log.getTaskId(),
+                    log.getSubAccount(),
+                    log.getTotalCount(),
+                    log.getSubmitSuccCount(),
+                    log.getDrSuccCount(),
+                    log.getDrFailCount(),
+                    log.getDetailPendingCount(),
+                    log.getElapsedMinutes()
+            );
+
+            // 调用企微发送
+            boolean success = weChatRobotUtil.sendMarkdownMessage(msg);
+
+            if (success) {
+                logger.info("企微告警发送成功: taskId={}, level={}", log.getTaskId(), log.getAlertLevel());
+            } else {
+                logger.warn("企微告警发送失败: taskId={}", log.getTaskId());
+            }
+
+        } catch (Exception e) {
+            logger.error("发送告警失败", e);
+        }
+    }
+
 
     // ====================== 辅助方法 ======================
     private static void addToList(List<String> list, String item, int maxSize) {

@@ -7,6 +7,7 @@ import com.texcellsms.sms.mapper.webportal.*;
 import com.texcellsms.sms.model.entity.*;
 import com.texcellsms.sms.service.SmsQueueService;
 import com.texcellsms.sms.util.ApiClientConfig;
+import com.texcellsms.sms.util.WeChatRobotUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -21,6 +22,7 @@ import java.net.URLEncoder;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @RestController
 public class LogMonitorController {
@@ -62,6 +64,16 @@ public class LogMonitorController {
 
     @Autowired
     ApiClientConfig apiClientConfig;
+
+    @Autowired
+    private QueueMonitorLogMapper queueMonitorLogMapper;
+
+    @Autowired
+    private SmsQueueMapper smsQueueMapper;
+
+    @Autowired
+    private WeChatRobotUtil weChatRobotUtil;
+
 
     private String getRealIp(HttpServletRequest request) {
         String ip = request.getHeader("CF-Connecting-IP");  // Cloudflare
@@ -370,6 +382,21 @@ public class LogMonitorController {
             return "<script>location.href='/monitor/login';</script>";
         }
         return generateQueueManagementHtml();
+    }
+
+    @GetMapping("/monitor/queue-monitor")
+    public String queueMonitor(HttpServletRequest request) {
+        HttpSession session = request.getSession();
+        String clientIp = getRealIp(request);
+        String loginUsername = getCurrentUsername(session);
+
+        if (!isIpAllowed(clientIp, loginUsername)) {
+            return "<h1 style='color:red;text-align:center;margin-top:100px;'>❌ 仅允许内网访问<br/>您的IP：" + clientIp + "</h1>";
+        }
+        if (!isLogin(session)) {
+            return "<script>location.href='/monitor/login';</script>";
+        }
+        return generateQueueMonitorHtml();
     }
 
     @GetMapping("/api/monitor/logs")
@@ -1818,6 +1845,482 @@ public class LogMonitorController {
         return result;
     }
 
+
+// ==================== 队列监控 API ====================
+
+    /**
+     * 获取队列监控告警列表（分页）
+     */
+    @GetMapping("/api/monitor/queue-monitor/list")
+    public Map<String, Object> getQueueMonitorList(
+            @RequestParam(required = false) String taskId,
+            @RequestParam(required = false) String subAccount,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String alertLevel,
+            @RequestParam(required = false) String startTime,
+            @RequestParam(required = false) String endTime,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String secret,
+            HttpServletRequest request) {
+
+        Map<String, Object> result = new HashMap<>();
+        HttpSession session = request.getSession();
+        String clientIp = getRealIp(request);
+        String loginUsername = getCurrentUsername(session);
+
+        if (!isIpAllowed(clientIp, loginUsername)) {
+            result.put("code", 403);
+            result.put("msg", "仅允许内网访问");
+            return result;
+        }
+        if (!MONITOR_SECRET.equals(secret)) {
+            result.put("code", 401);
+            result.put("msg", "无权限访问");
+            return result;
+        }
+
+        try {
+            int offset = (page - 1) * size;
+            LocalDateTime start = null;
+            LocalDateTime end = null;
+            if (startTime != null && !startTime.trim().isEmpty()) {
+                start = LocalDateTime.parse(startTime.trim(), DATE_FORMATTER);
+            }
+            if (endTime != null && !endTime.trim().isEmpty()) {
+                end = LocalDateTime.parse(endTime.trim(), DATE_FORMATTER);
+            }
+
+            List<QueueMonitorLog> list = queueMonitorLogMapper.selectPage(offset, size, taskId, subAccount, status, alertLevel, start, end);
+            long total = queueMonitorLogMapper.count(taskId, subAccount, status, alertLevel, start, end);
+            int pendingCount = queueMonitorLogMapper.countPendingAlerts();
+
+            result.put("code", 200);
+            result.put("data", list);
+            result.put("pendingCount", pendingCount);
+            result.put("page", page);
+            result.put("size", size);
+            result.put("total", total);
+            result.put("totalPages", (total + size - 1) / size);
+        } catch (Exception e) {
+            logger.error("查询队列监控列表失败", e);
+            result.put("code", 500);
+            result.put("msg", "查询失败: " + e.getMessage());
+        }
+        return result;
+    }
+
+    /**
+     * 获取队列监控统计数据
+     */
+    @GetMapping("/api/monitor/queue-monitor/stats")
+    public Map<String, Object> getQueueMonitorStats(@RequestParam(required = false) String secret,
+                                                    HttpServletRequest request) {
+        Map<String, Object> result = new HashMap<>();
+        HttpSession session = request.getSession();
+        String clientIp = getRealIp(request);
+        String loginUsername = getCurrentUsername(session);
+
+        if (!isIpAllowed(clientIp, loginUsername)) {
+            result.put("code", 403);
+            result.put("msg", "仅允许内网访问");
+            return result;
+        }
+        if (!MONITOR_SECRET.equals(secret)) {
+            result.put("code", 401);
+            result.put("msg", "无权限访问");
+            return result;
+        }
+
+        try {
+            Map<String, Object> stats = new HashMap<>();
+            stats.put("pendingCount", queueMonitorLogMapper.countPendingAlerts());
+            stats.put("weekCompare", queueMonitorLogMapper.getWeekCompareStats());
+            stats.put("monthStatsByLevel", queueMonitorLogMapper.getCurrentMonthStatsByLevel());
+            stats.put("monthStatsByStatus", queueMonitorLogMapper.getCurrentMonthStatsByStatus());
+            stats.put("last7DaysTrend", queueMonitorLogMapper.getLast7DaysTrend());
+            stats.put("avgHandleTime", queueMonitorLogMapper.getAvgHandleTime());
+
+            result.put("code", 200);
+            result.put("data", stats);
+        } catch (Exception e) {
+            logger.error("获取队列监控统计失败", e);
+            result.put("code", 500);
+            result.put("msg", "统计失败: " + e.getMessage());
+        }
+        return result;
+    }
+
+    /**
+     * 执行队列任务修复
+     */
+    @PostMapping("/api/monitor/queue-monitor/fix")
+    public Map<String, Object> fixQueueTask(@RequestBody Map<String, Object> params,
+                                            @RequestParam(required = false) String secret,
+                                            HttpServletRequest request) {
+        Map<String, Object> result = new HashMap<>();
+        HttpSession session = request.getSession();
+        String clientIp = getRealIp(request);
+        String loginUsername = getCurrentUsername(session);
+
+        if (!isIpAllowed(clientIp, loginUsername)) {
+            result.put("code", 403);
+            result.put("msg", "仅允许内网访问");
+            return result;
+        }
+        if (!MONITOR_SECRET.equals(secret)) {
+            result.put("code", 401);
+            result.put("msg", "无权限访问");
+            return result;
+        }
+
+        try {
+            String taskId = (String) params.get("taskId");
+            if (taskId == null || taskId.trim().isEmpty()) {
+                result.put("code", 400);
+                result.put("msg", "任务ID不能为空");
+                return result;
+            }
+
+            // 执行修复SQL
+            int updated = smsQueueMapper.executeFixSql(taskId);
+
+            // 更新监控日志状态
+            queueMonitorLogMapper.updateStatus(taskId, "PROCESSED", loginUsername, LocalDateTime.now());
+
+            result.put("code", 200);
+            result.put("msg", "修复成功");
+            result.put("updated", updated);
+            logger.info("队列任务修复: taskId={}, operator={}, updated={}", taskId, loginUsername, updated);
+        } catch (Exception e) {
+            logger.error("修复任务失败", e);
+            result.put("code", 500);
+            result.put("msg", "修复失败: " + e.getMessage());
+        }
+        return result;
+    }
+
+    /**
+     * 忽略告警
+     */
+    @PostMapping("/api/monitor/queue-monitor/ignore")
+    public Map<String, Object> ignoreQueueTask(@RequestBody Map<String, Object> params,
+                                               @RequestParam(required = false) String secret,
+                                               HttpServletRequest request) {
+        Map<String, Object> result = new HashMap<>();
+        HttpSession session = request.getSession();
+        String clientIp = getRealIp(request);
+        String loginUsername = getCurrentUsername(session);
+
+        if (!isIpAllowed(clientIp, loginUsername)) {
+            result.put("code", 403);
+            result.put("msg", "仅允许内网访问");
+            return result;
+        }
+        if (!MONITOR_SECRET.equals(secret)) {
+            result.put("code", 401);
+            result.put("msg", "无权限访问");
+            return result;
+        }
+
+        try {
+            String taskId = (String) params.get("taskId");
+            if (taskId == null || taskId.trim().isEmpty()) {
+                result.put("code", 400);
+                result.put("msg", "任务ID不能为空");
+                return result;
+            }
+
+            queueMonitorLogMapper.updateStatus(taskId, "IGNORED", loginUsername, LocalDateTime.now());
+            result.put("code", 200);
+            result.put("msg", "已忽略该告警");
+        } catch (Exception e) {
+            logger.error("忽略告警失败", e);
+            result.put("code", 500);
+            result.put("msg", "操作失败: " + e.getMessage());
+        }
+        return result;
+    }
+
+    /**
+     * 手动触发扫描超时任务
+     */
+    @PostMapping("/api/monitor/queue-monitor/scan")
+    public Map<String, Object> scanTimeoutTasks(@RequestParam(required = false) String secret,
+                                                HttpServletRequest request) {
+        Map<String, Object> result = new HashMap<>();
+        HttpSession session = request.getSession();
+        String clientIp = getRealIp(request);
+        String loginUsername = getCurrentUsername(session);
+
+        if (!isIpAllowed(clientIp, loginUsername)) {
+            result.put("code", 403);
+            result.put("msg", "仅允许内网访问");
+            return result;
+        }
+        if (!MONITOR_SECRET.equals(secret)) {
+            result.put("code", 401);
+            result.put("msg", "无权限访问");
+            return result;
+        }
+
+        try {
+            // 1. 查询超时任务（30分钟和60分钟）
+            List<Map<String, Object>> warningTasks = smsQueueMapper.findTimeoutTasks(30);
+            List<Map<String, Object>> criticalTasks = smsQueueMapper.findTimeoutTasks(60);
+
+            // 2. 获取当前所有待处理的任务ID（用于检测已恢复的任务）
+            List<QueueMonitorLog> pendingLogs = queueMonitorLogMapper.findPendingAlerts();
+            Set<String> pendingTaskIds = pendingLogs.stream()
+                    .map(QueueMonitorLog::getTaskId)
+                    .collect(Collectors.toSet());
+
+            // 3. 当前超时任务ID集合
+            Map<String, Map<String, Object>> allTasks = new LinkedHashMap<>();
+            for (Map<String, Object> task : warningTasks) {
+                allTasks.putIfAbsent((String) task.get("taskId"), task);
+            }
+            for (Map<String, Object> task : criticalTasks) {
+                allTasks.put((String) task.get("taskId"), task);
+            }
+            Set<String> currentTimeoutTaskIds = allTasks.keySet();
+
+            // 4. 自动关闭已恢复的任务（不再超时的任务）
+            int autoClosed = 0;
+            for (String taskId : pendingTaskIds) {
+                if (!currentTimeoutTaskIds.contains(taskId)) {
+                    queueMonitorLogMapper.updateStatus(taskId, "PROCESSED", "系统自动", LocalDateTime.now());
+                    autoClosed++;
+                    logger.info("手动扫描：任务 {} 已恢复，自动关闭告警", taskId);
+                }
+            }
+
+            if (allTasks.isEmpty()) {
+                result.put("code", 200);
+                result.put("msg", "扫描完成，未发现超时任务，自动关闭 " + autoClosed + " 条告警");
+                result.put("total", 0);
+                result.put("newAlerts", 0);
+                result.put("updatedAlerts", 0);
+                result.put("autoClosed", autoClosed);
+                return result;
+            }
+
+            // 5. 处理仍在超时中的任务
+            int newAlerts = 0;
+            int updatedAlerts = 0;
+            int weChatAlerts = 0;
+
+            for (Map<String, Object> task : allTasks.values()) {
+                String taskId = (String) task.get("taskId");
+                Integer totalCount = ((Number) task.getOrDefault("totalCount", 0)).intValue();
+                Integer detailPendingCount = ((Number) task.getOrDefault("detailPendingCount", 0)).intValue();
+
+                // 如果 detailPendingCount = 0，说明已经没有未更新的记录了，跳过
+                if (detailPendingCount == 0) {
+                    continue;
+                }
+
+                QueueMonitorLog existing = queueMonitorLogMapper.selectLatestByTaskId(taskId);
+
+                if (existing != null) {
+                    // 已处理或已忽略的，跳过
+                    if ("PROCESSED".equals(existing.getStatus()) || "IGNORED".equals(existing.getStatus())) {
+                        continue;
+                    }
+
+                    // 🔧 更新现有记录
+                    QueueMonitorLog updatedLog = buildQueueMonitorLog(task);
+                    updatedLog.setId(existing.getId());
+                    queueMonitorLogMapper.update(updatedLog);
+                    updatedAlerts++;
+
+                    // 如果告警未发送过 且 totalCount > 5000，发送企微
+                    if (totalCount > 5000 && existing.getAlertSent() == 0) {
+                        sendQueueAlertToWeChat(updatedLog);
+                        queueMonitorLogMapper.updateAlertSent(taskId);
+                        weChatAlerts++;
+                    }
+                    continue;
+                }
+
+                // 新记录：插入
+                QueueMonitorLog log = buildQueueMonitorLog(task);
+                queueMonitorLogMapper.insert(log);
+
+                if (totalCount > 5000) {
+                    sendQueueAlertToWeChat(log);
+                    queueMonitorLogMapper.updateAlertSent(taskId);
+                    weChatAlerts++;
+                }
+                newAlerts++;
+            }
+
+            logger.info("手动扫描完成：新增 {} 条，更新 {} 条，自动关闭 {} 条，企微发送 {} 条",
+                    newAlerts, updatedAlerts, autoClosed, weChatAlerts);
+
+            result.put("code", 200);
+            result.put("msg", String.format("扫描完成：新增 %d 条，更新 %d 条，自动关闭 %d 条，企微发送 %d 条",
+                    newAlerts, updatedAlerts, autoClosed, weChatAlerts));
+            result.put("total", allTasks.size());
+            result.put("newAlerts", newAlerts);
+            result.put("updatedAlerts", updatedAlerts);
+            result.put("autoClosed", autoClosed);
+            result.put("weChatAlerts", weChatAlerts);
+        } catch (Exception e) {
+            logger.error("扫描超时任务失败", e);
+            result.put("code", 500);
+            result.put("msg", "扫描失败: " + e.getMessage());
+        }
+        return result;
+    }
+
+    /**
+     * 获取任务中未更新DR的号码列表（分页）
+     */
+    @GetMapping("/api/monitor/queue-monitor/pending-numbers")
+    public Map<String, Object> getPendingDrNumbers(
+            @RequestParam String taskId,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(required = false) String secret,
+            HttpServletRequest request) {
+
+        Map<String, Object> result = new HashMap<>();
+        HttpSession session = request.getSession();
+        String clientIp = getRealIp(request);
+        String loginUsername = getCurrentUsername(session);
+
+        if (!isIpAllowed(clientIp, loginUsername)) {
+            result.put("code", 403);
+            result.put("msg", "仅允许内网访问");
+            return result;
+        }
+        if (!MONITOR_SECRET.equals(secret)) {
+            result.put("code", 401);
+            result.put("msg", "无权限访问");
+            return result;
+        }
+
+        try {
+            int offset = (page - 1) * size;
+
+            // 查询号码列表
+            List<Map<String, Object>> numbers = smsQueueMapper.findPendingDrNumbers(taskId, offset, size);
+
+            // 查询总数
+            long total = smsQueueMapper.countPendingDrNumbers(taskId);
+
+            result.put("code", 200);
+            result.put("data", numbers);
+            result.put("total", total);
+            result.put("page", page);
+            result.put("size", size);
+            result.put("totalPages", (total + size - 1) / size);
+        } catch (Exception e) {
+            logger.error("查询未更新DR号码失败", e);
+            result.put("code", 500);
+            result.put("msg", "查询失败: " + e.getMessage());
+        }
+        return result;
+    }
+
+    /**
+     * 构建队列监控日志对象
+     */
+    private QueueMonitorLog buildQueueMonitorLog(Map<String, Object> task) {
+        QueueMonitorLog log = new QueueMonitorLog();
+        log.setTaskId((String) task.get("taskId"));
+        log.setSubAccount((String) task.get("subAccount"));
+        log.setTaskName((String) task.get("taskName"));
+        log.setTotalCount(((Number) task.getOrDefault("totalCount", 0)).intValue());
+        log.setSubmitSuccCount(((Number) task.getOrDefault("submitSuccCount", 0)).intValue());
+        log.setDrSuccCount(((Number) task.getOrDefault("drSuccCount", 0)).intValue());
+        log.setDrFailCount(((Number) task.getOrDefault("drFailCount", 0)).intValue());
+        log.setPendingCount(((Number) task.getOrDefault("pendingCount", 0)).intValue());
+        log.setDetailPendingCount(((Number) task.getOrDefault("detailPendingCount", 0)).intValue());
+
+        // ✅ 从字符串解析 taskTime
+        String taskTimeStr = (String) task.get("taskTimeStr");
+
+        if (taskTimeStr != null && !taskTimeStr.trim().isEmpty()) {
+            try {
+                String timeStr = taskTimeStr.trim();
+                // 如果有微秒，截断到秒
+                if (timeStr.contains(".")) {
+                    timeStr = timeStr.substring(0, timeStr.indexOf("."));
+                }
+                DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+                LocalDateTime taskTime = LocalDateTime.parse(timeStr, formatter);
+                log.setTaskTime(taskTime);
+            } catch (Exception e) {
+                log.setTaskTime(LocalDateTime.now().withNano(0));
+            }
+        } else {
+            log.setTaskTime(LocalDateTime.now().withNano(0));
+        }
+
+        log.setElapsedMinutes(((Number) task.getOrDefault("elapsedMinutes", 0)).intValue());
+        log.setAlertLevel(((Number) task.getOrDefault("elapsedMinutes", 0)).intValue() >= 60 ? "CRITICAL" : "WARNING");
+        log.setAlertSent(0);
+        log.setStatus("PENDING");
+        return log;
+    }
+
+    /**
+     * 发送队列告警到企业微信
+     */
+    private void sendQueueAlertToWeChat(QueueMonitorLog log) {
+        try {
+            // 检查是否启用
+            if (!weChatRobotUtil.isEnabled()) {
+                logger.info("企业微信机器人未启用，跳过发送");
+                return;
+            }
+
+            String levelText = "CRITICAL".equals(log.getAlertLevel())
+                    ? "🔴【严重】超过60分钟"
+                    : "🟡【警告】超过30分钟";
+
+            String msg = String.format(
+                    "## 📨 队列任务DR未更新告警\n\n" +
+                            "### %s\n\n" +
+                            "| 项目 | 数值 |\n" +
+                            "|------|------|\n" +
+                            "| 任务ID | `%s` |\n" +
+                            "| 客户账号 | %s |\n" +
+                            "| 总发送数 | **%d** ⚠️ |\n" +
+                            "| 已提交数 | %d |\n" +
+                            "| 成功数 | %d |\n" +
+                            "| 失败数 | %d |\n" +
+                            "| **DR未更新数** | **%d 条** |\n" +
+                            "| 已过时间 | **%d 分钟** |\n\n" +
+                            "> ⏰ 任务已完成但部分DR一直未更新，请留意检查处理！\n\n" +
+                            "> 🔗 [点击查看监控详情](https://internalsms.texcellsms.com:1443/monitor/queue-monitor)",
+                    levelText,
+                    log.getTaskId(),
+                    log.getSubAccount(),
+                    log.getTotalCount(),
+                    log.getSubmitSuccCount(),
+                    log.getDrSuccCount(),
+                    log.getDrFailCount(),
+                    log.getDetailPendingCount(),
+                    log.getElapsedMinutes()
+            );
+
+            // 发送到企微
+            boolean success = weChatRobotUtil.sendMarkdownMessage(msg);
+
+            if (success) {
+                logger.info("企微告警发送成功: taskId={}, level={}", log.getTaskId(), log.getAlertLevel());
+            } else {
+                logger.warn("企微告警发送失败: taskId={}", log.getTaskId());
+            }
+
+        } catch (Exception e) {
+            logger.error("发送企微告警失败", e);
+        }
+    }
+
     private String formatCsvValue(Object value) {
         if (value == null) return "";
         String str = value.toString();
@@ -2004,7 +2507,7 @@ public class LogMonitorController {
                 "*{margin:0;padding:0;box-sizing:border-box;}\n" +
                 "body{background:#f5f7fa;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;}\n" +
                 ".navbar{background:#ffffff;box-shadow:0 1px 3px rgba(0,0,0,0.06);border-bottom:1px solid #e8ecf1;position:sticky;top:0;z-index:100;}\n" +
-                ".nav-container{max-width:1600px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:70px;}\n" +
+                ".nav-container{max-width:2000px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:70px;}\n" +
                 ".logo{display:flex;align-items:center;gap:12px;}\n" +
                 ".logo-icon{width:40px;height:40px;background:linear-gradient(135deg,#1677ff 0%,#4096ff 100%);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;}\n" +
                 ".logo-text{font-size:18px;font-weight:700;color:#1e293b;letter-spacing:1px;}\n" +
@@ -2018,7 +2521,7 @@ public class LogMonitorController {
                 ".user-role{background:rgba(22,119,255,0.1);padding:4px 12px;border-radius:20px;font-size:12px;color:#1677ff;}\n" +
                 ".logout-btn{background:#f1f5f9;border:1px solid #e8ecf1;color:#475569;padding:8px 20px;border-radius:40px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;}\n" +
                 ".logout-btn:hover{background:#e8ecf1;transform:translateY(-1px);}\n" +
-                ".page-wrap{max-width:1800px;margin:0 auto;padding:32px;}\n" +
+                ".page-wrap{max-width:2000px;margin:0 auto;padding:32px;}\n" +
                 ".welcome-card{background:#ffffff;border-radius:16px;padding:36px 40px;margin-bottom:32px;color:#1e293b;position:relative;overflow:hidden;border:1px solid #e8ecf1;box-shadow:0 1px 3px rgba(0,0,0,0.04);}\n" +
                 ".welcome-card::before{content:'📊';position:absolute;right:-20px;bottom:-30px;font-size:160px;opacity:0.06;pointer-events:none;}\n" +
                 ".welcome-card h1{font-size:28px;font-weight:700;margin-bottom:8px;}\n" +
@@ -2070,6 +2573,7 @@ public class LogMonitorController {
                 "<a href=\"/monitor/user-management\">登录账户管理</a>\n" +
                 "<a href=\"/monitor/ops-management\">运维管理</a>\n" +
                 "<a href=\"/monitor/queue-management\">发送队列管理</a>" +
+                "<a href=\"/monitor/queue-monitor\">队列DR监控</a>\n" +
                 "</div>\n" +
                 "<div class=\"user-info\">\n" +
                 "<span class=\"user-name\" id=\"currentUsername\">加载中...</span>\n" +
@@ -2176,9 +2680,9 @@ public class LogMonitorController {
                 "}\n" +
                 "*{margin:0;padding:0;box-sizing:border-box;}\n" +
                 "body{background:#f5f7fa;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;}\n" +
-                ".page-wrap{max-width:1800px;margin:0 auto;padding:32px;}\n" +
+                ".page-wrap{max-width:2000px;margin:0 auto;padding:32px;}\n" +
                 ".navbar{background:#ffffff;box-shadow:0 1px 3px rgba(0,0,0,0.06);border:1px solid #e8ecf1;border-radius:12px;margin-bottom:24px;}\n" +
-                ".nav-container{max-width:1600px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:70px;}\n" +
+                ".nav-container{max-width:2000px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:70px;}\n" +
                 ".logo{display:flex;align-items:center;gap:12px;}\n" +
                 ".logo-icon{width:40px;height:40px;background:linear-gradient(135deg,#1677ff 0%,#4096ff 100%);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;}\n" +
                 ".logo-text{font-size:18px;font-weight:700;color:#1e293b;letter-spacing:1px;}\n" +
@@ -2235,7 +2739,7 @@ public class LogMonitorController {
                 "</style>\n" +
                 "</head>\n" +
                 "<body>\n" +
-                "<div class=\"page-wrap\">\n" +  // ← 注意这里：page-wrap 包含所有内容
+                "<div class=\"page-wrap\">\n" +
                 "<div class=\"navbar\">\n" +
                 "<div class=\"nav-container\">\n" +
                 "<div class=\"logo\">\n" +
@@ -2252,6 +2756,7 @@ public class LogMonitorController {
                 "<a href=\"/monitor/user-management\">登录账户管理</a>\n" +
                 "<a href=\"/monitor/ops-management\">运维管理</a>\n" +
                 "<a href=\"/monitor/queue-management\">发送队列管理</a>\n" +
+                "<a href=\"/monitor/queue-monitor\">队列DR监控</a>\n" +
                 "</div>\n" +
                 "<div class=\"user-info\">\n" +
                 "<span class=\"user-name\" id=\"currentUsername\">加载中...</span>\n" +
@@ -2355,9 +2860,9 @@ public class LogMonitorController {
                 "}\n" +
                 "*{margin:0;padding:0;box-sizing:border-box;}\n" +
                 "body{background:#f5f7fa;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;min-height:100vh;}\n" +
-                ".page-wrap{max-width:1800px;margin:0 auto;padding:20px 24px;}\n" +
+                ".page-wrap{max-width:2000px;margin:0 auto;padding:20px 24px;}\n" +
                 ".navbar{background:#ffffff;box-shadow:0 1px 3px rgba(0,0,0,0.06);border:1px solid #e8ecf1;border-radius:12px;margin-bottom:24px;}\n" +
-                ".nav-container{max-width:1600px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:70px;}\n" +
+                ".nav-container{max-width:2000px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:70px;}\n" +
                 ".logo{display:flex;align-items:center;gap:12px;}\n" +
                 ".logo-icon{width:40px;height:40px;background:linear-gradient(135deg,#1677ff 0%,#4096ff 100%);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;}\n" +
                 ".logo-text{font-size:18px;font-weight:700;color:#1e293b;letter-spacing:1px;}\n" +
@@ -2429,6 +2934,7 @@ public class LogMonitorController {
                 "<a href=\"/monitor/user-management\">登录账户管理</a>\n" +
                 "<a href=\"/monitor/ops-management\">运维管理</a>\n" +
                 "<a href=\"/monitor/queue-management\">发送队列管理</a>\n" +
+                "<a href=\"/monitor/queue-monitor\">队列DR监控</a>\n" +
                 "</div>\n" +
                 "<div class=\"user-info\">\n" +
                 "<span class=\"user-name\" id=\"currentUsername\">加载中...</span>\n" +
@@ -2637,9 +3143,9 @@ public class LogMonitorController {
                 "}\n" +
                 "*{margin:0;padding:0;box-sizing:border-box;}\n" +
                 "body{background:#f5f7fa;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;min-height:100vh;}\n" +
-                ".page-wrap{max-width:1800px;margin:0 auto;padding:20px 24px;}\n" +
+                ".page-wrap{max-width:2000px;margin:0 auto;padding:20px 24px;}\n" +
                 ".navbar{background:#ffffff;box-shadow:0 1px 3px rgba(0,0,0,0.06);border:1px solid #e8ecf1;border-radius:12px;margin-bottom:24px;}\n" +
-                ".nav-container{max-width:1600px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:70px;}\n" +
+                ".nav-container{max-width:2000px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:70px;}\n" +
                 ".logo{display:flex;align-items:center;gap:12px;}\n" +
                 ".logo-icon{width:40px;height:40px;background:linear-gradient(135deg,#1677ff 0%,#4096ff 100%);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;}\n" +
                 ".logo-text{font-size:18px;font-weight:700;color:#1e293b;letter-spacing:1px;}\n" +
@@ -2709,6 +3215,7 @@ public class LogMonitorController {
                 "<a href=\"/monitor/user-management\">登录账户管理</a>\n" +
                 "<a href=\"/monitor/ops-management\">运维管理</a>\n" +
                 "<a href=\"/monitor/queue-management\">发送队列管理</a>\n" +
+                "<a href=\"/monitor/queue-monitor\">队列DR监控</a>\n" +
                 "</div>\n" +
                 "<div class=\"user-info\">\n" +
                 "<span class=\"user-name\" id=\"currentUsername\">加载中...</span>\n" +
@@ -2901,9 +3408,9 @@ public class LogMonitorController {
                 "}\n" +
                 "*{margin:0;padding:0;box-sizing:border-box;}\n" +
                 "body{background:#f5f7fa;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;min-height:100vh;}\n" +
-                ".page-wrap{max-width:1800px;margin:0 auto;padding:20px 24px;}\n" +
+                ".page-wrap{max-width:2000px;margin:0 auto;padding:20px 24px;}\n" +
                 ".navbar{background:#ffffff;box-shadow:0 1px 3px rgba(0,0,0,0.06);border:1px solid #e8ecf1;border-radius:12px;margin-bottom:24px;}\n" +
-                ".nav-container{max-width:1600px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:70px;}\n" +
+                ".nav-container{max-width:2000px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:70px;}\n" +
                 ".logo{display:flex;align-items:center;gap:12px;}\n" +
                 ".logo-icon{width:40px;height:40px;background:linear-gradient(135deg,#1677ff 0%,#4096ff 100%);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;}\n" +
                 ".logo-text{font-size:18px;font-weight:700;color:#1e293b;letter-spacing:1px;}\n" +
@@ -2987,6 +3494,7 @@ public class LogMonitorController {
                 "<a href=\"/monitor/user-management\">登录账户管理</a>\n" +
                 "<a href=\"/monitor/ops-management\">运维管理</a>\n" +
                 "<a href=\"/monitor/queue-management\">发送队列管理</a>\n" +
+                "<a href=\"/monitor/queue-monitor\">队列DR监控</a>\n" +
                 "</div>\n" +
                 "<div class=\"user-info\">\n" +
                 "<span class=\"user-name\" id=\"currentUsername\">加载中...</span>\n" +
@@ -3112,9 +3620,9 @@ public class LogMonitorController {
                 "}\n" +
                 "*{margin:0;padding:0;box-sizing:border-box;}\n" +
                 "body{background:#f5f7fa;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;min-height:100vh;}\n" +
-                ".page-wrap{max-width:1800px;margin:0 auto;padding:20px 24px;}\n" +
+                ".page-wrap{max-width:2000px;margin:0 auto;padding:20px 24px;}\n" +
                 ".navbar{background:#ffffff;box-shadow:0 1px 3px rgba(0,0,0,0.06);border:1px solid #e8ecf1;border-radius:12px;margin-bottom:24px;}\n" +
-                ".nav-container{max-width:1600px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:70px;}\n" +
+                ".nav-container{max-width:2000px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:70px;}\n" +
                 ".logo{display:flex;align-items:center;gap:12px;}\n" +
                 ".logo-icon{width:40px;height:40px;background:linear-gradient(135deg,#1677ff 0%,#4096ff 100%);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;}\n" +
                 ".logo-text{font-size:18px;font-weight:700;color:#1e293b;letter-spacing:1px;}\n" +
@@ -3196,6 +3704,7 @@ public class LogMonitorController {
                 "<a href=\"/monitor/user-management\" class=\"active\">登录账户管理</a>\n" +
                 "<a href=\"/monitor/ops-management\">运维管理</a>\n" +
                 "<a href=\"/monitor/queue-management\">发送队列管理</a>\n" +
+                "<a href=\"/monitor/queue-monitor\">队列DR监控</a>\n" +
                 "</div>\n" +
                 "<div class=\"user-info\">\n" +
                 "<span class=\"user-name\" id=\"currentUsername\">加载中...</span>\n" +
@@ -3569,9 +4078,9 @@ public class LogMonitorController {
                 "}\n" +
                 "*{margin:0;padding:0;box-sizing:border-box;}\n" +
                 "body{background:#f5f7fa;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;min-height:100vh;}\n" +
-                ".page-wrap{max-width:1800px;margin:0 auto;padding:20px 24px;}\n" +
+                ".page-wrap{max-width:2000px;margin:0 auto;padding:20px 24px;}\n" +
                 ".navbar{background:#ffffff;box-shadow:0 1px 3px rgba(0,0,0,0.06);border:1px solid #e8ecf1;border-radius:12px;margin-bottom:24px;}\n" +
-                ".nav-container{max-width:1600px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:70px;}\n" +
+                ".nav-container{max-width:2000px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:70px;}\n" +
                 ".logo{display:flex;align-items:center;gap:12px;}\n" +
                 ".logo-icon{width:40px;height:40px;background:linear-gradient(135deg,#1677ff 0%,#4096ff 100%);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;}\n" +
                 ".logo-text{font-size:18px;font-weight:700;color:#1e293b;letter-spacing:1px;}\n" +
@@ -3668,6 +4177,7 @@ public class LogMonitorController {
                 "<a href=\"/monitor/user-management\">登录账户管理</a>\n" +
                 "<a href=\"/monitor/ops-management\" class=\"active\">运维管理</a>\n" +
                 "<a href=\"/monitor/queue-management\">发送队列管理</a>\n" +
+                "<a href=\"/monitor/queue-monitor\">队列DR监控</a>\n" +
                 "</div>\n" +
                 "<div class=\"user-info\">\n" +
                 "<span class=\"user-name\" id=\"currentUsername\">加载中...</span>\n" +
@@ -4075,9 +4585,9 @@ public class LogMonitorController {
                 "}\n" +
                 "*{margin:0;padding:0;box-sizing:border-box;}\n" +
                 "body{background:#f5f7fa;font-family:'Inter',sans-serif;min-height:100vh;}\n" +
-                ".page-wrap{max-width:1800px;margin:0 auto;padding:20px 24px;}\n" +
+                ".page-wrap{max-width:2000px;margin:0 auto;padding:20px 24px;}\n" +
                 ".navbar{background:#ffffff;box-shadow:0 1px 3px rgba(0,0,0,0.06);border:1px solid #e8ecf1;border-radius:12px;margin-bottom:24px;}\n" +
-                ".nav-container{max-width:1600px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:70px;}\n" +
+                ".nav-container{max-width:2000px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:70px;}\n" +
                 ".logo{display:flex;align-items:center;gap:12px;}\n" +
                 ".logo-icon{width:40px;height:40px;background:linear-gradient(135deg,#1677ff 0%,#4096ff 100%);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;}\n" +
                 ".logo-text{font-size:18px;font-weight:700;color:#1e293b;letter-spacing:1px;}\n" +
@@ -4161,6 +4671,7 @@ public class LogMonitorController {
                 "<a href=\"/monitor/user-management\">登录账户管理</a>\n" +
                 "<a href=\"/monitor/ops-management\">运维管理</a>\n" +
                 "<a href=\"/monitor/queue-management\" class=\"active\">发送队列管理</a>\n" +
+                "<a href=\"/monitor/queue-monitor\">队列DR监控</a>\n" +
                 "</div>\n" +
                 "<div class=\"user-info\">\n" +
                 "<span class=\"user-name\" id=\"currentUsername\">加载中...</span>\n" +
@@ -4263,6 +4774,601 @@ public class LogMonitorController {
                 "document.addEventListener('dblclick',function(e){var row=e.target.closest('.task-row');if(row&&row.dataset.taskId)showTaskDetail(row.dataset.taskId);});\n" +
                 "loadRanking();loadTasks();\n" +
                 "setInterval(loadRanking,30000);\n" +
+                "</script>\n" +
+                "</body>\n" +
+                "</html>";
+    }
+
+    private String generateQueueMonitorHtml() {
+        return "<!DOCTYPE html>\n" +
+                "<html lang=\"zh-CN\">\n" +
+                "<head>\n" +
+                "<meta charset=\"UTF-8\">\n" +
+                "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n" +
+                "<title>Texcell ECCOM WEB 队列任务DR监控</title>\n" +
+                "<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23667eea'/%3E%3Ctext x='50' y='68' font-size='50' text-anchor='middle' fill='white' font-family='Arial'%3E📊%3C/text%3E%3C/svg%3E\">\n" +
+                "<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap\" rel=\"stylesheet\">\n" +
+                "<style>\n" +
+                ":root {\n" +
+                "  --bg-primary: #f5f7fa;\n" +
+                "  --bg-card: #ffffff;\n" +
+                "  --text-primary: #1e293b;\n" +
+                "  --text-secondary: #64748b;\n" +
+                "  --text-muted: #94a3b8;\n" +
+                "  --border-color: #e8ecf1;\n" +
+                "  --shadow: 0 1px 3px rgba(0,0,0,0.06);\n" +
+                "  --navbar-bg: #ffffff;\n" +
+                "  --hover-bg: rgba(0,0,0,0.02);\n" +
+                "  --primary-color: #1677ff;\n" +
+                "  --primary-hover: #4096ff;\n" +
+                "}\n" +
+                "*{margin:0;padding:0;box-sizing:border-box;}\n" +
+                "body{background:#f5f7fa;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;}\n" +
+                ".navbar{background:#ffffff;box-shadow:0 1px 3px rgba(0,0,0,0.06);border-bottom:1px solid #e8ecf1;position:sticky;top:0;z-index:100;}\n" +
+                ".nav-container{max-width:2000px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:70px;}\n" +
+                ".logo{display:flex;align-items:center;gap:12px;}\n" +
+                ".logo-icon{width:40px;height:40px;background:linear-gradient(135deg,#1677ff 0%,#4096ff 100%);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;}\n" +
+                ".logo-text{font-size:18px;font-weight:700;color:#1e293b;letter-spacing:1px;}\n" +
+                ".logo-sub{font-size:11px;color:#94a3b8;margin-left:8px;}\n" +
+                ".menu{display:flex;gap:12px;}\n" +
+                ".menu a{color:#64748b;text-decoration:none;padding:8px 20px;border-radius:40px;transition:all 0.3s;font-weight:500;font-size:14px;}\n" +
+                ".menu a:hover{background:#f1f5f9;color:#1e293b;}\n" +
+                ".menu a.active{background:#e8f0fe;color:#1677ff;box-shadow:none;}\n" +
+                ".user-info{display:flex;align-items:center;gap:20px;}\n" +
+                ".user-name{color:#475569;font-size:14px;}\n" +
+                ".user-role{background:rgba(22,119,255,0.1);padding:4px 12px;border-radius:20px;font-size:12px;color:#1677ff;}\n" +
+                ".logout-btn{background:#f1f5f9;border:1px solid #e8ecf1;color:#475569;padding:8px 20px;border-radius:40px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;}\n" +
+                ".logout-btn:hover{background:#e8ecf1;transform:translateY(-1px);}\n" +
+                ".page-wrap{max-width:2000px;margin:0 auto;padding:32px;}\n" +
+                ".page-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;flex-wrap:wrap;gap:16px;}\n" +
+                ".page-title{font-size:24px;font-weight:700;color:#1e293b;display:flex;align-items:center;gap:12px;}\n" +
+                ".page-title .badge{background:#ff4d4f;color:white;font-size:12px;padding:2px 12px;border-radius:20px;font-weight:500;}\n" +
+                ".page-title .badge.warning{background:#faad14;}\n" +
+                ".stats-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:20px;margin-bottom:24px;}\n" +
+                ".stat-card{background:#ffffff;border-radius:12px;padding:20px;border:1px solid #e8ecf1;box-shadow:0 1px 3px rgba(0,0,0,0.04);}\n" +
+                ".stat-number{font-size:28px;font-weight:700;color:#1677ff;}\n" +
+                ".stat-label{font-size:13px;color:#94a3b8;margin-top:4px;}\n" +
+                ".stat-sub{font-size:12px;color:#94a3b8;margin-top:2px;}\n" +
+                ".search-card{background:#ffffff;border-radius:12px;padding:20px 24px;margin-bottom:24px;border:1px solid #e8ecf1;box-shadow:0 1px 3px rgba(0,0,0,0.04);}\n" +
+                ".search-row{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end;}\n" +
+                ".search-group{display:flex;flex-direction:column;gap:6px;}\n" +
+                ".search-group label{font-size:12px;color:#64748b;font-weight:500;}\n" +
+                ".search-group input,.search-group select{padding:8px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;min-width:150px;transition:all 0.3s;background:#ffffff;color:#1e293b;}\n" +
+                ".search-group input:focus,.search-group select:focus{outline:none;border-color:#1677ff;box-shadow:0 0 0 3px rgba(22,119,255,0.1);}\n" +
+                ".search-actions{display:flex;gap:10px;margin-left:auto;align-items:center;}\n" +
+                ".search-btn{background:linear-gradient(135deg,#1677ff 0%,#4096ff 100%);color:white;border:none;padding:8px 20px;border-radius:8px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;}\n" +
+                ".search-btn:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(22,119,255,0.3);}\n" +
+                ".reset-btn{background:#f1f5f9;border:1px solid #d1d5db;padding:8px 20px;border-radius:8px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;color:#64748b;}\n" +
+                ".reset-btn:hover{background:#e8ecf1;}\n" +
+                ".scan-btn{background:linear-gradient(135deg,#52c41a 0%,#389e0d 100%);color:white;border:none;padding:8px 20px;border-radius:8px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;}\n" +
+                ".scan-btn:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(82,196,26,0.3);}\n" +
+                ".log-card{background:#ffffff;border-radius:12px;overflow:auto;border:1px solid #e8ecf1;box-shadow:0 1px 3px rgba(0,0,0,0.04);}\n" +
+                ".log-table{width:100%;border-collapse:collapse;min-width:1200px;}\n" +
+                ".log-table th{background:#f8fafc;padding:12px 16px;text-align:left;font-size:12px;font-weight:600;color:#64748b;border-bottom:1px solid #e8ecf1;white-space:nowrap;}\n" +
+                ".log-table td{padding:12px 16px;font-size:13px;color:#1e293b;border-bottom:1px solid #e8ecf1;vertical-align:middle;}\n" +
+                ".log-table tr:hover td{background:#f8fafc;}\n" +
+                ".status-badge{display:inline-block;padding:2px 10px;border-radius:12px;font-size:11px;font-weight:500;}\n" +
+                ".status-pending{background:rgba(250,173,20,0.15);color:#faad14;}\n" +
+                ".status-processed{background:rgba(82,196,26,0.15);color:#52c41a;}\n" +
+                ".status-ignored{background:rgba(148,163,184,0.15);color:#94a3b8;}\n" +
+                ".alert-warning{background:rgba(250,173,20,0.15);color:#faad14;}\n" +
+                ".alert-critical{background:rgba(255,77,79,0.15);color:#ff4d4f;}\n" +
+                ".action-btn{padding:4px 12px;border-radius:6px;cursor:pointer;font-size:12px;transition:all 0.3s;border:none;}\n" +
+                ".action-btn.fix-btn{background:#1677ff;color:white;}\n" +
+                ".action-btn.fix-btn:hover{background:#4096ff;}\n" +
+                ".action-btn.ignore-btn{background:#f1f5f9;color:#64748b;border:1px solid #d1d5db;}\n" +
+                ".action-btn.ignore-btn:hover{background:#e8ecf1;}\n" +
+                ".action-btn:disabled{opacity:0.5;cursor:not-allowed;}\n" +
+                ".pagination{display:flex;justify-content:center;gap:12px;padding:16px;border-top:1px solid #e8ecf1;flex-wrap:wrap;}\n" +
+                ".page-btn{padding:6px 14px;border:1px solid #d1d5db;background:#ffffff;color:#1e293b;border-radius:8px;cursor:pointer;font-size:12px;transition:all 0.3s;}\n" +
+                ".page-btn:hover:not(:disabled){border-color:#1677ff;color:#1677ff;}\n" +
+                ".page-btn:disabled{opacity:0.5;cursor:not-allowed;background:#f1f5f9;}\n" +
+                ".page-info{font-size:12px;color:#94a3b8;align-self:center;}\n" +
+                ".empty{text-align:center;padding:48px;color:#94a3b8;}\n" +
+                ".footer{text-align:center;padding:32px 0;color:#94a3b8;font-size:12px;border-top:1px solid #e8ecf1;margin-top:16px;}\n" +
+                ".modal{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:10000;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);}\n" +
+                ".modal-content{background:#ffffff;border-radius:12px;width:550px;max-width:90%;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,0.15);}\n" +
+                ".modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid #e8ecf1;}\n" +
+                ".modal-header h3{color:#1e293b;margin:0;}\n" +
+                ".modal-close{background:none;border:none;font-size:28px;cursor:pointer;color:#94a3b8;}\n" +
+                ".modal-close:hover{color:#1e293b;}\n" +
+                ".modal-body{color:#475569;font-size:14px;line-height:1.8;margin-bottom:20px;}\n" +
+                ".modal-body .highlight{color:#ff4d4f;font-weight:600;}\n" +
+                ".modal-body code{background:#f1f5f9;padding:2px 8px;border-radius:4px;font-size:13px;word-break:break-all;}\n" +
+                ".modal-buttons{display:flex;gap:12px;justify-content:flex-end;margin-top:16px;padding-top:16px;border-top:1px solid #e8ecf1;}\n" +
+                ".modal-buttons .confirm-btn{background:linear-gradient(135deg,#1677ff 0%,#4096ff 100%);color:white;border:none;padding:8px 24px;border-radius:8px;cursor:pointer;font-weight:500;}\n" +
+                ".modal-buttons .confirm-btn:hover{box-shadow:0 4px 12px rgba(22,119,255,0.3);}\n" +
+                ".modal-buttons .cancel-btn{background:#f1f5f9;border:1px solid #d1d5db;padding:8px 24px;border-radius:8px;cursor:pointer;color:#64748b;}\n" +
+                ".modal-buttons .cancel-btn:hover{background:#e8ecf1;}\n" +
+                ".modal-content-wide{width:650px !important;max-width:95% !important;}\n" +
+                ".numbers-info{display:flex;gap:24px;flex-wrap:wrap;font-size:13px;color:#475569;margin-bottom:12px;}\n" +
+                ".numbers-info code{background:#f1f5f9;padding:2px 8px;border-radius:4px;font-size:12px;word-break:break-all;}\n" +
+                ".numbers-info .highlight{color:#ff4d4f;font-weight:600;}\n" +
+                ".numbers-table-wrap{border:1px solid #e8ecf1;border-radius:8px;max-height:400px;overflow:auto;}\n" +
+                ".numbers-table-wrap table{width:100%;border-collapse:collapse;}\n" +
+                ".numbers-table-wrap th{position:sticky;top:0;background:#f8fafc;z-index:1;padding:10px 16px;text-align:left;font-size:12px;font-weight:600;color:#64748b;border-bottom:1px solid #e8ecf1;}\n" +
+                ".numbers-table-wrap td{padding:8px 16px;font-size:13px;color:#1e293b;border-bottom:1px solid #e8ecf1;}\n" +
+                ".numbers-table-wrap tr:hover td{background:#f8fafc;}\n" +
+                ".numbers-pagination{display:flex;justify-content:center;align-items:center;gap:12px;padding:12px 0 0 0;flex-wrap:wrap;}\n" +
+                ".numbers-pagination .page-btn{padding:4px 12px;border:1px solid #d1d5db;background:#ffffff;color:#1e293b;border-radius:6px;cursor:pointer;font-size:12px;transition:all 0.3s;}\n" +
+                ".numbers-pagination .page-btn:hover:not(:disabled){border-color:#1677ff;color:#1677ff;}\n" +
+                ".numbers-pagination .page-btn:disabled{opacity:0.5;cursor:not-allowed;background:#f1f5f9;}\n" +
+                ".numbers-pagination .page-info{font-size:12px;color:#94a3b8;}\n" +
+                ".numbers-pagination .total-info{font-size:12px;color:#94a3b8;margin-right:8px;}\n" +
+                "@media(max-width:1024px){.stats-grid{grid-template-columns:repeat(3,1fr);}}\n" +
+                "@media(max-width:768px){.stats-grid{grid-template-columns:repeat(2,1fr);}.search-actions{margin-left:0;flex-wrap:wrap;}.nav-container{padding:0 20px;}.menu a{padding:6px 12px;font-size:12px;}.page-wrap{padding:20px;}.modal-content-wide{width:95% !important;}}\n" +
+                "@media(max-width:480px){.stats-grid{grid-template-columns:1fr;}}\n" +
+                "</style>\n" +
+                "</head>\n" +
+                "<body>\n" +
+                "<div class=\"navbar\">\n" +
+                "<div class=\"nav-container\">\n" +
+                "<div class=\"logo\">\n" +
+                "<div class=\"logo-icon\">📊</div>\n" +
+                "<div class=\"logo-text\">ECCOM WEB 监控管理系统</div>\n" +
+                "<div class=\"logo-sub\">v3.0</div>\n" +
+                "</div>\n" +
+                "<div class=\"menu\">\n" +
+                "<a href=\"/monitor/index\">首页</a>\n" +
+                "<a href=\"/monitor/dashboard\">服务监控</a>\n" +
+                "<a href=\"/monitor/login-audit\">登录审计</a>\n" +
+                "<a href=\"/monitor/number-files\">号码备份</a>\n" +
+                "<a href=\"/monitor/customer-management\">API客户管理</a>\n" +
+                "<a href=\"/monitor/user-management\">登录账户管理</a>\n" +
+                "<a href=\"/monitor/ops-management\">运维管理</a>\n" +
+                "<a href=\"/monitor/queue-management\">发送队列管理</a>\n" +
+                "<a href=\"/monitor/queue-monitor\" class=\"active\">队列DR监控</a>\n" +
+                "</div>\n" +
+                "<div class=\"user-info\">\n" +
+                "<span class=\"user-name\" id=\"currentUsername\">加载中...</span>\n" +
+                "<span class=\"user-role\" id=\"currentUserRole\">加载中...</span>\n" +
+                "<button class=\"logout-btn\" onclick=\"logout()\">退出</button>\n" +
+                "</div>\n" +
+                "</div>\n" +
+                "</div>\n" +
+                "<div class=\"page-wrap\">\n" +
+                "<div class=\"page-header\">\n" +
+                "<div class=\"page-title\">\n" +
+                "📨 队列任务DR监控\n" +
+                "<span class=\"badge warning\" id=\"pendingBadge\">加载中...</span>\n" +
+                "</div>\n" +
+                "<button class=\"scan-btn\" onclick=\"manualScan()\">🔄 手动扫描</button>\n" +
+                "</div>\n" +
+                "<div class=\"stats-grid\" id=\"statsGrid\">\n" +
+                "<div class=\"stat-card\"><div class=\"stat-number\" id=\"statPending\">-</div><div class=\"stat-label\">待处理告警</div></div>\n" +
+                "<div class=\"stat-card\"><div class=\"stat-number\" id=\"statWarning\">-</div><div class=\"stat-label\">本周告警</div></div>\n" +
+                "<div class=\"stat-card\"><div class=\"stat-number\" id=\"statCritical\">-</div><div class=\"stat-label\">较上周</div></div>\n" +
+                "<div class=\"stat-card\"><div class=\"stat-number\" id=\"statProcessed\">-</div><div class=\"stat-label\">本月已处理</div></div>\n" +
+                "<div class=\"stat-card\"><div class=\"stat-number\" id=\"statAvgTime\">-</div><div class=\"stat-label\">平均处理时长</div></div>\n" +
+                "</div>\n" +
+                "<div class=\"search-card\">\n" +
+                "<div class=\"search-row\">\n" +
+                "<div class=\"search-group\"><label>🆔 任务ID</label><input type=\"text\" id=\"searchTaskId\" placeholder=\"模糊查询\"></div>\n" +
+                "<div class=\"search-group\"><label>👤 客户账号</label><input type=\"text\" id=\"searchSubAccount\" placeholder=\"模糊查询\"></div>\n" +
+                "<div class=\"search-group\"><label>📊 状态</label><select id=\"searchStatus\"><option value=\"\">全部</option><option value=\"PENDING\">待处理</option><option value=\"PROCESSED\">已处理</option><option value=\"IGNORED\">已忽略</option></select></div>\n" +
+                "<div class=\"search-group\"><label>🔔 告警级别</label><select id=\"searchAlertLevel\"><option value=\"\">全部</option><option value=\"WARNING\">警告(≥30分钟)</option><option value=\"CRITICAL\">严重(≥60分钟)</option></select></div>\n" +
+                "<div class=\"search-actions\">\n" +
+                "<button class=\"search-btn\" onclick=\"searchLogs()\">🔍 查询</button>\n" +
+                "<button class=\"reset-btn\" onclick=\"resetSearch()\">🔄 重置</button>\n" +
+                "</div>\n" +
+                "</div>\n" +
+                "</div>\n" +
+                "<div class=\"log-card\">\n" +
+                "<table class=\"log-table\">\n" +
+                "<thead>\n" +
+                "<tr>\n" +
+                "<th>任务ID</th>\n" +
+                "<th>客户账号</th>\n" +
+                "<th>任务名称</th>\n" +
+                "<th>总发送数</th>\n" +
+                "<th>已提交</th>\n" +
+                "<th>成功</th>\n" +
+                "<th>失败</th>\n" +
+                "<th>任务时间</th>\n" +
+                "<th>DR未更新数</th>\n" +
+                "<th>已过时间</th>\n" +
+                "<th>告警级别</th>\n" +
+                "<th>状态</th>\n" +
+                "<th>操作</th>\n" +
+                "</tr>\n" +
+                "</thead>\n" +
+                "<tbody id=\"logBody\"><tr><td colspan=\"13\" class=\"empty\">加载中...</td></tr></tbody>\n" +
+                "</table>\n" +
+                "<div class=\"pagination\" id=\"pagination\"></div>\n" +
+                "</div>\n" +
+                "<div class=\"footer\">📨 队列任务DR监控 | 任务已完成但DR未更新 | 每10分钟自动扫描</div>\n" +
+                "</div>\n" +
+                "<!-- 确认弹窗 -->\n" +
+                "<div id=\"confirmModal\" class=\"modal\" style=\"display:none;\">\n" +
+                "<div class=\"modal-content\">\n" +
+                "<div class=\"modal-header\">\n" +
+                "<h3>⚠️ 确认执行修复</h3>\n" +
+                "<button class=\"modal-close\" onclick=\"closeModal()\">&times;</button>\n" +
+                "</div>\n" +
+                "<div class=\"modal-body\" id=\"modalBody\">\n" +
+                "<p>确认对以下任务执行修复？</p>\n" +
+                "<p><strong>任务ID：</strong><code id=\"modalTaskId\">-</code></p>\n" +
+                "<p><strong>客户账号：</strong><span id=\"modalSubAccount\">-</span></p>\n" +
+                "<p><strong>总发送数：</strong><span id=\"modalTotalCount\">-</span></p>\n" +
+                "<p><strong>DR未更新数：</strong><span class=\"highlight\" id=\"modalPendingCount\">-</span></p>\n" +
+                "<p style=\"color:#faad14;margin-top:12px;\">📌 请确认此任务的短信是否已经全部发送出去！</p>\n" +
+                "<p style=\"color:#ff4d4f;\">⚠️ 执行后会将 <code>RecvDRStatus</code> 更新为 <code>DELIVRD</code>，<code>RecvDRError</code> 更新为 <code>000</code></p>\n" +
+                "</div>\n" +
+                "<div class=\"modal-buttons\">\n" +
+                "<button class=\"confirm-btn\" onclick=\"confirmFix()\">✅ 确认执行</button>\n" +
+                "<button class=\"cancel-btn\" onclick=\"closeModal()\">取消</button>\n" +
+                "</div>\n" +
+                "</div>\n" +
+                "</div>\n" +
+                "<!-- 查看未更新号码弹窗 -->\n" +
+                "<div id=\"numbersModal\" class=\"modal\" style=\"display:none;\">\n" +
+                "<div class=\"modal-content modal-content-wide\">\n" +
+                "<div class=\"modal-header\">\n" +
+                "<h3>未更新DR号码列表</h3>\n" +
+                "<button class=\"modal-close\" onclick=\"closeNumbersModal()\">&times;</button>\n" +
+                "</div>\n" +
+                "<div class=\"modal-body\" id=\"numbersModalBody\">\n" +
+                "<div class=\"numbers-info\">\n" +
+                "<span><strong>任务ID：</strong><code id=\"numbersTaskId\">-</code></span>\n" +
+                "<span><strong>未更新数：</strong><span class=\"highlight\" id=\"numbersTotalCount\">0</span></span>\n" +
+                "</div>\n" +
+                "<div class=\"numbers-table-wrap\">\n" +
+                "<table>\n" +
+                "<thead>\n" +
+                "<tr>\n" +
+                "<th style=\"width:60px;text-align:center;\">序号</th>\n" +
+                "<th>手机号码</th>\n" +
+                "</tr>\n" +
+                "</thead>\n" +
+                "<tbody id=\"numbersBody\">\n" +
+                "<tr><td colspan=\"2\" style=\"padding:30px;text-align:center;color:#94a3b8;\">加载中...</td></tr>\n" +
+                "</tbody>\n" +
+                "</table>\n" +
+                "</div>\n" +
+                "<div class=\"numbers-pagination\" id=\"numbersPagination\"></div>\n" +
+                "</div>\n" +
+                "<div class=\"modal-buttons\" style=\"border-top:none;padding-top:0;margin-top:0;\">\n" +
+                "<button class=\"cancel-btn\" onclick=\"closeNumbersModal()\">关闭</button>\n" +
+                "</div>\n" +
+                "</div>\n" +
+                "</div>\n" +
+                "<script>\n" +
+                "var page = 1, size = 20, totalPages = 1;\n" +
+                "var currentTaskId = null;\n" +
+                "var numbersTaskId = null;\n" +
+                "var numbersPage = 1;\n" +
+                "var numbersSize = 10;\n" +
+                "var numbersTotalPages = 1;\n" +
+                "\n" +
+                "function logout(){ fetch('/monitor/logout').then(function(){ location.href = '/monitor/login'; }); }\n" +
+                "\n" +
+                "function getCurrentUserInfo() {\n" +
+                "    fetch('/api/monitor/current-user?secret=dn17ORUwf36Znl')\n" +
+                "        .then(function(res) { return res.json(); })\n" +
+                "        .then(function(data) {\n" +
+                "            if (data.code === 200) {\n" +
+                "                document.getElementById('currentUsername').innerText = data.data.username;\n" +
+                "                var roleSpan = document.getElementById('currentUserRole');\n" +
+                "                var roleText = data.data.role === 'ADMIN' ? '👑 管理员' : '🔧 NOC';\n" +
+                "                roleSpan.innerText = roleText;\n" +
+                "            }\n" +
+                "        }).catch(function(err) { console.error('获取用户信息失败:', err); });\n" +
+                "}\n" +
+                "getCurrentUserInfo();\n" +
+                "\n" +
+                "function loadStats() {\n" +
+                "    fetch('/api/monitor/queue-monitor/stats?secret=dn17ORUwf36Znl')\n" +
+                "        .then(function(res) { return res.json(); })\n" +
+                "        .then(function(data) {\n" +
+                "            if (data.code === 200) {\n" +
+                "                var d = data.data;\n" +
+                "                document.getElementById('statPending').innerText = d.pendingCount || 0;\n" +
+                "                document.getElementById('pendingBadge').innerHTML = '待处理 ' + (d.pendingCount || 0);\n" +
+                "                var weekCompare = d.weekCompare || {};\n" +
+                "                document.getElementById('statWarning').innerText = weekCompare.this_week_count || 0;\n" +
+                "                var lastWeek = weekCompare.last_week_count || 0;\n" +
+                "                var thisWeek = weekCompare.this_week_count || 0;\n" +
+                "                var trend = thisWeek - lastWeek;\n" +
+                "                var trendText = trend > 0 ? '↑ +' + trend : (trend < 0 ? '↓ ' + trend : '持平');\n" +
+                "                document.getElementById('statCritical').innerText = trendText;\n" +
+                "                var monthStats = d.monthStatsByStatus || [];\n" +
+                "                var processed = 0;\n" +
+                "                for (var i = 0; i < monthStats.length; i++) {\n" +
+                "                    if (monthStats[i].status === 'PROCESSED') processed = monthStats[i].count;\n" +
+                "                }\n" +
+                "                document.getElementById('statProcessed').innerText = processed;\n" +
+                "                var avgTime = d.avgHandleTime;\n" +
+                "                var avgText = avgTime ? Math.round(avgTime.avg_handle_minutes) + '分钟' : '-';\n" +
+                "                document.getElementById('statAvgTime').innerText = avgText;\n" +
+                "            }\n" +
+                "        }).catch(function(err) { console.error('加载统计失败:', err); });\n" +
+                "}\n" +
+                "\n" +
+                "function searchLogs() { page = 1; loadLogs(); }\n" +
+                "\n" +
+                "function resetSearch() {\n" +
+                "    document.getElementById('searchTaskId').value = '';\n" +
+                "    document.getElementById('searchSubAccount').value = '';\n" +
+                "    document.getElementById('searchStatus').value = '';\n" +
+                "    document.getElementById('searchAlertLevel').value = '';\n" +
+                "    page = 1;\n" +
+                "    loadLogs();\n" +
+                "}\n" +
+                "\n" +
+                "function loadLogs() {\n" +
+                "    var taskId = document.getElementById('searchTaskId').value;\n" +
+                "    var subAccount = document.getElementById('searchSubAccount').value;\n" +
+                "    var status = document.getElementById('searchStatus').value;\n" +
+                "    var alertLevel = document.getElementById('searchAlertLevel').value;\n" +
+                "    var url = '/api/monitor/queue-monitor/list?secret=dn17ORUwf36Znl&page=' + page + '&size=' + size;\n" +
+                "    if (taskId) url += '&taskId=' + encodeURIComponent(taskId);\n" +
+                "    if (subAccount) url += '&subAccount=' + encodeURIComponent(subAccount);\n" +
+                "    if (status) url += '&status=' + status;\n" +
+                "    if (alertLevel) url += '&alertLevel=' + alertLevel;\n" +
+                "    fetch(url).then(function(res) { return res.json(); })\n" +
+                "        .then(function(data) {\n" +
+                "            if (data.code === 200) {\n" +
+                "                renderTable(data.data || []);\n" +
+                "                totalPages = data.totalPages || 1;\n" +
+                "                renderPagination();\n" +
+                "            } else {\n" +
+                "                document.getElementById('logBody').innerHTML = '<tr><td colspan=\"13\" class=\"empty\">加载失败: ' + (data.msg || '错误') + '</td></tr>';\n" +
+                "            }\n" +
+                "        }).catch(function() {\n" +
+                "            document.getElementById('logBody').innerHTML = '<tr><td colspan=\"13\" class=\"empty\">加载失败: 网络错误</td></tr>';\n" +
+                "        });\n" +
+                "}\n" +
+                "\n" +
+                "function renderTable(list) {\n" +
+                "    var tbody = document.getElementById('logBody');\n" +
+                "    if (!tbody) return;\n" +
+                "    if (!list || list.length === 0) {\n" +
+                "        tbody.innerHTML = '<tr><td colspan=\"13\" class=\"empty\">暂无数据</td></tr>';\n" +
+                "        return;\n" +
+                "    }\n" +
+                "    var html = '';\n" +
+                "    var statusMap = { 'PENDING': '待处理', 'PROCESSED': '已处理', 'IGNORED': '已忽略' };\n" +
+                "    var statusClassMap = { 'PENDING': 'status-pending', 'PROCESSED': 'status-processed', 'IGNORED': 'status-ignored' };\n" +
+                "    var alertMap = { 'WARNING': '警告', 'CRITICAL': '严重' };\n" +
+                "    var alertClassMap = { 'WARNING': 'alert-warning', 'CRITICAL': 'alert-critical' };\n" +
+                "    for (var i = 0; i < list.length; i++) {\n" +
+                "        var log = list[i];\n" +
+                "        var canFix = log.status === 'PENDING';\n" +
+                "        var canIgnore = log.status === 'PENDING';\n" +
+                "        var pendingCount = log.detailPendingCount || 0;\n" +
+                "        html += '<tr>' +\n" +
+                "            '<td style=\"font-family:monospace;font-size:12px;\" title=\"' + escapeHtml(log.taskId) + '\">' + escapeHtml((log.taskId || '').substring(0, 25)) + '...</td>' +\n" +
+                "            '<td>' + escapeHtml(log.subAccount || '-') + '</td>' +\n" +
+                "            '<td>' + escapeHtml((log.taskName || '-').substring(0, 30)) + '</td>' +\n" +
+                "            '<td>' + (log.totalCount || 0) + '</td>' +\n" +
+                "            '<td>' + (log.submitSuccCount || 0) + '</td>' +\n" +
+                "            '<td>' + (log.drSuccCount || 0) + '</td>' +\n" +
+                "            '<td>' + (log.drFailCount || 0) + '</td>' +\n" +
+                "            '<td>' + (log.taskTime ? formatDateTime(log.taskTime) : '-') + '</td>' +\n" +
+                "            '<td>' +\n" +
+                "                (pendingCount > 0 \n" +
+                "                    ? '<a href=\"javascript:void(0)\" style=\"color:#ff4d4f;font-weight:600;text-decoration:underline;cursor:pointer;\" onclick=\"showPendingNumbers(\\'' + escapeHtml(log.taskId) + '\\', ' + pendingCount + ')\">' + pendingCount + '</a>' \n" +
+                "                    : '<span style=\"color:#94a3b8;\">0</span>'\n" +
+                "                ) +\n" +
+                "            '</td>' +\n" +
+                "            '<td>' + (log.elapsedMinutes || 0) + '分钟</td>' +\n" +
+                "            '<td><span class=\"status-badge ' + alertClassMap[log.alertLevel] + '\">' + alertMap[log.alertLevel] + '</span></td>' +\n" +
+                "            '<td><span class=\"status-badge ' + statusClassMap[log.status] + '\">' + statusMap[log.status] + '</span></td>' +\n" +
+                "            '<td>';\n" +
+                "        if (canFix) {\n" +
+                "            html += '<button class=\"action-btn fix-btn\" onclick=\"showConfirmModal(\\'' + escapeHtml(log.taskId) + '\\', \\'' + escapeHtml(log.subAccount || '-') + '\\', ' + (log.totalCount || 0) + ', ' + pendingCount + ')\">修复</button> ';\n" +
+                "        }\n" +
+                "        if (canIgnore) {\n" +
+                "            html += '<button class=\"action-btn ignore-btn\" onclick=\"ignoreTask(\\'' + escapeHtml(log.taskId) + '\\')\">忽略</button>';\n" +
+                "        }\n" +
+                "        if (!canFix && !canIgnore) {\n" +
+                "            html += '-';\n" +
+                "        }\n" +
+                "        html += '</td></tr>';\n" +
+                "    }\n" +
+                "    tbody.innerHTML = html;\n" +
+                "}\n" +
+                "\n" +
+                "function renderPagination() {\n" +
+                "    var div = document.getElementById('pagination');\n" +
+                "    if (!div) return;\n" +
+                "    if (totalPages <= 1) { div.innerHTML = ''; return; }\n" +
+                "    var html = '<button class=\"page-btn\" onclick=\"goPage(1)\"' + (page === 1 ? 'disabled' : '') + '>首页</button>' +\n" +
+                "        '<button class=\"page-btn\" onclick=\"goPage(' + (page - 1) + ')\"' + (page === 1 ? 'disabled' : '') + '>上一页</button>' +\n" +
+                "        '<span class=\"page-info\">第 ' + page + ' / ' + totalPages + ' 页</span>' +\n" +
+                "        '<button class=\"page-btn\" onclick=\"goPage(' + (page + 1) + ')\"' + (page === totalPages ? 'disabled' : '') + '>下一页</button>' +\n" +
+                "        '<button class=\"page-btn\" onclick=\"goPage(' + totalPages + ')\"' + (page === totalPages ? 'disabled' : '') + '>尾页</button>';\n" +
+                "    div.innerHTML = html;\n" +
+                "}\n" +
+                "\n" +
+                "function goPage(p) { page = p; loadLogs(); }\n" +
+                "\n" +
+                "function showConfirmModal(taskId, subAccount, totalCount, pendingCount) {\n" +
+                "    currentTaskId = taskId;\n" +
+                "    document.getElementById('modalTaskId').innerText = taskId;\n" +
+                "    document.getElementById('modalSubAccount').innerText = subAccount;\n" +
+                "    document.getElementById('modalTotalCount').innerText = totalCount;\n" +
+                "    document.getElementById('modalPendingCount').innerText = pendingCount;\n" +
+                "    document.getElementById('confirmModal').style.display = 'flex';\n" +
+                "}\n" +
+                "\n" +
+                "function closeModal() {\n" +
+                "    document.getElementById('confirmModal').style.display = 'none';\n" +
+                "    currentTaskId = null;\n" +
+                "}\n" +
+                "\n" +
+                "function formatDateTime(dateStr) {\n" +
+                "    if (!dateStr) return '-';\n" +
+                "    return dateStr.replace('T', ' ').substring(0, 19);\n" +
+                "}\n" +
+                "\n" +
+                "function confirmFix() {\n" +
+                "    if (!currentTaskId) return;\n" +
+                "    var btn = document.querySelector('.modal-buttons .confirm-btn');\n" +
+                "    btn.disabled = true;\n" +
+                "    btn.innerText = '执行中...';\n" +
+                "    fetch('/api/monitor/queue-monitor/fix?secret=dn17ORUwf36Znl', {\n" +
+                "        method: 'POST',\n" +
+                "        headers: { 'Content-Type': 'application/json' },\n" +
+                "        body: JSON.stringify({ taskId: currentTaskId })\n" +
+                "    }).then(function(res) { return res.json(); })\n" +
+                "      .then(function(data) {\n" +
+                "          btn.disabled = false;\n" +
+                "          btn.innerText = '确认执行';\n" +
+                "          if (data.code === 200) {\n" +
+                "              alert('✅ 修复成功！更新了 ' + data.updated + ' 条记录');\n" +
+                "              closeModal();\n" +
+                "              loadLogs();\n" +
+                "              loadStats();\n" +
+                "          } else {\n" +
+                "              alert('❌ 修复失败: ' + (data.msg || '未知错误'));\n" +
+                "          }\n" +
+                "      }).catch(function(err) {\n" +
+                "          btn.disabled = false;\n" +
+                "          btn.innerText = '确认执行';\n" +
+                "          alert('❌ 网络错误: ' + err.message);\n" +
+                "      });\n" +
+                "}\n" +
+                "\n" +
+                "function ignoreTask(taskId) {\n" +
+                "    if (!confirm('确定要忽略该告警吗？')) return;\n" +
+                "    fetch('/api/monitor/queue-monitor/ignore?secret=dn17ORUwf36Znl', {\n" +
+                "        method: 'POST',\n" +
+                "        headers: { 'Content-Type': 'application/json' },\n" +
+                "        body: JSON.stringify({ taskId: taskId })\n" +
+                "    }).then(function(res) { return res.json(); })\n" +
+                "      .then(function(data) {\n" +
+                "          if (data.code === 200) {\n" +
+                "              alert('已忽略该告警');\n" +
+                "              loadLogs();\n" +
+                "              loadStats();\n" +
+                "          } else {\n" +
+                "              alert('操作失败: ' + (data.msg || '未知错误'));\n" +
+                "          }\n" +
+                "      }).catch(function(err) {\n" +
+                "          alert('网络错误: ' + err.message);\n" +
+                "      });\n" +
+                "}\n" +
+                "\n" +
+                "function manualScan() {\n" +
+                "    if (!confirm('确定要手动扫描超时未更新DR的队列任务吗？')) return;\n" +
+                "    var btn = document.querySelector('.scan-btn');\n" +
+                "    btn.disabled = true;\n" +
+                "    btn.innerText = '扫描中...';\n" +
+                "    fetch('/api/monitor/queue-monitor/scan?secret=dn17ORUwf36Znl', { method: 'POST' })\n" +
+                "        .then(function(res) { return res.json(); })\n" +
+                "        .then(function(data) {\n" +
+                "            btn.disabled = false;\n" +
+                "            btn.innerText = '🔄 手动扫描';\n" +
+                "            if (data.code === 200) {\n" +
+                "                alert(data.msg);\n" +
+                "                loadLogs();\n" +
+                "                loadStats();\n" +
+                "            } else {\n" +
+                "                alert('扫描失败: ' + (data.msg || '未知错误'));\n" +
+                "            }\n" +
+                "        }).catch(function(err) {\n" +
+                "            btn.disabled = false;\n" +
+                "            btn.innerText = '🔄 手动扫描';\n" +
+                "            alert('网络错误: ' + err.message);\n" +
+                "        });\n" +
+                "}\n" +
+                "\n" +
+                "function escapeHtml(s) {\n" +
+                "    if (!s) return '';\n" +
+                "    return String(s).replace(/[&<>]/g, function(m) {\n" +
+                "        if (m === '&') return '&amp;';\n" +
+                "        if (m === '<') return '&lt;';\n" +
+                "        if (m === '>') return '&gt;';\n" +
+                "        return m;\n" +
+                "    });\n" +
+                "}\n" +
+                "\n" +
+                "function showPendingNumbers(taskId, totalCount) {\n" +
+                "    numbersTaskId = taskId;\n" +
+                "    numbersPage = 1;\n" +
+                "    document.getElementById('numbersTaskId').innerText = taskId;\n" +
+                "    document.getElementById('numbersTotalCount').innerText = totalCount || 0;\n" +
+                "    document.getElementById('numbersModal').style.display = 'flex';\n" +
+                "    loadNumbers();\n" +
+                "}\n" +
+                "\n" +
+                "function closeNumbersModal() {\n" +
+                "    document.getElementById('numbersModal').style.display = 'none';\n" +
+                "    numbersTaskId = null;\n" +
+                "}\n" +
+                "\n" +
+                "function loadNumbers() {\n" +
+                "    if (!numbersTaskId) return;\n" +
+                "    var url = '/api/monitor/queue-monitor/pending-numbers?secret=dn17ORUwf36Znl&taskId=' + encodeURIComponent(numbersTaskId) + '&page=' + numbersPage + '&size=' + numbersSize;\n" +
+                "    fetch(url)\n" +
+                "        .then(function(res) { return res.json(); })\n" +
+                "        .then(function(data) {\n" +
+                "            if (data.code === 200) {\n" +
+                "                renderNumbers(data.data || [], data.total || 0, data.totalPages || 1);\n" +
+                "            } else {\n" +
+                "                document.getElementById('numbersBody').innerHTML = '<tr><td colspan=\"2\" style=\"padding:30px;text-align:center;color:#ff4d4f;\">加载失败: ' + (data.msg || '错误') + '</td></tr>';\n" +
+                "            }\n" +
+                "        })\n" +
+                "        .catch(function() {\n" +
+                "            document.getElementById('numbersBody').innerHTML = '<tr><td colspan=\"2\" style=\"padding:30px;text-align:center;color:#ff4d4f;\">加载失败: 网络错误</td></tr>';\n" +
+                "        });\n" +
+                "}\n" +
+                "\n" +
+                "function renderNumbers(list, total, totalPages) {\n" +
+                "    var tbody = document.getElementById('numbersBody');\n" +
+                "    if (!tbody) return;\n" +
+                "    if (!list || list.length === 0) {\n" +
+                "        tbody.innerHTML = '<tr><td colspan=\"2\" style=\"padding:30px;text-align:center;color:#94a3b8;\">暂无数据</td></tr>';\n" +
+                "        renderNumbersPagination(0, totalPages);\n" +
+                "        return;\n" +
+                "    }\n" +
+                "    var html = '';\n" +
+                "    var startIndex = (numbersPage - 1) * numbersSize + 1;\n" +
+                "    for (var i = 0; i < list.length; i++) {\n" +
+                "        var item = list[i];\n" +
+                "        var mobileNumber = item.mobileNumber || '-';\n" +
+                "        html += '<tr>' +\n" +
+                "            '<td style=\"text-align:center;color:#94a3b8;font-size:12px;\">' + (startIndex + i) + '</td>' +\n" +
+                "            '<td style=\"font-family:monospace;font-size:13px;\">' + escapeHtml(mobileNumber) + '</td>' +\n" +
+                "            '</tr>';\n" +
+                "    }\n" +
+                "    tbody.innerHTML = html;\n" +
+                "    numbersTotalPages = totalPages || 1;\n" +
+                "    renderNumbersPagination(total, totalPages);\n" +
+                "}\n" +
+                "\n" +
+                "function renderNumbersPagination(total, totalPages) {\n" +
+                "    var div = document.getElementById('numbersPagination');\n" +
+                "    if (!div) return;\n" +
+                "    var totalCount = document.getElementById('numbersTotalCount').innerText || 0;\n" +
+                "    if (!totalPages || totalPages <= 1) {\n" +
+                "        div.innerHTML = '<span class=\"total-info\">共 ' + totalCount + ' 条</span>';\n" +
+                "        return;\n" +
+                "    }\n" +
+                "    var html = '<span class=\"total-info\">共 ' + totalCount + ' 条</span>';\n" +
+                "    html += '<button class=\"page-btn\" onclick=\"goNumbersPage(1)\"' + (numbersPage === 1 ? ' disabled' : '') + '>首页</button>';\n" +
+                "    html += '<button class=\"page-btn\" onclick=\"goNumbersPage(' + (numbersPage - 1) + ')\"' + (numbersPage === 1 ? ' disabled' : '') + '>上一页</button>';\n" +
+                "    html += '<span class=\"page-info\">第 ' + numbersPage + ' / ' + totalPages + ' 页</span>';\n" +
+                "    html += '<button class=\"page-btn\" onclick=\"goNumbersPage(' + (numbersPage + 1) + ')\"' + (numbersPage === totalPages ? ' disabled' : '') + '>下一页</button>';\n" +
+                "    html += '<button class=\"page-btn\" onclick=\"goNumbersPage(' + totalPages + ')\"' + (numbersPage === totalPages ? ' disabled' : '') + '>尾页</button>';\n" +
+                "    div.innerHTML = html;\n" +
+                "}\n" +
+                "\n" +
+                "function goNumbersPage(page) {\n" +
+                "    numbersPage = page;\n" +
+                "    loadNumbers();\n" +
+                "}\n" +
+                "\n" +
+                "document.addEventListener('click', function(e) {\n" +
+                "    var modal = document.getElementById('numbersModal');\n" +
+                "    if (e.target === modal) {\n" +
+                "        closeNumbersModal();\n" +
+                "    }\n" +
+                "});\n" +
+                "\n" +
+                "loadStats();\n" +
+                "loadLogs();\n" +
                 "</script>\n" +
                 "</body>\n" +
                 "</html>";

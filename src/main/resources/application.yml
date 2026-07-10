@@ -167,3 +167,9 @@ mail:
   auth-code: "@Adsl888"
   smtp-host: smtp.exmail.qq.com
   smtp-port: 465
+
+wechat:
+  robot:
+    enabled: true
+    webhook:
+      url: https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=8bb91032-d96c-4c76-99aa-ac1b3ab99373

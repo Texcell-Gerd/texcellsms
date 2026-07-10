@@ -228,4 +228,79 @@ public interface SmsQueueMapper {
             "WHERE TaskTime >= DATE_SUB(NOW(), INTERVAL 30 MINUTE) AND SubAccount IS NOT NULL " +
             "GROUP BY SubAccount ORDER BY totalCount DESC LIMIT 10")
     List<Map<String, Object>> getCustomerRankingLastHalfHour();
+
+    /**
+     * 查询一直未更新DR的任务
+     */
+    @Select({
+            "<script>",
+            "SELECT ",
+            "  s.TaskID as taskId, ",
+            "  s.SubAccount as subAccount, ",
+            "  s.TaskName as taskName, ",
+            "  s.TotalCount as totalCount, ",
+            "  s.SubmitSuccCount as submitSuccCount, ",
+            "  s.DRSuccCount as drSuccCount, ",
+            "  s.DRFailCount as drFailCount, ",
+            "  s.TaskTime as taskTimeStr, ",
+            "  (s.TotalCount - s.SubmitSuccCount) as pendingCount, ",
+            "  TIMESTAMPDIFF(MINUTE, STR_TO_DATE(s.TaskTime, '%Y-%m-%d %H:%i:%s.%f'), NOW()) as elapsedMinutes, ",
+            "  (",
+            "    SELECT COUNT(*) FROM tbl_APITask t ",
+            "    WHERE t.APITaskId = s.TaskID ",
+            "    AND (t.RecvDRStatus IS NULL OR t.RecvDRStatus = '' OR ",
+            "         t.RecvDRTime IS NULL OR t.RecvDRTime = '')",
+            "  ) as detailPendingCount ",
+            "FROM tbl_APIScheduleSend s ",
+            "WHERE STR_TO_DATE(s.TaskTime, '%Y-%m-%d %H:%i:%s.%f') >= CURDATE() ",
+            "  AND s.TotalCount = s.SubmitSuccCount ",
+            "  AND TIMESTAMPDIFF(MINUTE, STR_TO_DATE(s.TaskTime, '%Y-%m-%d %H:%i:%s.%f'), NOW()) >= #{minutes} ",
+            "  AND (",
+            "    SELECT COUNT(*) FROM tbl_APITask t ",
+            "    WHERE t.APITaskId = s.TaskID ",
+            "    AND (t.RecvDRStatus IS NULL OR t.RecvDRStatus = '' OR ",
+            "         t.RecvDRTime IS NULL OR t.RecvDRTime = '')",
+            "  ) > 0 ",
+            "ORDER BY STR_TO_DATE(s.TaskTime, '%Y-%m-%d %H:%i:%s.%f') ASC",
+            "</script>"
+    })
+    List<Map<String, Object>> findTimeoutTasks(@Param("minutes") int minutes);
+
+    /**
+     * 执行修复SQL - 更新明细表中未更新的记录
+     */
+    @Update("UPDATE tbl_APITask SET " +
+            "RecvDRTime = DATE_FORMAT(CURRENT_TIMESTAMP(), '%Y-%m-%d %T'), " +
+            "RecvDRStatus = 'DELIVRD', " +
+            "RecvDRError = '000', " +
+            "DLRSendStatus = 1 " +
+            "WHERE APITaskId = #{taskId} " +
+            "AND (RecvDRStatus = '' OR RecvDRStatus IS NULL) " +
+            "AND (RecvDRError = '' OR RecvDRError IS NULL) " +
+            "AND (RecvDRTime = '' OR RecvDRTime IS NULL)")
+    int executeFixSql(@Param("taskId") String taskId);
+
+    /**
+     * 查询任务中未更新DR的号码列表（分页）
+     */
+    @Select("SELECT t.Callee as mobileNumber " +
+            "FROM tbl_APITask t " +
+            "WHERE t.APITaskId = #{taskId} " +
+            "AND (t.RecvDRStatus IS NULL OR t.RecvDRStatus = '' OR " +
+            "     t.RecvDRTime IS NULL OR t.RecvDRTime = '') " +
+            "ORDER BY t.UNID ASC " +
+            "LIMIT #{offset}, #{limit}")
+    List<Map<String, Object>> findPendingDrNumbers(@Param("taskId") String taskId,
+                                                   @Param("offset") int offset,
+                                                   @Param("limit") int limit);
+
+    /**
+     * 统计任务中未更新DR的号码总数
+     */
+    @Select("SELECT COUNT(*) " +
+            "FROM tbl_APITask t " +
+            "WHERE t.APITaskId = #{taskId} " +
+            "AND (t.RecvDRStatus IS NULL OR t.RecvDRStatus = '' OR " +
+            "     t.RecvDRTime IS NULL OR t.RecvDRTime = '')")
+    long countPendingDrNumbers(@Param("taskId") String taskId);
 }
