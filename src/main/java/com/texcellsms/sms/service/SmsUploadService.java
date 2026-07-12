@@ -26,8 +26,8 @@ public class SmsUploadService {
     private ScheduleNumberTaskMapper numberTaskMapper;
 
     private static final String[] ALLOW = {"txt", "csv", "xlsx", "xls"};
-    private static final int MIN_LEN = 7;
-    private static final int MAX_LEN = 22;
+    private static final int MIN_LEN = 8;
+    private static final int MAX_LEN = 21;
     private static final long MAX_FILE_SIZE = 3 * 1024 * 1024; // 3MB
 
     /**

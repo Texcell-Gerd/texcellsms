@@ -20,10 +20,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import javax.servlet.http.HttpServletRequest;
-import java.io.BufferedReader;
-import java.io.BufferedWriter;
-import java.io.File;
-import java.io.FileWriter;
+import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.text.ParseException;
@@ -77,18 +74,34 @@ public class SmsSendService {
         String taskId = IdGenerator.generatePreTaskId();
         int calleeCount = 0;
         File preFile = null;
-        File realFile = null;  // 添加这个变量
+        File realFile = null;
 
         if (StringUtils.isEmpty(req.getPreTaskId()) && req.getNumbers() != null && !req.getNumbers().isEmpty()) {
-            calleeCount = req.getNumbers().size();
+            // 校验逻辑
+            List<String> validNumbers = new ArrayList<>();
+            for (String number : req.getNumbers()) {
+                String trimmed = number.trim();
+                // 校验：只包含数字，长度 8-21 位（根据你的业务调整）
+                if (trimmed.matches("^\\d+$") && trimmed.length() >= 8 && trimmed.length() <= 21) {
+                    validNumbers.add(trimmed);
+                } else {
+                    logger.warn("过滤无效号码: {}", trimmed);
+                }
+            }
+
+            if (validNumbers.isEmpty()) {
+                throw new Exception("No valid recipient numbers found");
+            }
+
+            calleeCount = validNumbers.size();
             File realUserDir = new File(REAL_PHONE_ROOT + subAccount + "\\");
             if (!realUserDir.exists()) realUserDir.mkdirs();
             realFile = new File(realUserDir, taskId + ".txt");
 
             try (BufferedWriter bw = new BufferedWriter(new FileWriter(realFile))) {
-                for (int i = 0; i < req.getNumbers().size(); i++) {
-                    bw.write(req.getNumbers().get(i).trim());
-                    if (i < req.getNumbers().size() - 1) bw.newLine();
+                for (int i = 0; i < validNumbers.size(); i++) {
+                    bw.write(validNumbers.get(i));
+                    if (i < validNumbers.size() - 1) bw.newLine();
                 }
             }
 
@@ -103,12 +116,35 @@ public class SmsSendService {
             if (preFile.length() > MAX_FILE_SIZE) {
                 throw new Exception("File size cannot exceed 3MB");
             }
+            List<String> validatedNumbers = new ArrayList<>();
+            try (BufferedReader br = new BufferedReader(new FileReader(preFile))) {
+                String line;
+                while ((line = br.readLine()) != null) {
+                    String trimmed = line.trim();
+                    if (trimmed.matches("^\\d+$") && trimmed.length() >= 8 && trimmed.length() <= 21) {
+                        validatedNumbers.add(trimmed);
+                    } else {
+                        logger.warn("preTask文件中过滤无效号码: {}", trimmed);
+                    }
+                }
+            }
 
-            calleeCount = countLine(preFile);
+            if (validatedNumbers.isEmpty()) {
+                throw new Exception("No valid numbers found in pre-task file");
+            }
+
+            calleeCount = validatedNumbers.size();
             File realDir = new File(REAL_PHONE_ROOT + subAccount + "\\");
             if (!realDir.exists()) realDir.mkdirs();
             realFile = new File(realDir, taskId + ".txt");
-            Files.copy(preFile.toPath(), realFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+
+            // 写入校验后的号码
+            try (BufferedWriter bw = new BufferedWriter(new FileWriter(realFile))) {
+                for (int i = 0; i < validatedNumbers.size(); i++) {
+                    bw.write(validatedNumbers.get(i));
+                    if (i < validatedNumbers.size() - 1) bw.newLine();
+                }
+            }
         }
 
         // ✅ 检查号码数量（两个分支之后统一检查）
@@ -121,7 +157,7 @@ public class SmsSendService {
             backupNumberFile(realFile, subAccount, taskId, req.getFileName());
         }
 
-        // 后续代码保持不变...
+
         String content = req.getContent();
         int dcs = SmsContentUtil.calculateDCS(content);
 

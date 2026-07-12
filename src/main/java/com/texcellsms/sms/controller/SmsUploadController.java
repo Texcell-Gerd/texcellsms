@@ -43,7 +43,7 @@ public class SmsUploadController {
         } else if (StringUtils.isNotEmpty(numbers)) {
             phoneList = Arrays.stream(numbers.split("[,\\n]"))
                     .map(String::trim)
-                    .filter(s -> s.matches("^\\d+$") && s.length() > 7 && s.length() < 22)
+                    .filter(s -> s.matches("^\\d+$") && s.length() >= 8 && s.length() <= 21)
                     .distinct()
                     .collect(Collectors.toList());
         }
