@@ -31,14 +31,32 @@ public class SmsUploadService {
     private static final long MAX_FILE_SIZE = 3 * 1024 * 1024; // 3MB
 
     /**
+     * 解析结果内部类
+     */
+    public static class ParseResult {
+        private List<String> phoneList;
+        private int totalLineCount;
+
+        public ParseResult(List<String> phoneList, int totalLineCount) {
+            this.phoneList = phoneList;
+            this.totalLineCount = totalLineCount;
+        }
+
+        public List<String> getPhoneList() { return phoneList; }
+        public int getTotalLineCount() { return totalLineCount; }
+    }
+
+    /**
      * 解析上传文件中的手机号（支持 TXT/CSV/Excel）
      */
-    public List<String> parsePhone(MultipartFile file) throws Exception {
+    public ParseResult parsePhone(MultipartFile file) throws Exception {
         if (file.getSize() > MAX_FILE_SIZE) {
             throw new Exception("File size cannot exceed 3MB");
         }
 
         List<String> list = new ArrayList<>();
+        int totalLineCount = 0;
+
         String name = file.getOriginalFilename();
         if (name == null) throw new Exception("Invalid file name");
         String ext = getExt(name).toLowerCase();
@@ -49,6 +67,7 @@ public class SmsUploadService {
             try (BufferedReader br = new BufferedReader(new InputStreamReader(file.getInputStream(), "UTF-8"))) {
                 String line;
                 while ((line = br.readLine()) != null) {
+                    totalLineCount++;
                     String phone = line.trim().replaceAll("[^0-9]", "");
                     if (isValid(phone)) list.add(phone);
                 }
@@ -57,6 +76,7 @@ public class SmsUploadService {
             try (Workbook wb = WorkbookFactory.create(file.getInputStream())) {
                 Sheet sheet = wb.getSheetAt(0);
                 for (Row row : sheet) {
+                    totalLineCount++;
                     Cell c = row.getCell(0);
                     if (c == null) continue;
                     String phone = c.toString().trim().replaceAll("[^0-9]", "");
@@ -65,7 +85,9 @@ public class SmsUploadService {
             }
         }
 
-        return list.stream().distinct().collect(Collectors.toList());
+        // 去重
+        List<String> distinctList = list.stream().distinct().collect(Collectors.toList());
+        return new ParseResult(distinctList, totalLineCount);
     }
 
     /**

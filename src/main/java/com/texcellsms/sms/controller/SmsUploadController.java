@@ -38,14 +38,19 @@ public class SmsUploadController {
         }
 
         List<String> phoneList = new ArrayList<>();
+        int totalLineCount = 0;
+
         if (file != null && !file.isEmpty()) {
-            phoneList = smsUploadService.parsePhone(file);
+            SmsUploadService.ParseResult result = smsUploadService.parsePhone(file);
+            phoneList = result.getPhoneList();
+            totalLineCount = result.getTotalLineCount();
         } else if (StringUtils.isNotEmpty(numbers)) {
             phoneList = Arrays.stream(numbers.split("[,\\n]"))
                     .map(String::trim)
                     .filter(s -> s.matches("^\\d+$") && s.length() >= 8 && s.length() <= 21)
                     .distinct()
                     .collect(Collectors.toList());
+            totalLineCount = phoneList.size();
         }
 
         if (phoneList.isEmpty()) {
@@ -58,6 +63,7 @@ public class SmsUploadController {
         Map<String, Object> data = new HashMap<>();
         data.put("PreTaskId", preTaskId);
         data.put("CalleeCount", phoneList.size());
+        data.put("TotalLineCount", totalLineCount);
         data.put("Callee", phoneList);
 
         return AjaxResult.success(data);
