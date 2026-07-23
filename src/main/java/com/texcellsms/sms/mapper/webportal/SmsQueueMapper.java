@@ -138,6 +138,29 @@ public interface SmsQueueMapper {
     );
 
     /**
+     * 批量更新任务状态（伪删除）
+     * 内部人员使用，可操作所有客户的预约任务，仅限最近3天数据
+     * 只能删除状态为 0（待发送）的任务
+     */
+    @Update({
+            "<script>",
+            "UPDATE tbl_APIScheduleSend ",
+            "SET ScheduleStatus = 4 ",
+            "WHERE TaskTime >= #{threeDaysAgoTime} ",
+            "  AND ScheduleStatus = 0 ",
+            "  AND TaskID IN ",
+            "<foreach collection='taskIds' item='taskId' open='(' separator=',' close=')'>",
+            "  #{taskId}",
+            "</foreach>",
+            "</script>"
+    })
+    int batchUpdateScheduleStatusForAdmin(
+            @Param("taskIds") Set<String> taskIds,
+            @Param("threeDaysAgoTime") String threeDaysAgoTime
+    );
+
+
+    /**
      * 按任务ID分组统计DR状态（成功/失败）
      */
     @Select({

@@ -1845,6 +1845,86 @@ public class LogMonitorController {
         return result;
     }
 
+    /**
+     * 导出任务全部详情（Excel）
+     */
+    @GetMapping("/api/monitor/queue/task/export")
+    public void exportTaskDetails(
+            @RequestParam String taskId,
+            @RequestParam(required = false) String secret,
+            HttpServletRequest request,
+            HttpServletResponse response) throws IOException {
+
+        HttpSession session = request.getSession();
+        String clientIp = getRealIp(request);
+        String loginUsername = getCurrentUsername(session);
+
+        if (!isIpAllowed(clientIp, loginUsername)) {
+            response.setContentType("text/html;charset=UTF-8");
+            response.getWriter().write("<h1 style='color:red'>❌ 仅允许内网访问</h1>");
+            return;
+        }
+        if (!MONITOR_SECRET.equals(secret)) {
+            response.setContentType("text/html;charset=UTF-8");
+            response.getWriter().write("<h1 style='color:red'>❌ 无权限访问</h1>");
+            return;
+        }
+
+        try {
+            smsQueueService.exportAllTaskDetailsByTaskId(taskId, response);
+        } catch (Exception e) {
+            logger.error("导出任务详情失败: {}", e.getMessage());
+            response.setContentType("text/html;charset=UTF-8");
+            response.getWriter().write("<h1 style='color:red'>导出失败: " + e.getMessage() + "</h1>");
+        }
+    }
+
+    /**
+     * 删除任务（伪删除）
+     */
+    @DeleteMapping("/api/monitor/queue/task/delete")
+    public Map<String, Object> deleteTask(
+            @RequestParam String taskId,
+            @RequestParam(required = false) String secret,
+            HttpServletRequest request) {
+
+        Map<String, Object> result = new HashMap<>();
+        HttpSession session = request.getSession();
+        String clientIp = getRealIp(request);
+        String loginUsername = getCurrentUsername(session);
+
+        if (!isIpAllowed(clientIp, loginUsername)) {
+            result.put("code", 403);
+            result.put("msg", "仅允许内网访问");
+            return result;
+        }
+        if (!MONITOR_SECRET.equals(secret)) {
+            result.put("code", 401);
+            result.put("msg", "无权限访问");
+            return result;
+        }
+
+        try {
+            Set<String> taskIds = new HashSet<>();
+            taskIds.add(taskId);
+            int updated = smsQueueService.batchDeleteTaskForAdmin(taskIds);
+
+            if (updated > 0) {
+                result.put("code", 200);
+                result.put("msg", "删除成功，已标记 " + updated + " 条任务为已删除");
+                logger.info("运维操作: 伪删除任务(Admin), 操作人={}, 任务ID={}", loginUsername, taskId);
+            } else {
+                result.put("code", 404);
+                result.put("msg", "未找到该任务或任务已被删除（仅限最近3天数据）");
+            }
+        } catch (Exception e) {
+            logger.error("删除任务失败", e);
+            result.put("code", 500);
+            result.put("msg", "删除失败: " + e.getMessage());
+        }
+        return result;
+    }
+
 
 // ==================== 队列监控 API ====================
 
@@ -4623,6 +4703,10 @@ public class LogMonitorController {
                 ".badge-failed{color:#ff4d4f;font-weight:500;}\n" +
                 ".view-btn{background:#1677ff;color:white;border:none;padding:6px 16px;border-radius:6px;cursor:pointer;font-size:12px;transition:all 0.3s;}\n" +
                 ".view-btn:hover{background:#4096ff;}\n" +
+                ".export-btn{background:#52c41a;color:white;border:none;padding:4px 12px;border-radius:6px;cursor:pointer;font-size:12px;transition:all 0.3s;margin-right:4px;}\n" +
+                ".export-btn:hover{background:#389e0d;transform:translateY(-1px);}\n" +
+                ".delete-btn{background:#ff4d4f;color:white;border:none;padding:4px 12px;border-radius:6px;cursor:pointer;font-size:12px;transition:all 0.3s;margin-right:4px;}\n" +
+                ".delete-btn:hover{background:#ff7875;transform:translateY(-1px);}\n" +
                 ".pagination{display:flex;justify-content:center;gap:12px;padding:24px;border-top:1px solid #e8ecf1;}\n" +
                 ".page-btn{padding:8px 16px;border:1px solid #d1d5db;background:#ffffff;color:#1e293b;border-radius:8px;cursor:pointer;font-size:13px;}\n" +
                 ".page-btn:hover:not(:disabled){border-color:#1677ff;color:#1677ff;}\n" +
@@ -4720,7 +4804,6 @@ public class LogMonitorController {
                 "var rankingChart=null;\n" +
                 "function decodeSmsContent(str){if(!str)return'';try{var decoded=atob(str);var bytes=new Uint8Array(decoded.split('').map(function(c){return c.charCodeAt(0);}));return new TextDecoder('utf-8').decode(bytes);}catch(e){return str;}}\n" +
                 "function logout(){fetch('/monitor/logout').then(function(){location.href='/monitor/login';});}\n" +
-                "// 获取当前登录用户信息\n" +
                 "function getCurrentUserInfo() {\n" +
                 "    fetch('/api/monitor/current-user?secret=dn17ORUwf36Znl')\n" +
                 "        .then(function(res) { return res.json(); })\n" +
@@ -4740,19 +4823,24 @@ public class LogMonitorController {
                 "function resetSearch(){document.getElementById('searchSubAccount').value='';document.getElementById('searchTaskId').value='';page=1;loadTasks();}\n" +
                 "function loadTasks(){var subAccount=document.getElementById('searchSubAccount').value;var taskId=document.getElementById('searchTaskId').value;var url='/api/monitor/queue/tasks?secret=dn17ORUwf36Znl&pageNum='+page+'&pageSize='+size;if(subAccount)url+='&subAccount='+encodeURIComponent(subAccount);if(taskId)url+='&taskId='+encodeURIComponent(taskId);fetch(url).then(function(res){return res.json();}).then(function(data){if(data.code===200){var records=data.data?.records||[];totalPages=Math.ceil((data.data?.total||0)/size);renderTable(records);renderPagination();}else{document.getElementById('taskBody').innerHTML='<tr><td colspan=\"11\" class=\"empty\">加载失败:'+(data.msg||'错误')+'</td></tr>';}}).catch(function(){document.getElementById('taskBody').innerHTML='<tr><td colspan=\"11\" class=\"empty\">加载失败:网络错误</td></tr>';});}\n" +
                 "function escapeHtml(s){if(!s)return'';return String(s).replace(/[&<>]/g,function(m){return m==='&'?'&amp;':m==='<'?'&lt;':'&gt;';});}\n" +
-                "function renderTable(list){var tbody=document.getElementById('taskBody');if(!list||!list.length){tbody.innerHTML='<tr><td colspan=\"11\" class=\"empty\">暂无数据</td></tr>';return;}var html='';for(var i=0;i<list.length;i++){var t=list[i];var smsContent=decodeSmsContent(t.shortMessage||'');var taskIdAttr=escapeHtml(String(t.taskId||''));html+='<tr class=\"task-row\" data-task-id=\"'+taskIdAttr+'\" style=\"cursor:pointer;\">';\n" +
-                "html+='<td style=\"font-family:monospace;font-size:12px;\" title=\"'+escapeHtml(t.taskId||'')+'\">'+escapeHtml((t.taskId||'').substring(0,20))+'...</td>';\n" +
-                "html+='<td><span class=\"badge-subaccount\">'+escapeHtml(t.subAccount||'')+'</span></td>';\n" +
-                "html+='<td title=\"'+escapeHtml(t.taskName||'')+'\">'+escapeHtml((t.taskName||'').substring(0,30))+'</td>';\n" +
-                "html+='<td class=\"sms-content\">'+escapeHtml(smsContent).replace(/\\n/g,'<br>')+'</td>';\n" +
-                "html+='<td>'+escapeHtml(t.taskTime||'')+'</td>';\n" +
-                "html+='<td>'+escapeHtml(t.scheduleSendTime||'')+'</td>';\n" +
-                "html+='<td>'+formatNumber(t.totalCount||0)+'</td>';\n" +
-                "html+='<td>'+formatNumber(t.submitSuccCount||0)+'</td>';\n" +
-                "html+='<td class=\"badge-delivered\">'+formatNumber(t.drSuccCount||0)+'</td>';\n" +
-                "html+='<td class=\"badge-failed\">'+formatNumber(t.drFailCount||0)+'</td>';\n" +
-                "html+='<td><button class=\"view-btn\">📋 查看详情</button></td></tr>';}\n" +
-                "tbody.innerHTML=html;}\n" +
+                "function renderTable(list){var tbody=document.getElementById('taskBody');if(!list||!list.length){tbody.innerHTML='<tr><td colspan=\"11\" class=\"empty\">暂无数据</td></tr>';return;}var html='';for(var i=0;i<list.length;i++){var t=list[i];var smsContent=decodeSmsContent(t.shortMessage||'');var taskIdAttr=escapeHtml(String(t.taskId||''));var scheduleStatus = t.scheduleStatus !== undefined ? t.scheduleStatus : 0;html+='<tr class=\"task-row\" data-task-id=\"'+taskIdAttr+'\" style=\"cursor:pointer;\">';" +
+                "html+='<td style=\"font-family:monospace;font-size:12px;\" title=\"'+escapeHtml(t.taskId||'')+'\">'+escapeHtml((t.taskId||'').substring(0,20))+'...</td>';" +
+                "html+='<td><span class=\"badge-subaccount\">'+escapeHtml(t.subAccount||'')+'</span></td>';" +
+                "html+='<td title=\"'+escapeHtml(t.taskName||'')+'\">'+escapeHtml((t.taskName||'').substring(0,30))+'</td>';" +
+                "html+='<td class=\"sms-content\">'+escapeHtml(smsContent).replace(/\\n/g,'<br>')+'</td>';" +
+                "html+='<td>'+escapeHtml(t.taskTime||'')+'</td>';" +
+                "html+='<td>'+escapeHtml(t.scheduleSendTime||'')+'</td>';" +
+                "html+='<td>'+formatNumber(t.totalCount||0)+'</td>';" +
+                "html+='<td>'+formatNumber(t.submitSuccCount||0)+'</td>';" +
+                "html+='<td class=\"badge-delivered\">'+formatNumber(t.drSuccCount||0)+'</td>';" +
+                "html+='<td class=\"badge-failed\">'+formatNumber(t.drFailCount||0)+'</td>';" +
+                "html+='<td>';" +
+                "html+='<button class=\"view-btn\" onclick=\"showTaskDetail(\\''+taskIdAttr+'\\')\">\uD83D\uDCCB 详情</button> ';" +
+                "html+='<button class=\"export-btn\" onclick=\"exportTask(\\''+taskIdAttr+'\\')\">\uD83D\uDCE5 导出</button> ';" +
+                "if (scheduleStatus === 0) {" +
+                "    html+='<button class=\"delete-btn\" onclick=\"deleteTask(\\''+taskIdAttr+'\\')\">\uD83D\uDDD1\uFE0F 删除</button>';" +
+                "}" +
+                "html+='</td></tr>';}tbody.innerHTML=html;}\n" +
                 "function renderPagination(){var div=document.getElementById('pagination');if(!div||totalPages<=1){div.innerHTML='';return;}var html='<button class=\"page-btn\" onclick=\"goPage(1)\"'+(page===1?'disabled':'')+'>首页</button><button class=\"page-btn\" onclick=\"goPage('+(page-1)+')\"'+(page===1?'disabled':'')+'>上一页</button><span class=\"page-info\">第 '+page+' / '+totalPages+' 页</span><button class=\"page-btn\" onclick=\"goPage('+(page+1)+')\"'+(page===totalPages?'disabled':'')+'>下一页</button><button class=\"page-btn\" onclick=\"goPage('+totalPages+')\"'+(page===totalPages?'disabled':'')+'>尾页</button>';div.innerHTML=html;}\n" +
                 "function goPage(p){page=p;loadTasks();}\n" +
                 "function showTaskDetail(taskId){currentTaskId=taskId;detailPage=1;document.getElementById('modalTitle').innerHTML='📋 任务详情 - '+taskId;document.getElementById('detailCallee').value='';document.getElementById('detailModal').style.display='flex';loadTaskSummary();loadTaskDetail();}\n" +
@@ -4770,6 +4858,8 @@ public class LogMonitorController {
                 "function renderDetailPagination(){var div=document.getElementById('detailPagination');if(!div||detailTotalPages<=1){div.innerHTML='';return;}var html='<button class=\"page-btn\" onclick=\"goDetailPage(1)\"'+(detailPage===1?'disabled':'')+'>首页</button><button class=\"page-btn\" onclick=\"goDetailPage('+(detailPage-1)+')\"'+(detailPage===1?'disabled':'')+'>上一页</button><span class=\"page-info\">第 '+detailPage+' / '+detailTotalPages+' 页</span><button class=\"page-btn\" onclick=\"goDetailPage('+(detailPage+1)+')\"'+(detailPage===detailTotalPages?'disabled':'')+'>下一页</button><button class=\"page-btn\" onclick=\"goDetailPage('+detailTotalPages+')\"'+(detailPage===detailTotalPages?'disabled':'')+'>尾页</button>';div.innerHTML=html;}\n" +
                 "function goDetailPage(p){detailPage=p;loadTaskDetail();}\n" +
                 "function closeDetailModal(){document.getElementById('detailModal').style.display='none';currentTaskId='';detailPage=1;}\n" +
+                "function exportTask(taskId){if(!taskId){alert('任务ID不能为空');return;}window.open('/api/monitor/queue/task/export?taskId='+encodeURIComponent(taskId)+'&secret=dn17ORUwf36Znl','_blank');}\n" +
+                "function deleteTask(taskId){if(!taskId){alert('任务ID不能为空');return;}if(!confirm('确定要取消该任务吗？\\n\\n⚠️ 注意：取消后，该任务状态会标记为已取消，不会再进行发送！')){return;}fetch('/api/monitor/queue/task/delete?taskId='+encodeURIComponent(taskId)+'&secret=dn17ORUwf36Znl',{method:'DELETE'}).then(function(res){return res.json();}).then(function(data){if(data.code===200){alert('✅ '+(data.msg||'删除成功'));loadTasks();}else{alert('❌ 删除失败: '+(data.msg||'未知错误'));}}).catch(function(err){alert('❌ 网络错误: '+err.message);});}\n" +
                 "document.addEventListener('click',function(e){var btn=e.target.closest('.view-btn');if(btn){e.stopPropagation();var row=btn.closest('.task-row');if(row&&row.dataset.taskId)showTaskDetail(row.dataset.taskId);}});\n" +
                 "document.addEventListener('dblclick',function(e){var row=e.target.closest('.task-row');if(row&&row.dataset.taskId)showTaskDetail(row.dataset.taskId);});\n" +
                 "loadRanking();loadTasks();\n" +

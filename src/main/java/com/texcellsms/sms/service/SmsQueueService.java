@@ -166,6 +166,32 @@ public class SmsQueueService {
     }
 
     /**
+     * 批量删除任务（伪删除）
+     * 内部人员使用，可操作所有客户的预约任务，仅限最近3天数据
+     * 只能删除状态为 0（待发送）的任务
+     */
+    public int batchDeleteTaskForAdmin(Set<String> taskIds) {
+        DataSourceInterceptor.setCurrentDataSource(DynamicDataSourceConfig.DS_WEB_PORTAL);
+
+        if (taskIds == null || taskIds.isEmpty()) {
+            return 0;
+        }
+
+        // 过滤空字符串
+        taskIds = taskIds.stream()
+                .filter(id -> id != null && !id.trim().isEmpty())
+                .collect(Collectors.toSet());
+
+        if (taskIds.isEmpty()) {
+            return 0;
+        }
+
+        String threeDaysAgoTime = TimeRangeUtils.getThreeDaysAgoTime();
+
+        return smsQueueMapper.batchUpdateScheduleStatusForAdmin(taskIds, threeDaysAgoTime);
+    }
+
+    /**
      * 内部管理 - 分页获取所有客户的任务列表
      */
     public Map<String, Object> getAllQueueTasksForAdmin(String subAccount, String taskId, Integer scheduleStatus,
