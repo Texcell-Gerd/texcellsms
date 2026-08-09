@@ -68,4 +68,52 @@ public class SmsUploadController {
 
         return AjaxResult.success(data);
     }
+
+    /**
+     * ✅ 批量上传接收号码（复制uploadCallee逻辑，支持最大30MB文件）
+     * 支持file文件上传 或者 numbers文本输入；返回结构和uploadCallee保持完全一致
+     */
+    @PostMapping("/uploadCalleeBatch")
+    public AjaxResult uploadCalleeBatch(
+            @RequestParam(value = "file", required = false) MultipartFile file,
+            @RequestParam(value = "numbers", required = false) String numbers,
+            HttpServletRequest request) throws Exception {
+
+        String subAccount = TokenService.getUsername();
+        if (StringUtils.isEmpty(subAccount)) {
+            return AjaxResult.error("Not logged in or session expired");
+        }
+
+        List<String> phoneList = new ArrayList<>();
+        int totalLineCount = 0;
+
+        if (file != null && !file.isEmpty()) {
+            SmsUploadService.ParseResult result = smsUploadService.parsePhoneBatch(file);
+            phoneList = result.getPhoneList();
+            totalLineCount = result.getTotalLineCount();
+        } else if (StringUtils.isNotEmpty(numbers)) {
+            phoneList = Arrays.stream(numbers.split("[,\\n]"))
+                    .map(String::trim)
+                    .filter(s -> s.matches("^\\d+$") && s.length() >= 8 && s.length() <= 21)
+                    .distinct()
+                    .collect(Collectors.toList());
+            totalLineCount = phoneList.size();
+        }
+
+        if (phoneList.isEmpty()) {
+            return AjaxResult.error("No valid numbers detected");
+        }
+
+        String preTaskId = IdGenerator.generatePreTaskId();
+
+        smsUploadService.savePreTask(subAccount, preTaskId, phoneList);
+
+        Map<String, Object> data = new HashMap<>();
+        data.put("PreTaskId", preTaskId);
+        data.put("CalleeCount", phoneList.size());
+        data.put("TotalLineCount", totalLineCount);
+//        data.put("Callee", phoneList);
+
+        return AjaxResult.success(data);
+    }
 }

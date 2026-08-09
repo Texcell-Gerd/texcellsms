@@ -181,6 +181,20 @@ public interface SmsQueueMapper {
 
 
     /**
+     * 根据taskId查询任务归属账号，用于鉴权
+     */
+    @Select("SELECT SubAccount FROM tbl_APIScheduleSend WHERE TaskID = #{taskId}")
+    String getTaskOwnerByTaskId(@Param("taskId") String taskId);
+
+    /**
+     * 获取任务汇总统计，对外API展示
+     */
+    @Select("SELECT TotalCount,CalleeCount,SubmitSuccCount,DRSuccCount,DRFailCount,ScheduleStatus " +
+            "FROM tbl_APIScheduleSend WHERE TaskID = #{taskId}")
+    Map<String,Object> getTaskSummary(@Param("taskId") String taskId);
+
+
+    /**
      * 分页查询所有客户的任务列表（内部管理用）
      */
     @Select({

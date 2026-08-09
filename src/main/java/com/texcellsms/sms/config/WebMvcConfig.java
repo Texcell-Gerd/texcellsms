@@ -46,6 +46,8 @@ public class WebMvcConfig implements WebMvcConfigurer {
                         "/monitor/**",
                         "/api/monitor/**",
                         "/open/api/sms/send",
+//                        "/open/api/sms/sendBatch",
+//                        "/open/api/sms/uploadCalleeBatch",
                         "/open/api/sms/receipt",
                         "/open/api/sms/balance",
                         "/open/api/sms/task/detail",

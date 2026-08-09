@@ -28,7 +28,12 @@ public class SmsUploadService {
     private static final String[] ALLOW = {"txt", "csv", "xlsx", "xls"};
     private static final int MIN_LEN = 8;
     private static final int MAX_LEN = 21;
-    private static final long MAX_FILE_SIZE = 3 * 1024 * 1024; // 3MB
+
+    // ✅ 小文件限制（原有接口 uploadCallee）
+    private static final long MAX_FILE_SIZE_SMALL = 3 * 1024 * 1024L; // 3MB
+
+    // ✅ 大文件限制（批量接口 uploadCalleeBatch）
+    private static final long MAX_FILE_SIZE_BATCH = 20 * 1024 * 1024L; // 20MB
 
     /**
      * 解析结果内部类
@@ -50,8 +55,80 @@ public class SmsUploadService {
      * 解析上传文件中的手机号（支持 TXT/CSV/Excel）
      */
     public ParseResult parsePhone(MultipartFile file) throws Exception {
-        if (file.getSize() > MAX_FILE_SIZE) {
+        if (file.getSize() > MAX_FILE_SIZE_SMALL) {
             throw new Exception("File size cannot exceed 3MB");
+        }
+
+        List<String> list = new ArrayList<>();
+        int totalLineCount = 0;
+
+        String name = file.getOriginalFilename();
+        if (name == null) throw new Exception("Invalid file name");
+        String ext = getExt(name).toLowerCase();
+
+        if (!isAllowed(ext)) throw new Exception("Only txt/csv/xlsx/xls files are supported");
+
+        if (ext.equals("txt") || ext.equals("csv")) {
+            try (BufferedReader br = new BufferedReader(new InputStreamReader(file.getInputStream(), "UTF-8"))) {
+                String line;
+                while ((line = br.readLine()) != null) {
+                    totalLineCount++;
+                    String phone = line.trim().replaceAll("[^0-9]", "");
+                    if (isValid(phone)) list.add(phone);
+                }
+            }
+        } else {
+            try (Workbook wb = WorkbookFactory.create(file.getInputStream())) {
+                Sheet sheet = wb.getSheetAt(0);
+                for (Row row : sheet) {
+                    totalLineCount++;
+                    Cell c = row.getCell(0);
+                    if (c == null) continue;
+                    String phone = c.toString().trim().replaceAll("[^0-9]", "");
+                    if (isValid(phone)) list.add(phone);
+                }
+            }
+        }
+        List<String> distinctList = list.stream().distinct().collect(Collectors.toList());
+        return new ParseResult(distinctList, totalLineCount);
+    }
+
+    /**
+     * 保存预上传任务（15分钟有效期）
+     */
+    public void savePreTask(String subAccount, String preId, List<String> phones) throws Exception {
+        if (phones == null || phones.isEmpty()) throw new Exception("Recipient numbers cannot be empty");
+
+        String userDir = SmsSendService.PRE_PHONE_ROOT + subAccount + "/";
+        File dir = new File(userDir);
+        if (!dir.exists()) dir.mkdirs();
+
+        File file = new File(dir, preId + ".txt");
+        try (BufferedWriter bw = new BufferedWriter(new FileWriter(file))) {
+            for (int i = 0; i < phones.size(); i++) {
+                bw.write(phones.get(i));
+                if (i < phones.size() - 1) bw.newLine();
+            }
+        }
+
+        if (!file.exists() || file.length() == 0) {
+            throw new Exception("Failed to generate temporary upload file");
+        }
+
+        long nowSec = System.currentTimeMillis() / 1000;
+        long validTill = nowSec + 15 * 60;
+        numberTaskMapper.insertScheduleNumberTask(
+                subAccount,
+                String.valueOf(nowSec),
+                preId,
+                String.valueOf(validTill)
+        );
+    }
+
+    public ParseResult parsePhoneBatch(MultipartFile file) throws Exception {
+        // 大文件 30MB
+        if (file.getSize() > MAX_FILE_SIZE_BATCH) {
+            throw new Exception("File size cannot exceed 20MB");
         }
 
         List<String> list = new ArrayList<>();
@@ -90,56 +167,15 @@ public class SmsUploadService {
         return new ParseResult(distinctList, totalLineCount);
     }
 
-    /**
-     * 保存预上传任务（15分钟有效期）
-     */
-    public void savePreTask(String subAccount, String preId, List<String> phones) throws Exception {
-        if (phones == null || phones.isEmpty()) throw new Exception("Recipient numbers cannot be empty");
-
-        String userDir = SmsSendService.PRE_PHONE_ROOT + subAccount + "/";
-        File dir = new File(userDir);
-        if (!dir.exists()) dir.mkdirs();
-
-        File file = new File(dir, preId + ".txt");
-        try (BufferedWriter bw = new BufferedWriter(new FileWriter(file))) {
-            for (int i = 0; i < phones.size(); i++) {
-                bw.write(phones.get(i));
-                if (i < phones.size() - 1) bw.newLine();
-            }
-        }
-
-        if (!file.exists() || file.length() == 0) {
-            throw new Exception("Failed to generate temporary upload file");
-        }
-
-        long nowSec = System.currentTimeMillis() / 1000;
-        long validTill = nowSec + 15 * 60;
-        numberTaskMapper.insertScheduleNumberTask(
-                subAccount,
-                String.valueOf(nowSec),
-                preId,
-                String.valueOf(validTill)
-        );
-    }
-
-    /**
-     * 校验文件格式是否允许
-     */
     private boolean isAllowed(String ext) {
         for (String s : ALLOW) if (s.equals(ext)) return true;
         return false;
     }
 
-    /**
-     * 号码格式校验
-     */
     private boolean isValid(String phone) {
         return phone != null && phone.length() >= MIN_LEN && phone.length() <= MAX_LEN && phone.matches("\\d+");
     }
 
-    /**
-     * 获取文件后缀
-     */
     private String getExt(String name) {
         int dot = name.lastIndexOf(".");
         return dot == -1 ? "" : name.substring(dot + 1);

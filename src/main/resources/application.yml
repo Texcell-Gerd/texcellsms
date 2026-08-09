@@ -7,9 +7,9 @@ server:
     threads:
       max: 100
       min-spare: 20
-    connection-timeout: 600000
+    connection-timeout: 300000
     max-connections: 5000
-    max-http-form-post-size: 10485760
+    max-http-form-post-size: -1
     accesslog:
       enabled: true
       directory: logs
@@ -27,9 +27,9 @@ spring:
     hikari:
       maximum-pool-size: 10
       minimum-idle: 2
-      connection-timeout: 600000
+      connection-timeout: 30000
       idle-timeout: 28800000
-      leak-detection-threshold: 0
+      leak-detection-threshold: 30000
       max-lifetime: 28800000
       validation-timeout: 300000
       connection-test-query: "SELECT 1"
@@ -57,6 +57,7 @@ mybatis:
   type-handlers-package: com.texcellsms.sms.config
   configuration:
     map-underscore-to-camel-case: true
+    call-setters-on-nulls: true
     lazy-loading-enabled: false
     aggressive-lazy-loading: false
     auto-mapping-behavior: PARTIAL
@@ -67,8 +68,6 @@ mybatis:
     log-slow-sql: true
     slow-sql-time: 5000
   mapper-locations: classpath:empty.xml
-
-# =================================================================
 
 texcellsms:
   google-auth:

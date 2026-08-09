@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.texcellsms.sms.mapper.webportal.CustomerNumberFileMapper;
 import com.texcellsms.sms.mapper.webportal.ScheduleNumberTaskMapper;
 import com.texcellsms.sms.mapper.webportal.SmsScheduleSendMapper;
+import com.texcellsms.sms.model.DTO.BatchSmsSendRequest;
 import com.texcellsms.sms.model.DTO.SmsSendRequest;
 import com.texcellsms.sms.model.DTO.SmsSendResponse;
 import com.texcellsms.sms.model.entity.CustomerNumberFile;
@@ -16,6 +17,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,18 +29,22 @@ import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 
 @Service
 public class SmsSendService {
 
     private static final Logger logger = LoggerFactory.getLogger(SmsSendService.class);
-    public static final String PRE_PHONE_ROOT = "D:\\ScheduleTask\\PhonePre\\";
-    public static final String REAL_PHONE_ROOT = "D:\\ScheduleTask\\Phone\\";
-    public static final String TASK_ROOT = "D:\\ScheduleTask\\Task\\";
-    private static final String CUSTOMER_NUMBER_BACKUP_ROOT = "D:\\CustomerFileNumber\\";
+    public static final String PRE_PHONE_ROOT = "/home/ScheduleTask/PhonePre/";
+    public static final String REAL_PHONE_ROOT = "/home/ScheduleTask/Phone/";
+    public static final String TASK_ROOT = "/home/ScheduleTask/Task/";
+    private static final String CUSTOMER_NUMBER_BACKUP_ROOT = "/home/CustomerFileNumber/";
 
     private static final String DEFAULT_CALLER = "SMSINFO";
     private static final long MAX_FILE_SIZE = 3 * 1024 * 1024;
+
+    // ✅ 大文件限制（批量接口使用）- 20MB支持100万号码
+    private static final long MAX_FILE_SIZE_BATCH = 20 * 1024 * 1024;
     // 同时支持前端传的横杠格式和原斜杠格式，兼容所有场景
     private static final String[] DATE_FORMATS = {"yyyy-MM-dd HH:mm:ss", "yyyy/MM/dd HH:mm:ss"};
 
@@ -94,7 +100,7 @@ public class SmsSendService {
             }
 
             calleeCount = validNumbers.size();
-            File realUserDir = new File(REAL_PHONE_ROOT + subAccount + "\\");
+            File realUserDir = new File(REAL_PHONE_ROOT + subAccount + "/");
             if (!realUserDir.exists()) realUserDir.mkdirs();
             realFile = new File(realUserDir, taskId + ".txt");
 
@@ -109,7 +115,7 @@ public class SmsSendService {
                 throw new Exception("Failed to generate manual number file");
             }
         } else if (StringUtils.isNotEmpty(req.getPreTaskId())) {
-            preFile = new File(PRE_PHONE_ROOT + subAccount + "\\" + req.getPreTaskId() + ".txt");
+            preFile = new File(PRE_PHONE_ROOT + subAccount + "/" + req.getPreTaskId() + ".txt");
             if (!preFile.exists())
                 throw new Exception("Uploaded number file does not exist");
 
@@ -134,7 +140,7 @@ public class SmsSendService {
             }
 
             calleeCount = validatedNumbers.size();
-            File realDir = new File(REAL_PHONE_ROOT + subAccount + "\\");
+            File realDir = new File(REAL_PHONE_ROOT + subAccount + "/");
             if (!realDir.exists()) realDir.mkdirs();
             realFile = new File(realDir, taskId + ".txt");
 
@@ -166,7 +172,199 @@ public class SmsSendService {
         int totalCount = calleeCount * splitCount;
 
 
-        File taskUserDir = new File(TASK_ROOT + subAccount + "\\");
+        File taskUserDir = new File(TASK_ROOT + subAccount + "/");
+        if (!taskUserDir.exists()) taskUserDir.mkdirs();
+        File tmp = new File(taskUserDir, taskId + ".tmp");
+        File dst = new File(taskUserDir, taskId + ".txt");
+
+        String caller = StringUtils.isEmpty(req.getCaller()) ? DEFAULT_CALLER : req.getCaller();
+        List<Map<String, String>> msgList = buildMsgParts(content, dcs, splitCount);
+
+        Map<String, Object> map = new LinkedHashMap<>();
+        map.put("TaskId", taskId);
+        map.put("UserName", subAccount);
+        map.put("Caller", caller);
+        map.put("CallerTon", caller.matches("^\\d+$") ? "1" : "5");
+        map.put("CallerNpi", caller.matches("^\\d+$") ? "1" : "0");
+        map.put("DCS", String.valueOf(dcs));
+        map.put("UDHIFlag", splitCount > 1 ? "1" : "0");
+        map.put("PKSN", splitCount > 1 ? "1" : "0");
+        map.put("PKTotal", String.valueOf(splitCount));
+        map.put("Msg", msgList);
+
+        ObjectMapper mapper = new ObjectMapper();
+        mapper.enable(SerializationFeature.INDENT_OUTPUT);
+        String finalJson = mapper.writeValueAsString(map);
+
+        try (FileWriter fw = new FileWriter(tmp)) {
+            fw.write(finalJson); // 同步写入
+        }
+        Files.move(tmp.toPath(), dst.toPath(), StandardCopyOption.REPLACE_EXISTING);
+
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+        sdf.setTimeZone(TimeZone.getTimeZone("Asia/Shanghai"));
+        Date now = new Date();
+        Date scheduleTime;
+        if (StringUtils.isEmpty(req.getScheduleTime())) {
+            scheduleTime = now;
+        } else {
+            scheduleTime = parseDate(req.getScheduleTime());
+        }
+
+        scheduleSendMapper.insertAPIScheduleSend(
+                taskId, scheduleTime, calleeCount, splitCount, totalCount,
+                now, TokenService.getIpAddress(r), subAccount, content,
+                StringUtils.defaultIfEmpty(req.getTaskName(), "Default"),
+                0, 0, 0, 0
+        );
+
+        if (StringUtils.isNotEmpty(req.getPreTaskId()) && preFile != null && preFile.exists()) {
+            preFile.delete();
+            scheduleNumberTaskMapper.deletePreTask(subAccount, req.getPreTaskId());
+        }
+
+        SmsSendResponse resp = new SmsSendResponse();
+        resp.setTaskId(taskId);
+        resp.setDcs(dcs);
+        resp.setPkTotal(splitCount);
+        resp.setSplitCount(splitCount);
+
+
+        // 【长短信监控 - 自动记录】
+        if (splitCount > 1) {
+            String monitorLog = String.format(
+                    "[长短信发送] | 账号=%s | 任务ID=%s | 长短信条数=%d | 总计费条数=%d | 号码数=%d | 内容=%s",
+                    subAccount,
+                    taskId,
+                    splitCount,
+                    totalCount,
+                    calleeCount,
+                    content
+            );
+            // 输出到日志，供监控扫描
+            org.slf4j.LoggerFactory.getLogger(this.getClass()).warn(monitorLog);
+        }
+        return resp;
+    }
+
+
+    @Transactional(rollbackFor = Exception.class)
+    public SmsSendResponse doSendBatch(String subAccount, BatchSmsSendRequest req, HttpServletRequest r) throws Exception {
+
+        String originalContent = req.getContent();
+        String filteredContent = filterEmoji(originalContent);
+
+        // 检查过滤后是否为空
+        if (StringUtils.isEmpty(filteredContent)) {
+            throw new Exception("短信内容不能为空（表情符号已被过滤）");
+        }
+
+        // 使用过滤后的内容
+        req.setContent(filteredContent);
+
+        if (StringUtils.isNotEmpty(req.getPreTaskId())) {
+            int valid = scheduleNumberTaskMapper.checkPreTaskValid(subAccount, req.getPreTaskId());
+            if (valid <= 0)
+                throw new Exception("Task has expired, please upload the file again");
+        }
+
+        String taskId = IdGenerator.generatePreTaskId();
+        int calleeCount = 0;
+        File preFile = null;
+        File realFile = null;
+
+        if (StringUtils.isEmpty(req.getPreTaskId()) && req.getNumbers() != null && !req.getNumbers().isEmpty()) {
+            // 校验逻辑
+            List<String> validNumbers = new ArrayList<>();
+            for (String number : req.getNumbers()) {
+                String trimmed = number.trim();
+                // 校验：只包含数字，长度 8-21 位（根据你的业务调整）
+                if (trimmed.matches("^\\d+$") && trimmed.length() >= 8 && trimmed.length() <= 21) {
+                    validNumbers.add(trimmed);
+                } else {
+                    logger.warn("过滤无效号码: {}", trimmed);
+                }
+            }
+
+            if (validNumbers.isEmpty()) {
+                throw new Exception("No valid recipient numbers found");
+            }
+
+            calleeCount = validNumbers.size();
+            File realUserDir = new File(REAL_PHONE_ROOT + subAccount + "/");
+            if (!realUserDir.exists()) realUserDir.mkdirs();
+            realFile = new File(realUserDir, taskId + ".txt");
+
+            try (BufferedWriter bw = new BufferedWriter(new FileWriter(realFile))) {
+                for (int i = 0; i < validNumbers.size(); i++) {
+                    bw.write(validNumbers.get(i));
+                    if (i < validNumbers.size() - 1) bw.newLine();
+                }
+            }
+
+            if (!realFile.exists() || realFile.length() == 0) {
+                throw new Exception("Failed to generate manual number file");
+            }
+        } else if (StringUtils.isNotEmpty(req.getPreTaskId())) {
+            preFile = new File(PRE_PHONE_ROOT + subAccount + "/" + req.getPreTaskId() + ".txt");
+            if (!preFile.exists())
+                throw new Exception("Uploaded number file does not exist");
+
+            // ========== 唯一改动：使用30MB常量 MAX_FILE_SIZE_BATCH ==========
+            if (preFile.length() > MAX_FILE_SIZE_BATCH) {
+                throw new Exception("File size cannot exceed 20MB");
+            }
+            List<String> validatedNumbers = new ArrayList<>();
+            try (BufferedReader br = new BufferedReader(new FileReader(preFile))) {
+                String line;
+                while ((line = br.readLine()) != null) {
+                    String trimmed = line.trim();
+                    if (trimmed.matches("^\\d+$") && trimmed.length() >= 8 && trimmed.length() <= 21) {
+                        validatedNumbers.add(trimmed);
+                    } else {
+                        logger.warn("preTask文件中过滤无效号码: {}", trimmed);
+                    }
+                }
+            }
+
+            if (validatedNumbers.isEmpty()) {
+                throw new Exception("No valid numbers found in pre-task file");
+            }
+
+            calleeCount = validatedNumbers.size();
+            File realDir = new File(REAL_PHONE_ROOT + subAccount + "/");
+            if (!realDir.exists()) realDir.mkdirs();
+            realFile = new File(realDir, taskId + ".txt");
+
+            // 写入校验后的号码
+            try (BufferedWriter bw = new BufferedWriter(new FileWriter(realFile))) {
+                for (int i = 0; i < validatedNumbers.size(); i++) {
+                    bw.write(validatedNumbers.get(i));
+                    if (i < validatedNumbers.size() - 1) bw.newLine();
+                }
+            }
+        }
+
+        // ✅ 检查号码数量（两个分支之后统一检查）
+        if (calleeCount <= 0) {
+            throw new Exception("Recipient numbers cannot be empty");
+        }
+
+        // ✅ 备份号码文件（两个分支都会执行）
+        if (realFile != null && realFile.exists()) {
+            backupNumberFile(realFile, subAccount, taskId, req.getFileName());
+        }
+
+
+        String content = req.getContent();
+        int dcs = SmsContentUtil.calculateDCS(content);
+
+        // 使用正确的分片数计算方法
+        int splitCount = SmsContentUtil.calcSplitCountCorrect(content);
+        int totalCount = calleeCount * splitCount;
+
+
+        File taskUserDir = new File(TASK_ROOT + subAccount + "/");
         if (!taskUserDir.exists()) taskUserDir.mkdirs();
         File tmp = new File(taskUserDir, taskId + ".tmp");
         File dst = new File(taskUserDir, taskId + ".txt");
