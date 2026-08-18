@@ -17,7 +17,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
-import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,16 +28,16 @@ import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.time.LocalDateTime;
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
 
 @Service
 public class SmsSendService {
 
     private static final Logger logger = LoggerFactory.getLogger(SmsSendService.class);
-    public static final String PRE_PHONE_ROOT = "/home/ScheduleTask/PhonePre/";
-    public static final String REAL_PHONE_ROOT = "/home/ScheduleTask/Phone/";
-    public static final String TASK_ROOT = "/home/ScheduleTask/Task/";
-    private static final String CUSTOMER_NUMBER_BACKUP_ROOT = "/home/CustomerFileNumber/";
+    public static final String PRE_PHONE_ROOT = "D:\\ScheduleTask\\PhonePre\\";
+    public static final String REAL_PHONE_ROOT = "D:\\ScheduleTask\\Phone\\";
+    public static final String TASK_ROOT = "D:\\ScheduleTask\\Task\\";
+    private static final String CUSTOMER_NUMBER_BACKUP_ROOT = "D:\\CustomerFileNumber\\";
+
 
     private static final String DEFAULT_CALLER = "SMSINFO";
     private static final long MAX_FILE_SIZE = 3 * 1024 * 1024;
@@ -100,7 +99,7 @@ public class SmsSendService {
             }
 
             calleeCount = validNumbers.size();
-            File realUserDir = new File(REAL_PHONE_ROOT + subAccount + "/");
+            File realUserDir = new File(REAL_PHONE_ROOT + subAccount + "\\");
             if (!realUserDir.exists()) realUserDir.mkdirs();
             realFile = new File(realUserDir, taskId + ".txt");
 
@@ -115,7 +114,7 @@ public class SmsSendService {
                 throw new Exception("Failed to generate manual number file");
             }
         } else if (StringUtils.isNotEmpty(req.getPreTaskId())) {
-            preFile = new File(PRE_PHONE_ROOT + subAccount + "/" + req.getPreTaskId() + ".txt");
+            preFile = new File(PRE_PHONE_ROOT + subAccount + "\\" + req.getPreTaskId() + ".txt");
             if (!preFile.exists())
                 throw new Exception("Uploaded number file does not exist");
 
@@ -140,7 +139,7 @@ public class SmsSendService {
             }
 
             calleeCount = validatedNumbers.size();
-            File realDir = new File(REAL_PHONE_ROOT + subAccount + "/");
+            File realDir = new File(REAL_PHONE_ROOT + subAccount + "\\");
             if (!realDir.exists()) realDir.mkdirs();
             realFile = new File(realDir, taskId + ".txt");
 
@@ -172,7 +171,7 @@ public class SmsSendService {
         int totalCount = calleeCount * splitCount;
 
 
-        File taskUserDir = new File(TASK_ROOT + subAccount + "/");
+        File taskUserDir = new File(TASK_ROOT + subAccount + "\\");
         if (!taskUserDir.exists()) taskUserDir.mkdirs();
         File tmp = new File(taskUserDir, taskId + ".tmp");
         File dst = new File(taskUserDir, taskId + ".txt");
@@ -291,7 +290,7 @@ public class SmsSendService {
             }
 
             calleeCount = validNumbers.size();
-            File realUserDir = new File(REAL_PHONE_ROOT + subAccount + "/");
+            File realUserDir = new File(REAL_PHONE_ROOT + subAccount + "\\");
             if (!realUserDir.exists()) realUserDir.mkdirs();
             realFile = new File(realUserDir, taskId + ".txt");
 
@@ -306,7 +305,7 @@ public class SmsSendService {
                 throw new Exception("Failed to generate manual number file");
             }
         } else if (StringUtils.isNotEmpty(req.getPreTaskId())) {
-            preFile = new File(PRE_PHONE_ROOT + subAccount + "/" + req.getPreTaskId() + ".txt");
+            preFile = new File(PRE_PHONE_ROOT + subAccount + "\\" + req.getPreTaskId() + ".txt");
             if (!preFile.exists())
                 throw new Exception("Uploaded number file does not exist");
 
@@ -332,7 +331,7 @@ public class SmsSendService {
             }
 
             calleeCount = validatedNumbers.size();
-            File realDir = new File(REAL_PHONE_ROOT + subAccount + "/");
+            File realDir = new File(REAL_PHONE_ROOT + subAccount + "\\");
             if (!realDir.exists()) realDir.mkdirs();
             realFile = new File(realDir, taskId + ".txt");
 
@@ -364,7 +363,7 @@ public class SmsSendService {
         int totalCount = calleeCount * splitCount;
 
 
-        File taskUserDir = new File(TASK_ROOT + subAccount + "/");
+        File taskUserDir = new File(TASK_ROOT + subAccount + "\\");
         if (!taskUserDir.exists()) taskUserDir.mkdirs();
         File tmp = new File(taskUserDir, taskId + ".tmp");
         File dst = new File(taskUserDir, taskId + ".txt");

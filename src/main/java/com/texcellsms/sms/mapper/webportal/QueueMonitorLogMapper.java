@@ -14,10 +14,11 @@ public interface QueueMonitorLogMapper {
      */
     @Insert("INSERT INTO tbl_queue_monitor_log (task_id, sub_account, task_name, total_count, " +
             "submit_succ_count, dr_succ_count, dr_fail_count, pending_count, detail_pending_count, " +
-            "task_time, elapsed_minutes, alert_level, alert_sent, status) " +
+            "task_time, elapsed_minutes, alert_level, alert_sent, status, fee_exist, fee_exist_detail) " +
             "VALUES (#{taskId}, #{subAccount}, #{taskName}, #{totalCount}, #{submitSuccCount}, " +
             "#{drSuccCount}, #{drFailCount}, #{pendingCount}, #{detailPendingCount}, " +
-            "#{taskTime}, #{elapsedMinutes}, #{alertLevel}, #{alertSent}, #{status})")
+            "#{taskTime}, #{elapsedMinutes}, #{alertLevel}, #{alertSent}, #{status}, " +
+            "#{feeExist}, #{feeExistDetail})")
     @Options(useGeneratedKeys = true, keyProperty = "id")
     int insert(QueueMonitorLog log);
 
@@ -34,6 +35,8 @@ public interface QueueMonitorLogMapper {
             "task_time = #{taskTime}, " +
             "elapsed_minutes = #{elapsedMinutes}, " +
             "alert_level = #{alertLevel}, " +
+            "fee_exist = #{feeExist}, " +
+            "fee_exist_detail = #{feeExistDetail}, " +
             "update_time = NOW() " +
             "WHERE id = #{id}")
     int update(QueueMonitorLog log);
@@ -160,4 +163,55 @@ public interface QueueMonitorLogMapper {
             "WHERE status = 'PROCESSED' AND processed_time IS NOT NULL " +
             "AND MONTH(create_time) = MONTH(CURDATE()) AND YEAR(create_time) = YEAR(CURDATE())")
     Map<String, Object> getAvgHandleTime();
+
+    /**
+     * 批量更新告警状态为已处理
+     */
+    @Update({
+            "<script>",
+            "UPDATE tbl_queue_monitor_log SET ",
+            "    status = 'PROCESSED', ",
+            "    processed_by = #{processedBy}, ",
+            "    processed_time = #{processedTime} ",
+            "WHERE task_id IN ",
+            "<foreach collection='taskIds' item='id' open='(' separator=',' close=')'>",
+            "    #{id}",
+            "</foreach>",
+            "</script>"
+    })
+    int batchUpdateStatus(
+            @Param("taskIds") List<String> taskIds,
+            @Param("processedBy") String processedBy,
+            @Param("processedTime") LocalDateTime processedTime
+    );
+
+    /**
+     * 批量查询待处理告警（用于批量修复）
+     */
+    @Select({
+            "<script>",
+            "SELECT * FROM tbl_queue_monitor_log ",
+            "WHERE task_id IN ",
+            "<foreach collection='taskIds' item='id' open='(' separator=',' close=')'>",
+            "    #{id}",
+            "</foreach>",
+            "  AND status = 'PENDING'",
+            "</script>"
+    })
+    List<QueueMonitorLog> selectPendingByTaskIds(@Param("taskIds") List<String> taskIds);
+
+    /**
+     * 批量更新告警的FEE存在状态
+     */
+    @Update({
+            "<script>",
+            "<foreach collection='list' item='item' separator=';'>",
+            "UPDATE tbl_queue_monitor_log SET ",
+            "    fee_exist = #{item.feeExist}, ",
+            "    fee_exist_detail = #{item.feeExistDetail} ",
+            "WHERE task_id = #{item.taskId}",
+            "</foreach>",
+            "</script>"
+    })
+    int batchUpdateFeeExist(@Param("list") List<QueueMonitorLog> list);
 }

@@ -340,4 +340,69 @@ public interface SmsQueueMapper {
             "AND (t.RecvDRStatus IS NULL OR t.RecvDRStatus = '' OR " +
             "     t.RecvDRTime IS NULL OR t.RecvDRTime = '')")
     long countPendingDrNumbers(@Param("taskId") String taskId);
+
+    /**
+     * 批量修复任务DR（批量更新明细表）
+     */
+    @Update({
+            "<script>",
+            "UPDATE tbl_APITask SET ",
+            "    RecvDRStatus = 'DELIVRD', ",
+            "    RecvDRError = '000', ",
+            "    RecvDRTime = DATE_FORMAT(NOW(), '%Y-%m-%d %H:%i:%s'), ",
+            "    DLRSendStatus = 1 ",
+            "WHERE APITaskId IN ",
+            "<foreach collection='taskIds' item='id' open='(' separator=',' close=')'>",
+            "    #{id}",
+            "</foreach>",
+            "  AND (RecvDRStatus IS NULL OR RecvDRStatus = '' OR RecvDRStatus = 'UNKNOWN')",
+            "  AND (RecvDRError IS NULL OR RecvDRError = '' OR RecvDRError = 'UNKNOWN')",
+            "  AND (RecvDRTime IS NULL OR RecvDRTime = '' OR RecvDRTime = 'UNKNOWN')",
+            "</script>"
+    })
+    int batchFixTaskDr(@Param("taskIds") List<String> taskIds);
+
+    /**
+     * 批量更新任务主表统计（修复后更新DR计数）
+     * 使用 CASE WHEN 一次性更新所有任务
+     */
+    @Update({
+            "<script>",
+            "UPDATE tbl_APIScheduleSend SET ",
+            "    DRSuccCount = CASE TaskID ",
+            "    <foreach collection='taskIds' item='id'>",
+            "        WHEN #{id} THEN (SELECT COUNT(*) FROM tbl_APITask WHERE APITaskId = #{id} AND RecvDRStatus = 'DELIVRD')",
+            "    </foreach>",
+            "    END, ",
+            "    DRFailCount = CASE TaskID ",
+            "    <foreach collection='taskIds' item='id'>",
+            "        WHEN #{id} THEN (SELECT COUNT(*) FROM tbl_APITask WHERE APITaskId = #{id} AND RecvDRStatus != 'DELIVRD' AND RecvDRStatus IS NOT NULL AND RecvDRStatus != '')",
+            "    </foreach>",
+            "    END ",
+            "WHERE TaskID IN ",
+            "<foreach collection='taskIds' item='id' open='(' separator=',' close=')'>",
+            "    #{id}",
+            "</foreach>",
+            "</script>"
+    })
+    int batchUpdateTaskStats(@Param("taskIds") List<String> taskIds);
+
+    /**
+     * 查询任务的10个号码样本（用于FEE表校验）
+     * 返回号码、表后缀、任务提交时间、SubmitMsgId
+     */
+    @Select({
+            "SELECT ",
+            "    t.Callee, ",
+            "    t.SubAccount, ",
+            "    DATE_FORMAT(t.SubmitMsgTime, '%Y%m%d') as tableSuffix, ",
+            "    DATE_FORMAT(t.SubmitMsgTime, '%Y-%m-%d %H:%i:%s') as taskTime ",
+            "FROM tbl_APITask t ",
+            "WHERE t.APITaskId = #{taskId} ",
+            "  AND t.Callee IS NOT NULL ",
+            "  AND t.Callee != '' ",
+            "  AND t.SubmitMsgTime IS NOT NULL ",
+            "LIMIT 10"
+    })
+    List<Map<String, Object>> getTaskSampleCallees(@Param("taskId") String taskId);
 }

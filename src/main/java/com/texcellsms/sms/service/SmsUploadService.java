@@ -1,20 +1,17 @@
 package com.texcellsms.sms.service;
 
 import com.texcellsms.sms.mapper.webportal.ScheduleNumberTaskMapper;
-import org.apache.poi.ss.usermodel.Cell;
-import org.apache.poi.ss.usermodel.Row;
-import org.apache.poi.ss.usermodel.Sheet;
-import org.apache.poi.ss.usermodel.Workbook;
-import org.apache.poi.ss.usermodel.WorkbookFactory;
+import org.apache.commons.csv.CSVFormat;
+import org.apache.commons.csv.CSVParser;
+import org.apache.commons.csv.CSVRecord;
+import org.apache.poi.ss.usermodel.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.BufferedReader;
-import java.io.BufferedWriter;
-import java.io.File;
-import java.io.FileWriter;
-import java.io.InputStreamReader;
+import java.io.*;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -58,7 +55,21 @@ public class SmsUploadService {
         if (file.getSize() > MAX_FILE_SIZE_SMALL) {
             throw new Exception("File size cannot exceed 3MB");
         }
+        return parseCommon(file);
+    }
 
+    public ParseResult parsePhoneBatch(MultipartFile file) throws Exception {
+        if (file.getSize() > MAX_FILE_SIZE_BATCH) {
+            throw new Exception("File size cannot exceed 20MB");
+        }
+        return parseCommon(file);
+    }
+
+
+    /**
+     * 公共解析逻辑，Excel、CSV解析方法
+     */
+    private ParseResult parseCommon(MultipartFile file) throws Exception {
         List<String> list = new ArrayList<>();
         int totalLineCount = 0;
 
@@ -68,8 +79,9 @@ public class SmsUploadService {
 
         if (!isAllowed(ext)) throw new Exception("Only txt/csv/xlsx/xls files are supported");
 
-        if (ext.equals("txt") || ext.equals("csv")) {
-            try (BufferedReader br = new BufferedReader(new InputStreamReader(file.getInputStream(), "UTF-8"))) {
+        if ("txt".equals(ext)) {
+            // txt 一行一个号码
+            try (BufferedReader br = new BufferedReader(new InputStreamReader(file.getInputStream(), StandardCharsets.UTF_8))) {
                 String line;
                 while ((line = br.readLine()) != null) {
                     totalLineCount++;
@@ -77,21 +89,102 @@ public class SmsUploadService {
                     if (isValid(phone)) list.add(phone);
                 }
             }
+        } else if ("csv".equals(ext)) {
+            InputStream originalIs = file.getInputStream();
+            byte[] fileBytes = toByteArray(originalIs);
+            originalIs.close();
+
+            Charset charset = detectCsvCharset(fileBytes);
+
+            try (InputStream bais = new ByteArrayInputStream(fileBytes);
+                 BufferedReader br = new BufferedReader(new InputStreamReader(bais, charset));
+                 CSVParser parser = CSVFormat.DEFAULT.withSkipHeaderRecord().parse(br)) {
+
+                for (CSVRecord record : parser) {
+                    totalLineCount++;
+                    if (record.size() < 1) continue;
+                    String cellValue = record.get(0);
+                    String phone = cellValue.trim().replaceAll("[^0-9]", "");
+                    if (isValid(phone)) {
+                        list.add(phone);
+                    }
+                }
+            }
         } else {
+            // ========== Excel：处理数字单元格，避免长数字丢失精度 & 公式空单元格NPE ==========
             try (Workbook wb = WorkbookFactory.create(file.getInputStream())) {
                 Sheet sheet = wb.getSheetAt(0);
                 for (Row row : sheet) {
                     totalLineCount++;
                     Cell c = row.getCell(0);
                     if (c == null) continue;
-                    String phone = c.toString().trim().replaceAll("[^0-9]", "");
+                    String cellText = getCellSafeText(c);
+                    String phone = cellText.trim().replaceAll("[^0-9]", "");
                     if (isValid(phone)) list.add(phone);
                 }
             }
         }
+
         List<String> distinctList = list.stream().distinct().collect(Collectors.toList());
         return new ParseResult(distinctList, totalLineCount);
     }
+
+
+    /**
+     * Java8：读取InputStream转byte[]，替代 readAllBytes()
+     */
+    private byte[] toByteArray(InputStream is) throws IOException {
+        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        byte[] buffer = new byte[4096];
+        int len;
+        while ((len = is.read(buffer)) != -1) {
+            bos.write(buffer, 0, len);
+        }
+        return bos.toByteArray();
+    }
+
+
+    /**
+     * ✅ Excel单元格安全读取
+     */
+    private String getCellSafeText(Cell cell) {
+        if (cell == null) return "";
+        CellType cellType = cell.getCellType();
+        if(cellType == CellType.FORMULA){
+            cellType = cell.getCachedFormulaResultType();
+        }
+        switch (cellType) {
+            case STRING:
+                return cell.getStringCellValue().trim();
+            case NUMERIC:
+                if(DateUtil.isCellDateFormatted(cell)){
+                    return cell.getDateCellValue().toString();
+                }else{
+                    DataFormatter formatter = new DataFormatter();
+                    return formatter.formatCellValue(cell).trim();
+                }
+            case BOOLEAN:
+                return String.valueOf(cell.getBooleanCellValue());
+            default:
+                return "";
+        }
+    }
+
+    /**
+     * CSV编码探测，入参 byte[]
+     */
+    private Charset detectCsvCharset(byte[] fileBytes) {
+        // 判断UTF‑8 BOM
+        if (fileBytes.length >= 3
+                && fileBytes[0] == (byte)0xEF
+                && fileBytes[1] == (byte)0xBB
+                && fileBytes[2] == (byte)0xBF) {
+            return StandardCharsets.UTF_8;
+        }
+        // 业务策略：优先UTF‑8；Windows导出GBK可自行调整
+        return StandardCharsets.UTF_8;
+    }
+
 
     /**
      * 保存预上传任务（15分钟有效期）
@@ -125,47 +218,6 @@ public class SmsUploadService {
         );
     }
 
-    public ParseResult parsePhoneBatch(MultipartFile file) throws Exception {
-        // 大文件 30MB
-        if (file.getSize() > MAX_FILE_SIZE_BATCH) {
-            throw new Exception("File size cannot exceed 20MB");
-        }
-
-        List<String> list = new ArrayList<>();
-        int totalLineCount = 0;
-
-        String name = file.getOriginalFilename();
-        if (name == null) throw new Exception("Invalid file name");
-        String ext = getExt(name).toLowerCase();
-
-        if (!isAllowed(ext)) throw new Exception("Only txt/csv/xlsx/xls files are supported");
-
-        if (ext.equals("txt") || ext.equals("csv")) {
-            try (BufferedReader br = new BufferedReader(new InputStreamReader(file.getInputStream(), "UTF-8"))) {
-                String line;
-                while ((line = br.readLine()) != null) {
-                    totalLineCount++;
-                    String phone = line.trim().replaceAll("[^0-9]", "");
-                    if (isValid(phone)) list.add(phone);
-                }
-            }
-        } else {
-            try (Workbook wb = WorkbookFactory.create(file.getInputStream())) {
-                Sheet sheet = wb.getSheetAt(0);
-                for (Row row : sheet) {
-                    totalLineCount++;
-                    Cell c = row.getCell(0);
-                    if (c == null) continue;
-                    String phone = c.toString().trim().replaceAll("[^0-9]", "");
-                    if (isValid(phone)) list.add(phone);
-                }
-            }
-        }
-
-        // 去重
-        List<String> distinctList = list.stream().distinct().collect(Collectors.toList());
-        return new ParseResult(distinctList, totalLineCount);
-    }
 
     private boolean isAllowed(String ext) {
         for (String s : ALLOW) if (s.equals(ext)) return true;

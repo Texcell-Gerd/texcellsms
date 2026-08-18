@@ -3,6 +3,7 @@ package com.texcellsms.sms.monitor;
 
 import CacheDB.NCacheDBLink;
 import com.texcellsms.sms.interceptor.SecurityMonitorInterceptor;
+import com.texcellsms.sms.mapper.eccom.SubmitRecordMapper;
 import com.texcellsms.sms.mapper.webportal.*;
 import com.texcellsms.sms.model.entity.*;
 import com.texcellsms.sms.service.SmsQueueService;
@@ -38,9 +39,6 @@ public class LogMonitorController {
     private static final String OPS_UNLOCK_ACCOUNT = "UNLOCK_ACCOUNT";
     private static final String OPS_UNLOCK_IP = "UNLOCK_IP";
 
-//    private static final String ADMIN_USERNAME = "Administrator";
-//    private static final String ADMIN_PASSWORD = "dn17ORUwf36Znl";
-
     @Autowired
     private LoginAuditLogMapper loginAuditLogMapper;
 
@@ -73,6 +71,9 @@ public class LogMonitorController {
 
     @Autowired
     private WeChatRobotUtil weChatRobotUtil;
+
+    @Autowired
+    private SubmitRecordMapper submitRecordMapper;
 
 
     private String getRealIp(HttpServletRequest request) {
@@ -2305,6 +2306,60 @@ public class LogMonitorController {
     }
 
     /**
+     * 批量修复队列任务DR
+     */
+    @PostMapping("/api/monitor/queue-monitor/batch-fix")
+    public Map<String, Object> batchFixQueueTasks(
+            @RequestBody Map<String, Object> params,
+            @RequestParam(required = false) String secret,
+            HttpServletRequest request) {
+        Map<String, Object> result = new HashMap<>();
+        HttpSession session = request.getSession();
+        String clientIp = getRealIp(request);
+        String loginUsername = getCurrentUsername(session);
+
+        if (!isIpAllowed(clientIp, loginUsername)) {
+            result.put("code", 403);
+            result.put("msg", "仅允许内网访问");
+            return result;
+        }
+        if (!MONITOR_SECRET.equals(secret)) {
+            result.put("code", 401);
+            result.put("msg", "无权限访问");
+            return result;
+        }
+
+        try {
+            List<String> taskIds = (List<String>) params.get("taskIds");
+            if (taskIds == null || taskIds.isEmpty()) {
+                result.put("code", 400);
+                result.put("msg", "任务ID列表不能为空");
+                return result;
+            }
+
+            // 1. 批量修复任务DR
+            int updated = smsQueueMapper.batchFixTaskDr(taskIds);
+
+            // 2. 更新任务主表统计
+            smsQueueMapper.batchUpdateTaskStats(taskIds);
+
+            // 3. 更新监控日志状态
+            queueMonitorLogMapper.batchUpdateStatus(taskIds, loginUsername, LocalDateTime.now());
+
+            result.put("code", 200);
+            result.put("msg", String.format("批量修复成功，共更新 %d 条记录，涉及 %d 个任务", updated, taskIds.size()));
+            result.put("updated", updated);
+            result.put("taskCount", taskIds.size());
+            logger.info("批量修复任务: operator={}, taskIds={}, updated={}", loginUsername, taskIds, updated);
+        } catch (Exception e) {
+            logger.error("批量修复失败", e);
+            result.put("code", 500);
+            result.put("msg", "批量修复失败: " + e.getMessage());
+        }
+        return result;
+    }
+
+    /**
      * 构建队列监控日志对象
      */
     private QueueMonitorLog buildQueueMonitorLog(Map<String, Object> task) {
@@ -2453,7 +2508,7 @@ public class LogMonitorController {
                 "<head>\n" +
                 "<meta charset=\"UTF-8\">\n" +
                 "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, user-scalable=no\">\n" +
-                "<title>Texcell ECCOM WEB 监控系统登录</title>\n" +
+                "<title>Texcell 预付 WEB 监控系统登录</title>\n" +
                 "<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23667eea'/%3E%3Ctext x='50' y='68' font-size='50' text-anchor='middle' fill='white' font-family='Arial'%3E📊%3C/text%3E%3C/svg%3E\">\n" +
                 "<link href=\"https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap\" rel=\"stylesheet\">\n" +
                 "<style>\n" +
@@ -2518,7 +2573,7 @@ public class LogMonitorController {
                 "<div class=\"login-card\">\n" +
                 "<div class=\"logo-area\">\n" +
                 "<div class=\"logo-icon\"><span>📊</span></div>\n" +
-                "<h2>ECCOM WEB 监控系统登录</h2>\n" +
+                "<h2>预付 WEB 监控系统登录</h2>\n" +
                 "<div class=\"login-sub\">TexCell SMS 服务监控平台</div>\n" +
                 "</div>\n" +
                 "<div class=\"input-group\">\n" +
@@ -2566,7 +2621,7 @@ public class LogMonitorController {
                 "<head>\n" +
                 "<meta charset=\"UTF-8\">\n" +
                 "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, user-scalable=no\">\n" +
-                "<title>Texcell ECCOM WEB 监控首页</title>\n" +
+                "<title>Texcell 预付 WEB 监控首页</title>\n" +
                 "<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23667eea'/%3E%3Ctext x='50' y='68' font-size='50' text-anchor='middle' fill='white' font-family='Arial'%3E📊%3C/text%3E%3C/svg%3E\">\n" +
                 "<script src=\"https://cdn.jsdelivr.net/npm/chart.js\"></script>\n" +
                 "<link href=\"https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap\" rel=\"stylesheet\">\n" +
@@ -2641,7 +2696,7 @@ public class LogMonitorController {
                 "<div class=\"nav-container\">\n" +
                 "<div class=\"logo\">\n" +
                 "<div class=\"logo-icon\">📊</div>\n" +
-                "<div class=\"logo-text\">ECCOM WEB 监控管理系统</div>\n" +
+                "<div class=\"logo-text\">预付 WEB 监控管理系统</div>\n" +
                 "<div class=\"logo-sub\">v3.0</div>\n" +
                 "</div>\n" +
                 "<div class=\"menu\">\n" +
@@ -2741,7 +2796,7 @@ public class LogMonitorController {
                 "<head>\n" +
                 "<meta charset=\"UTF-8\">\n" +
                 "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, user-scalable=no\">\n" +
-                "<title>Texcell ECCOM WEB 管理面板</title>\n" +
+                "<title>Texcell 预付 WEB 管理面板</title>\n" +
                 "<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23667eea'/%3E%3Ctext x='50' y='68' font-size='50' text-anchor='middle' fill='white' font-family='Arial'%3E📊%3C/text%3E%3C/svg%3E\">\n" +
                 "<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap\" rel=\"stylesheet\">\n" +
                 "<style>\n" +
@@ -2824,7 +2879,7 @@ public class LogMonitorController {
                 "<div class=\"nav-container\">\n" +
                 "<div class=\"logo\">\n" +
                 "<div class=\"logo-icon\">📊</div>\n" +
-                "<div class=\"logo-text\">ECCOM WEB 监控管理系统</div>\n" +
+                "<div class=\"logo-text\">预付 WEB 监控管理系统</div>\n" +
                 "<div class=\"logo-sub\">v3.0</div>\n" +
                 "</div>\n" +
                 "<div class=\"menu\">\n" +
@@ -2913,7 +2968,7 @@ public class LogMonitorController {
                 "<head>\n" +
                 "<meta charset=\"UTF-8\">\n" +
                 "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n" +
-                "<title>Texcell ECCOM WEB 登录审计日志</title>\n" +
+                "<title>Texcell 预付 WEB 登录审计日志</title>\n" +
                 "<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23667eea'/%3E%3Ctext x='50' y='68' font-size='50' text-anchor='middle' fill='white' font-family='Arial'%3E📊%3C/text%3E%3C/svg%3E\">\n" +
                 "<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap\" rel=\"stylesheet\">\n" +
                 "<style>\n" +
@@ -3002,7 +3057,7 @@ public class LogMonitorController {
                 "<div class=\"nav-container\">\n" +
                 "<div class=\"logo\">\n" +
                 "<div class=\"logo-icon\">📊</div>\n" +
-                "<div class=\"logo-text\">ECCOM WEB 监控管理系统</div>\n" +
+                "<div class=\"logo-text\">预付 WEB 监控管理系统</div>\n" +
                 "<div class=\"logo-sub\">v3.0</div>\n" +
                 "</div>\n" +
                 "<div class=\"menu\">\n" +
@@ -3204,7 +3259,7 @@ public class LogMonitorController {
                 "<head>\n" +
                 "<meta charset=\"UTF-8\">\n" +
                 "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n" +
-                "<title>Texcell ECCOM WEB 客户号码文件管理</title>\n" +
+                "<title>Texcell 预付 WEB 客户号码文件管理</title>\n" +
                 "<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23667eea'/%3E%3Ctext x='50' y='68' font-size='50' text-anchor='middle' fill='white' font-family='Arial'%3E📁%3C/text%3E%3C/svg%3E\">\n" +
                 "<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap\" rel=\"stylesheet\">\n" +
                 "<style>\n" +
@@ -3283,7 +3338,7 @@ public class LogMonitorController {
                 "<div class=\"nav-container\">\n" +
                 "<div class=\"logo\">\n" +
                 "<div class=\"logo-icon\">📊</div>\n" +
-                "<div class=\"logo-text\">ECCOM WEB 监控管理系统</div>\n" +
+                "<div class=\"logo-text\">预付 WEB 监控管理系统</div>\n" +
                 "<div class=\"logo-sub\">v3.0</div>\n" +
                 "</div>\n" +
                 "<div class=\"menu\">\n" +
@@ -3461,7 +3516,7 @@ public class LogMonitorController {
                 "<head>\n" +
                 "<meta charset=\"UTF-8\">\n" +
                 "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n" +
-                "<title>Texcell ECCOM WEB API客户管理</title>\n" +
+                "<title>Texcell 预付 WEB API客户管理</title>\n" +
                 "<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23667eea'/%3E%3Ctext x='50' y='68' font-size='50' text-anchor='middle' fill='white' font-family='Arial'%3E👥%3C/text%3E%3C/svg%3E\">\n" +
                 "<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap\" rel=\"stylesheet\">\n" +
                 "<style>\n" +
@@ -3562,7 +3617,7 @@ public class LogMonitorController {
                 "<div class=\"nav-container\">\n" +
                 "<div class=\"logo\">\n" +
                 "<div class=\"logo-icon\">📊</div>\n" +
-                "<div class=\"logo-text\">ECCOM WEB 监控管理系统</div>\n" +
+                "<div class=\"logo-text\">预付 WEB 监控管理系统</div>\n" +
                 "<div class=\"logo-sub\">v3.0</div>\n" +
                 "</div>\n" +
                 "<div class=\"menu\">\n" +
@@ -3673,7 +3728,7 @@ public class LogMonitorController {
                 "<head>\n" +
                 "<meta charset=\"UTF-8\">\n" +
                 "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n" +
-                "<title>Texcell ECCOM WEB 登录账户管理</title>\n" +
+                "<title>Texcell 预付 WEB 登录账户管理</title>\n" +
                 "<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23667eea'/%3E%3Ctext x='50' y='68' font-size='50' text-anchor='middle' fill='white' font-family='Arial'%3E👤%3C/text%3E%3C/svg%3E\">\n" +
                 "<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap\" rel=\"stylesheet\">\n" +
                 "<style>\n" +
@@ -3772,7 +3827,7 @@ public class LogMonitorController {
                 "<div class=\"nav-container\">\n" +
                 "<div class=\"logo\">\n" +
                 "<div class=\"logo-icon\">📊</div>\n" +
-                "<div class=\"logo-text\">ECCOM WEB 监控管理系统</div>\n" +
+                "<div class=\"logo-text\">预付 WEB 监控管理系统</div>\n" +
                 "<div class=\"logo-sub\">v3.0</div>\n" +
                 "</div>\n" +
                 "<div class=\"menu\">\n" +
@@ -4131,7 +4186,7 @@ public class LogMonitorController {
                 "<head>\n" +
                 "<meta charset=\"UTF-8\">\n" +
                 "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n" +
-                "<title>Texcell ECCOM WEB 运维管理</title>\n" +
+                "<title>Texcell 预付 WEB 运维管理</title>\n" +
                 "<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23667eea'/%3E%3Ctext x='50' y='68' font-size='50' text-anchor='middle' fill='white' font-family='Arial'%3E🔧%3C/text%3E%3C/svg%3E\">\n" +
                 "<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap\" rel=\"stylesheet\">\n" +
                 "<script src=\"https://cdn.jsdelivr.net/npm/chart.js\"></script>\n" +
@@ -4245,7 +4300,7 @@ public class LogMonitorController {
                 "<div class=\"nav-container\">\n" +
                 "<div class=\"logo\">\n" +
                 "<div class=\"logo-icon\">📊</div>\n" +
-                "<div class=\"logo-text\">ECCOM WEB 监控管理系统</div>\n" +
+                "<div class=\"logo-text\">预付 WEB 监控管理系统</div>\n" +
                 "<div class=\"logo-sub\">v3.0</div>\n" +
                 "</div>\n" +
                 "<div class=\"menu\">\n" +
@@ -4639,7 +4694,7 @@ public class LogMonitorController {
                 "<head>\n" +
                 "<meta charset=\"UTF-8\">\n" +
                 "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n" +
-                "<title>Texcell ECCOM WEB 发送队列管理</title>\n" +
+                "<title>Texcell 预付 WEB 发送队列管理</title>\n" +
                 "<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23667eea'/%3E%3Ctext x='50' y='68' font-size='50' text-anchor='middle' fill='white' font-family='Arial'%3E📨%3C/text%3E%3C/svg%3E\">\n" +
                 "<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap\" rel=\"stylesheet\">\n" +
                 "<script src=\"https://cdn.jsdelivr.net/npm/chart.js\"></script>\n" +
@@ -4743,7 +4798,7 @@ public class LogMonitorController {
                 "<div class=\"nav-container\">\n" +
                 "<div class=\"logo\">\n" +
                 "<div class=\"logo-icon\">📊</div>\n" +
-                "<div class=\"logo-text\">ECCOM WEB 监控管理系统</div>\n" +
+                "<div class=\"logo-text\">预付 WEB 监控管理系统</div>\n" +
                 "<div class=\"logo-sub\">v3.0</div>\n" +
                 "</div>\n" +
                 "<div class=\"menu\">\n" +
@@ -4874,7 +4929,7 @@ public class LogMonitorController {
                 "<head>\n" +
                 "<meta charset=\"UTF-8\">\n" +
                 "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n" +
-                "<title>Texcell ECCOM WEB 队列任务DR监控</title>\n" +
+                "<title>Texcell 预付 WEB 队列任务DR监控</title>\n" +
                 "<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23667eea'/%3E%3Ctext x='50' y='68' font-size='50' text-anchor='middle' fill='white' font-family='Arial'%3E📊%3C/text%3E%3C/svg%3E\">\n" +
                 "<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap\" rel=\"stylesheet\">\n" +
                 "<style>\n" +
@@ -4890,6 +4945,8 @@ public class LogMonitorController {
                 "  --hover-bg: rgba(0,0,0,0.02);\n" +
                 "  --primary-color: #1677ff;\n" +
                 "  --primary-hover: #4096ff;\n" +
+                "  --fee-exist-true: #52c41a;\n" +
+                "  --fee-exist-false: #94a3b8;\n" +
                 "}\n" +
                 "*{margin:0;padding:0;box-sizing:border-box;}\n" +
                 "body{background:#f5f7fa;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;}\n" +
@@ -4924,15 +4981,18 @@ public class LogMonitorController {
                 ".search-group label{font-size:12px;color:#64748b;font-weight:500;}\n" +
                 ".search-group input,.search-group select{padding:8px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;min-width:150px;transition:all 0.3s;background:#ffffff;color:#1e293b;}\n" +
                 ".search-group input:focus,.search-group select:focus{outline:none;border-color:#1677ff;box-shadow:0 0 0 3px rgba(22,119,255,0.1);}\n" +
-                ".search-actions{display:flex;gap:10px;margin-left:auto;align-items:center;}\n" +
+                ".search-actions{display:flex;gap:10px;margin-left:auto;align-items:center;flex-wrap:wrap;}\n" +
                 ".search-btn{background:linear-gradient(135deg,#1677ff 0%,#4096ff 100%);color:white;border:none;padding:8px 20px;border-radius:8px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;}\n" +
                 ".search-btn:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(22,119,255,0.3);}\n" +
                 ".reset-btn{background:#f1f5f9;border:1px solid #d1d5db;padding:8px 20px;border-radius:8px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;color:#64748b;}\n" +
                 ".reset-btn:hover{background:#e8ecf1;}\n" +
                 ".scan-btn{background:linear-gradient(135deg,#52c41a 0%,#389e0d 100%);color:white;border:none;padding:8px 20px;border-radius:8px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;}\n" +
                 ".scan-btn:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(82,196,26,0.3);}\n" +
+                ".batch-fix-btn{background:linear-gradient(135deg,#ff4d4f 0%,#ff7875 100%);color:white;border:none;padding:8px 20px;border-radius:8px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;}\n" +
+                ".batch-fix-btn:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 4px 12px rgba(255,77,79,0.3);}\n" +
+                ".batch-fix-btn:disabled{opacity:0.5;cursor:not-allowed;}\n" +
                 ".log-card{background:#ffffff;border-radius:12px;overflow:auto;border:1px solid #e8ecf1;box-shadow:0 1px 3px rgba(0,0,0,0.04);}\n" +
-                ".log-table{width:100%;border-collapse:collapse;min-width:1200px;}\n" +
+                ".log-table{width:100%;border-collapse:collapse;min-width:1400px;}\n" +
                 ".log-table th{background:#f8fafc;padding:12px 16px;text-align:left;font-size:12px;font-weight:600;color:#64748b;border-bottom:1px solid #e8ecf1;white-space:nowrap;}\n" +
                 ".log-table td{padding:12px 16px;font-size:13px;color:#1e293b;border-bottom:1px solid #e8ecf1;vertical-align:middle;}\n" +
                 ".log-table tr:hover td{background:#f8fafc;}\n" +
@@ -4942,6 +5002,8 @@ public class LogMonitorController {
                 ".status-ignored{background:rgba(148,163,184,0.15);color:#94a3b8;}\n" +
                 ".alert-warning{background:rgba(250,173,20,0.15);color:#faad14;}\n" +
                 ".alert-critical{background:rgba(255,77,79,0.15);color:#ff4d4f;}\n" +
+                ".fee-exist-true{color:#52c41a;font-weight:600;}\n" +
+                ".fee-exist-false{color:#94a3b8;}\n" +
                 ".action-btn{padding:4px 12px;border-radius:6px;cursor:pointer;font-size:12px;transition:all 0.3s;border:none;}\n" +
                 ".action-btn.fix-btn{background:#1677ff;color:white;}\n" +
                 ".action-btn.fix-btn:hover{background:#4096ff;}\n" +
@@ -4994,7 +5056,7 @@ public class LogMonitorController {
                 "<div class=\"nav-container\">\n" +
                 "<div class=\"logo\">\n" +
                 "<div class=\"logo-icon\">📊</div>\n" +
-                "<div class=\"logo-text\">ECCOM WEB 监控管理系统</div>\n" +
+                "<div class=\"logo-text\">预付 WEB 监控管理系统</div>\n" +
                 "<div class=\"logo-sub\">v3.0</div>\n" +
                 "</div>\n" +
                 "<div class=\"menu\">\n" +
@@ -5021,7 +5083,10 @@ public class LogMonitorController {
                 "📨 队列任务DR监控\n" +
                 "<span class=\"badge warning\" id=\"pendingBadge\">加载中...</span>\n" +
                 "</div>\n" +
+                "<div style=\"display:flex;gap:10px;flex-wrap:wrap;\">\n" +
+                "<button class=\"batch-fix-btn\" id=\"batchFixBtn\" onclick=\"batchFix()\" disabled>🔧 批量修复</button>\n" +
                 "<button class=\"scan-btn\" onclick=\"manualScan()\">🔄 手动扫描</button>\n" +
+                "</div>\n" +
                 "</div>\n" +
                 "<div class=\"stats-grid\" id=\"statsGrid\">\n" +
                 "<div class=\"stat-card\"><div class=\"stat-number\" id=\"statPending\">-</div><div class=\"stat-label\">待处理告警</div></div>\n" +
@@ -5046,22 +5111,22 @@ public class LogMonitorController {
                 "<table class=\"log-table\">\n" +
                 "<thead>\n" +
                 "<tr>\n" +
+                "<th style=\"width:40px;text-align:center;\"><input type=\"checkbox\" onclick=\"toggleAllTasks()\"></th>\n" +
                 "<th>任务ID</th>\n" +
                 "<th>客户账号</th>\n" +
                 "<th>任务名称</th>\n" +
                 "<th>总发送数</th>\n" +
                 "<th>已提交</th>\n" +
-                "<th>成功</th>\n" +
-                "<th>失败</th>\n" +
                 "<th>任务时间</th>\n" +
                 "<th>DR未更新数</th>\n" +
                 "<th>已过时间</th>\n" +
                 "<th>告警级别</th>\n" +
+                "<th>FEE是否存在记录</th>\n" +
                 "<th>状态</th>\n" +
                 "<th>操作</th>\n" +
                 "</tr>\n" +
                 "</thead>\n" +
-                "<tbody id=\"logBody\"><tr><td colspan=\"13\" class=\"empty\">加载中...</td></tr></tbody>\n" +
+                "<tbody id=\"logBody\"><tr><td colspan=\"15\" class=\"empty\">加载中...</td></tr></tbody>\n" +
                 "</table>\n" +
                 "<div class=\"pagination\" id=\"pagination\"></div>\n" +
                 "</div>\n" +
@@ -5128,6 +5193,7 @@ public class LogMonitorController {
                 "var numbersPage = 1;\n" +
                 "var numbersSize = 10;\n" +
                 "var numbersTotalPages = 1;\n" +
+                "var selectedTaskIds = [];\n" +
                 "\n" +
                 "function logout(){ fetch('/monitor/logout').then(function(){ location.href = '/monitor/login'; }); }\n" +
                 "\n" +
@@ -5197,15 +5263,107 @@ public class LogMonitorController {
                 "    fetch(url).then(function(res) { return res.json(); })\n" +
                 "        .then(function(data) {\n" +
                 "            if (data.code === 200) {\n" +
-                "                renderTable(data.data || []);\n" +
+                "                var list = data.data || [];\n" +
+                "                // 只渲染表格，不触发FEE校验\n" +
+                "                renderTable(list);\n" +
                 "                totalPages = data.totalPages || 1;\n" +
                 "                renderPagination();\n" +
                 "            } else {\n" +
-                "                document.getElementById('logBody').innerHTML = '<tr><td colspan=\"13\" class=\"empty\">加载失败: ' + (data.msg || '错误') + '</td></tr>';\n" +
+                "                document.getElementById('logBody').innerHTML = '<tr><td colspan=\"15\" class=\"empty\">加载失败: ' + (data.msg || '错误') + '</td></tr>';\n" +
                 "            }\n" +
                 "        }).catch(function() {\n" +
-                "            document.getElementById('logBody').innerHTML = '<tr><td colspan=\"13\" class=\"empty\">加载失败: 网络错误</td></tr>';\n" +
+                "            document.getElementById('logBody').innerHTML = '<tr><td colspan=\"15\" class=\"empty\">加载失败: 网络错误</td></tr>';\n" +
                 "        });\n" +
+                "}\n" +
+                "\n" +
+                "function toggleAllTasks() {\n" +
+                "    var checkboxes = document.querySelectorAll('.task-checkbox');\n" +
+                "    var allChecked = true;\n" +
+                "\n" +
+                "    checkboxes.forEach(function(cb) {\n" +
+                "        if (!cb.disabled && !cb.checked) {\n" +
+                "            allChecked = false;\n" +
+                "        }\n" +
+                "    });\n" +
+                "\n" +
+                "    checkboxes.forEach(function(cb) {\n" +
+                "        if (!cb.disabled) {\n" +
+                "            cb.checked = !allChecked;\n" +
+                "            var taskId = cb.value;\n" +
+                "            if (cb.checked) {\n" +
+                "                if (!selectedTaskIds.includes(taskId)) {\n" +
+                "                    selectedTaskIds.push(taskId);\n" +
+                "                }\n" +
+                "            } else {\n" +
+                "                var index = selectedTaskIds.indexOf(taskId);\n" +
+                "                if (index > -1) {\n" +
+                "                    selectedTaskIds.splice(index, 1);\n" +
+                "                }\n" +
+                "            }\n" +
+                "        }\n" +
+                "    });\n" +
+                "    updateBatchFixBtn();\n" +
+                "}\n" +
+                "\n" +
+                "function toggleTask(taskId) {\n" +
+                "    var checkbox = document.getElementById('check_' + taskId);\n" +
+                "    if (!checkbox) return;\n" +
+                "    if (checkbox.checked) {\n" +
+                "        if (!selectedTaskIds.includes(taskId)) {\n" +
+                "            selectedTaskIds.push(taskId);\n" +
+                "        }\n" +
+                "    } else {\n" +
+                "        var index = selectedTaskIds.indexOf(taskId);\n" +
+                "        if (index > -1) {\n" +
+                "            selectedTaskIds.splice(index, 1);\n" +
+                "        }\n" +
+                "    }\n" +
+                "    updateBatchFixBtn();\n" +
+                "}\n" +
+                "\n" +
+                "function updateBatchFixBtn() {\n" +
+                "    var btn = document.getElementById('batchFixBtn');\n" +
+                "    if (selectedTaskIds.length > 0) {\n" +
+                "        btn.disabled = false;\n" +
+                "        btn.innerText = '🔧 批量修复 (' + selectedTaskIds.length + '个)';\n" +
+                "    } else {\n" +
+                "        btn.disabled = true;\n" +
+                "        btn.innerText = '🔧 批量修复';\n" +
+                "    }\n" +
+                "}\n" +
+                "\n" +
+                "function batchFix() {\n" +
+                "    if (selectedTaskIds.length === 0) {\n" +
+                "        alert('请先选择要修复的任务');\n" +
+                "        return;\n" +
+                "    }\n" +
+                "    if (!confirm('确认批量修复 ' + selectedTaskIds.length + ' 个任务？\\n\\n⚠️ 会将 RecvDRStatus 更新为 DELIVRD，RecvDRError 更新为 000')) {\n" +
+                "        return;\n" +
+                "    }\n" +
+                "    var btn = document.getElementById('batchFixBtn');\n" +
+                "    btn.disabled = true;\n" +
+                "    btn.innerText = '修复中...';\n" +
+                "    fetch('/api/monitor/queue-monitor/batch-fix?secret=dn17ORUwf36Znl', {\n" +
+                "        method: 'POST',\n" +
+                "        headers: { 'Content-Type': 'application/json' },\n" +
+                "        body: JSON.stringify({ taskIds: selectedTaskIds })\n" +
+                "    }).then(function(res) { return res.json(); })\n" +
+                "      .then(function(data) {\n" +
+                "          btn.disabled = false;\n" +
+                "          btn.innerText = '🔧 批量修复';\n" +
+                "          if (data.code === 200) {\n" +
+                "              alert('✅ ' + data.msg);\n" +
+                "              selectedTaskIds = [];\n" +
+                "              loadLogs();\n" +
+                "              loadStats();\n" +
+                "          } else {\n" +
+                "              alert('❌ 修复失败: ' + (data.msg || '未知错误'));\n" +
+                "          }\n" +
+                "      }).catch(function(err) {\n" +
+                "          btn.disabled = false;\n" +
+                "          btn.innerText = '🔧 批量修复';\n" +
+                "          alert('❌ 网络错误: ' + err.message);\n" +
+                "      });\n" +
                 "}\n" +
                 "\n" +
                 "function renderTable(list) {\n" +
@@ -5225,30 +5383,35 @@ public class LogMonitorController {
                 "        var canFix = log.status === 'PENDING';\n" +
                 "        var canIgnore = log.status === 'PENDING';\n" +
                 "        var pendingCount = log.detailPendingCount || 0;\n" +
+                "        var taskId = log.taskId || '';\n" +
+                "        // feeExist 从数据库读取（扫描时写入）\n" +
+                "        var feeExist = log.feeExist === true;\n" +
+                "        var feeExistText = feeExist ? '✅ 已存在' : (log.status === 'PENDING' ? '⏳ 待扫描' : '-');\n" +
+                "        var feeExistClass = feeExist ? 'fee-exist-true' : 'fee-exist-false';\n" +
                 "        html += '<tr>' +\n" +
-                "            '<td style=\"font-family:monospace;font-size:12px;\" title=\"' + escapeHtml(log.taskId) + '\">' + escapeHtml((log.taskId || '').substring(0, 25)) + '...</td>' +\n" +
+                "            '<td style=\"text-align:center;\"><input type=\"checkbox\" class=\"task-checkbox\" id=\"check_' + escapeHtml(taskId) + '\" value=\"' + escapeHtml(taskId) + '\" onchange=\"toggleTask(\\'' + escapeHtml(taskId) + '\\')\" ' + (log.status !== 'PENDING' ? 'disabled' : '') + '></td>' +\n" +
+                "            '<td style=\"font-family:monospace;font-size:12px;\" title=\"' + escapeHtml(taskId) + '\">' + escapeHtml((taskId || '').substring(0, 25)) + '...</td>' +\n" +
                 "            '<td>' + escapeHtml(log.subAccount || '-') + '</td>' +\n" +
                 "            '<td>' + escapeHtml((log.taskName || '-').substring(0, 30)) + '</td>' +\n" +
                 "            '<td>' + (log.totalCount || 0) + '</td>' +\n" +
                 "            '<td>' + (log.submitSuccCount || 0) + '</td>' +\n" +
-                "            '<td>' + (log.drSuccCount || 0) + '</td>' +\n" +
-                "            '<td>' + (log.drFailCount || 0) + '</td>' +\n" +
                 "            '<td>' + (log.taskTime ? formatDateTime(log.taskTime) : '-') + '</td>' +\n" +
                 "            '<td>' +\n" +
                 "                (pendingCount > 0 \n" +
-                "                    ? '<a href=\"javascript:void(0)\" style=\"color:#ff4d4f;font-weight:600;text-decoration:underline;cursor:pointer;\" onclick=\"showPendingNumbers(\\'' + escapeHtml(log.taskId) + '\\', ' + pendingCount + ')\">' + pendingCount + '</a>' \n" +
+                "                    ? '<a href=\"javascript:void(0)\" style=\"color:#ff4d4f;font-weight:600;text-decoration:underline;cursor:pointer;\" onclick=\"showPendingNumbers(\\'' + escapeHtml(taskId) + '\\', ' + pendingCount + ')\">' + pendingCount + '</a>' \n" +
                 "                    : '<span style=\"color:#94a3b8;\">0</span>'\n" +
                 "                ) +\n" +
                 "            '</td>' +\n" +
                 "            '<td>' + (log.elapsedMinutes || 0) + '分钟</td>' +\n" +
                 "            '<td><span class=\"status-badge ' + alertClassMap[log.alertLevel] + '\">' + alertMap[log.alertLevel] + '</span></td>' +\n" +
+                "            '<td class=\"' + feeExistClass + '\">' + feeExistText + '</td>' +\n" +
                 "            '<td><span class=\"status-badge ' + statusClassMap[log.status] + '\">' + statusMap[log.status] + '</span></td>' +\n" +
                 "            '<td>';\n" +
                 "        if (canFix) {\n" +
-                "            html += '<button class=\"action-btn fix-btn\" onclick=\"showConfirmModal(\\'' + escapeHtml(log.taskId) + '\\', \\'' + escapeHtml(log.subAccount || '-') + '\\', ' + (log.totalCount || 0) + ', ' + pendingCount + ')\">修复</button> ';\n" +
+                "            html += '<button class=\"action-btn fix-btn\" onclick=\"showConfirmModal(\\'' + escapeHtml(taskId) + '\\', \\'' + escapeHtml(log.subAccount || '-') + '\\', ' + (log.totalCount || 0) + ', ' + pendingCount + ')\">修复</button> ';\n" +
                 "        }\n" +
                 "        if (canIgnore) {\n" +
-                "            html += '<button class=\"action-btn ignore-btn\" onclick=\"ignoreTask(\\'' + escapeHtml(log.taskId) + '\\')\">忽略</button>';\n" +
+                "            html += '<button class=\"action-btn ignore-btn\" onclick=\"ignoreTask(\\'' + escapeHtml(taskId) + '\\')\">忽略</button>';\n" +
                 "        }\n" +
                 "        if (!canFix && !canIgnore) {\n" +
                 "            html += '-';\n" +
@@ -5256,6 +5419,7 @@ public class LogMonitorController {
                 "        html += '</td></tr>';\n" +
                 "    }\n" +
                 "    tbody.innerHTML = html;\n" +
+                "    updateBatchFixBtn();\n" +
                 "}\n" +
                 "\n" +
                 "function renderPagination() {\n" +
@@ -5351,6 +5515,7 @@ public class LogMonitorController {
                 "            btn.innerText = '🔄 手动扫描';\n" +
                 "            if (data.code === 200) {\n" +
                 "                alert(data.msg);\n" +
+                "                // 扫描完成后重新加载数据（此时数据库已有fee_exist值）\n" +
                 "                loadLogs();\n" +
                 "                loadStats();\n" +
                 "            } else {\n" +

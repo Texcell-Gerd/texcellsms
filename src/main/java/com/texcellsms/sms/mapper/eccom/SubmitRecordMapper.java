@@ -133,4 +133,20 @@ public interface SubmitRecordMapper {
             @Param("ids") List<String> ids
     );
 
+    /**
+     * 查询FEE表是否存在记录
+     * 用 OriginalCallee + SourAccount + RecvDRTime 匹配
+     */
+    @Select({
+            "SELECT COUNT(*) FROM Fee_Bill_${tableSuffix} f ",
+            "WHERE f.OriginalCallee = #{callee} ",
+            "  AND f.SourAccount = #{subAccount} ",
+            "  AND f.RecvDRTime > STR_TO_DATE(#{taskTime}, '%Y-%m-%d %H:%i:%s')"
+    })
+    int countFeeByCalleeAndAccount(
+            @Param("callee") String callee,
+            @Param("subAccount") String subAccount,
+            @Param("tableSuffix") String tableSuffix,
+            @Param("taskTime") String taskTime
+    );
 }

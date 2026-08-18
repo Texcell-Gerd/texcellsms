@@ -1,6 +1,7 @@
 package com.texcellsms.sms.monitor;
 
 import com.texcellsms.sms.interceptor.SecurityMonitorInterceptor;
+import com.texcellsms.sms.mapper.eccom.SubmitRecordMapper;
 import com.texcellsms.sms.mapper.webportal.QueueMonitorLogMapper;
 import com.texcellsms.sms.mapper.webportal.SmsQueueMapper;
 import com.texcellsms.sms.model.entity.QueueMonitorLog;
@@ -67,6 +68,9 @@ public class LogMonitorTask {
 
     @Autowired
     private WeChatRobotUtil weChatRobotUtil;
+
+    @Autowired
+    private SubmitRecordMapper submitRecordMapper;
 
     @PostConstruct
     public void init() {
@@ -358,7 +362,7 @@ public class LogMonitorTask {
         }
     }
 
-    @Scheduled(cron = "0 */10 * * * ?")
+    @Scheduled(cron = "0 */20 * * * ?")
     public void scanQueueTimeoutTasks() {
         try {
             logger.info("开始扫描队列任务DR未更新");
@@ -387,7 +391,6 @@ public class LogMonitorTask {
             int autoClosed = 0;
             for (String taskId : pendingTaskIds) {
                 if (!currentTimeoutTaskIds.contains(taskId)) {
-                    // 这个任务已经不在超时列表中了，说明已恢复
                     queueMonitorLogMapper.updateStatus(taskId, "PROCESSED", "系统自动", LocalDateTime.now());
                     autoClosed++;
                     logger.info("任务 {} 已恢复（DR已更新），自动关闭告警", taskId);
@@ -403,32 +406,36 @@ public class LogMonitorTask {
             int newAlerts = 0;
             int updatedAlerts = 0;
             int weChatAlerts = 0;
+            List<QueueMonitorLog> feeUpdateList = new ArrayList<>();
 
             for (Map<String, Object> task : allTasks.values()) {
                 String taskId = (String) task.get("taskId");
                 Integer totalCount = ((Number) task.getOrDefault("totalCount", 0)).intValue();
                 Integer detailPendingCount = ((Number) task.getOrDefault("detailPendingCount", 0)).intValue();
 
-                // 如果 detailPendingCount = 0，说明已经没有未更新的记录了，跳过
                 if (detailPendingCount == 0) {
                     continue;
                 }
 
+                // ✅ 校验FEE是否存在
+                boolean feeExist = checkFeeExistForTask(taskId);
+                String feeDetail = feeExist ? "FEE表存在记录" : "FEE表无记录";
+
                 QueueMonitorLog existing = queueMonitorLogMapper.selectLatestByTaskId(taskId);
 
                 if (existing != null) {
-                    // 已处理或已忽略的，跳过
                     if ("PROCESSED".equals(existing.getStatus()) || "IGNORED".equals(existing.getStatus())) {
                         continue;
                     }
 
-                    // 🔧 更新现有记录
                     QueueMonitorLog updatedLog = buildQueueMonitorLog(task);
                     updatedLog.setId(existing.getId());
+                    // ✅ 设置FEE字段
+                    updatedLog.setFeeExist(feeExist);
+                    updatedLog.setFeeExistDetail(feeDetail);
                     queueMonitorLogMapper.update(updatedLog);
                     updatedAlerts++;
 
-                    // 如果告警未发送过，发送企微
                     if (totalCount > 5000 && existing.getAlertSent() == 0) {
                         sendQueueAlertToWeChat(updatedLog);
                         queueMonitorLogMapper.updateAlertSent(taskId);
@@ -437,8 +444,11 @@ public class LogMonitorTask {
                     continue;
                 }
 
-                // 新记录：插入
+                // 新记录
                 QueueMonitorLog log = buildQueueMonitorLog(task);
+                // ✅ 设置FEE字段
+                log.setFeeExist(feeExist);
+                log.setFeeExistDetail(feeDetail);
                 queueMonitorLogMapper.insert(log);
 
                 if (totalCount > 5000) {
@@ -453,6 +463,39 @@ public class LogMonitorTask {
                     newAlerts, updatedAlerts, autoClosed, weChatAlerts);
         } catch (Exception e) {
             logger.error("扫描DR未更新任务失败", e);
+        }
+    }
+
+    /**
+     * 校验单个任务是否在FEE表存在记录
+     * 取任务中的号码样本去FEE表校验
+     */
+    private boolean checkFeeExistForTask(String taskId) {
+        try {
+            List<Map<String, Object>> samples = smsQueueMapper.getTaskSampleCallees(taskId);
+            if (samples == null || samples.isEmpty()) {
+                return false;
+            }
+
+            for (Map<String, Object> sample : samples) {
+                String callee = (String) sample.get("Callee");
+                String subAccount = (String) sample.get("SubAccount");
+                String tableSuffix = (String) sample.get("tableSuffix");
+                String taskTime = (String) sample.get("taskTime");
+
+                if (callee == null || subAccount == null || tableSuffix == null || taskTime == null) {
+                    continue;
+                }
+
+                int count = submitRecordMapper.countFeeByCalleeAndAccount(callee, subAccount, tableSuffix, taskTime);
+                if (count > 0) {
+                    return true;
+                }
+            }
+            return false;
+        } catch (Exception e) {
+            logger.error("校验FEE存在失败: taskId={}", taskId, e);
+            return false;
         }
     }
 
