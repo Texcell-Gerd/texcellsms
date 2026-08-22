@@ -6,6 +6,7 @@ import com.texcellsms.sms.mapper.eccom.SubmitRecordMapper;
 import com.texcellsms.sms.model.DTO.SubmitRecordDTO;
 import com.texcellsms.sms.model.DTO.SubmitRecordWithStatsDTO;
 import com.texcellsms.sms.model.vo.SubmitRecordExportVO;
+import com.texcellsms.sms.util.AjaxResult;
 import com.texcellsms.sms.util.Utf8ToGsm7;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -533,7 +534,16 @@ public class SubmitRecordService {
                 return t2.compareTo(t1);
             });
 
+            // 校验页码
             long total = validIds.size();
+            int maxPage = total <= 0 ? 1 : (int) Math.ceil((double) total / FIX_PAGE_SIZE);
+
+            if (pageNum > maxPage) {
+                // 自动修正到最后一页
+                pageNum = maxPage;
+                logger.warn("页码超出范围，自动修正 - username: {}, 请求页码: {}, 最大页码: {}",
+                        username, pageNum, maxPage);
+            }
             long deliverSuccess = 0, deliverFail = 0;
             for (String id : validIds) {
                 Map<String, Object> f = feeMap.get(id);
@@ -558,16 +568,16 @@ public class SubmitRecordService {
                 }
             }
 
-            boolean hasSearchCondition =
-                    (callee != null && !callee.trim().isEmpty())
-                            || (mcc != null && !mcc.trim().isEmpty())
-                            || (mnc != null && !mnc.trim().isEmpty())
-                            || (destAccountStatus != null && !destAccountStatus.trim().isEmpty())
-                            || (finalInnerReportState != null && !finalInnerReportState.trim().isEmpty());
-
-            if (hasSearchCondition) {
-                pageNum = 1;
-            }
+//            boolean hasSearchCondition =
+//                    (callee != null && !callee.trim().isEmpty())
+//                            || (mcc != null && !mcc.trim().isEmpty())
+//                            || (mnc != null && !mnc.trim().isEmpty())
+//                            || (destAccountStatus != null && !destAccountStatus.trim().isEmpty())
+//                            || (finalInnerReportState != null && !finalInnerReportState.trim().isEmpty());
+//
+//            if (hasSearchCondition) {
+//                pageNum = 1;
+//            }
 
             int skip = (pageNum - 1) * FIX_PAGE_SIZE;
             List<String> pageIds = validIds.stream().skip(skip).limit(FIX_PAGE_SIZE).collect(Collectors.toList());

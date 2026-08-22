@@ -72,13 +72,7 @@ public class CustomerSmsApiController {
                 return AjaxResult.error(400, "Invalid timestamp format");
             }
 
-            long reqSec;
-            if (timestamp.length() == 13) {
-                reqSec = reqTimestamp / 1000;
-            } else {
-                reqSec = reqTimestamp;
-            }
-
+            long reqSec = (timestamp.length() == 13) ? reqTimestamp / 1000 : reqTimestamp;
             long nowSec = System.currentTimeMillis() / 1000;
             if (Math.abs(nowSec - reqSec) > 300) {
                 return AjaxResult.error(401, "Request expired");
@@ -90,18 +84,18 @@ public class CustomerSmsApiController {
                 return AjaxResult.error(401, "Account does not exist or password error");
             }
 
-            // 验签
+            // ✅ 验签
             AjaxResult check = CustomerApiSignUtil.verifySign(username, timestamp, sign, password);
-            if (check.get("Code") == null || (Integer) check.get("Code") != 0) {
-                return AjaxResult.error(401, "Authentication failed");
+            if (check != null) {
+                return check;
             }
 
             // 业务校验
             if (CollectionUtils.isEmpty(request.getNumbers())) {
                 return AjaxResult.error(400, "Numbers cannot be empty");
             }
-            if (request.getNumbers().size() > 200) {
-                return AjaxResult.error(400, "Maximum 200 numbers per request");
+            if (request.getNumbers().size() > 100000) {
+                return AjaxResult.error(400, "Maximum 100000 numbers per request");  // ✅ 修正错误信息
             }
             if (StringUtils.isEmpty(request.getContent())) {
                 return AjaxResult.error(400, "Content cannot be empty");
@@ -122,54 +116,81 @@ public class CustomerSmsApiController {
     // ====================== 查询回执 ======================
     @PostMapping("/receipt")
     public AjaxResult queryReceipt(@RequestBody ReceiptRequest request) {
+        // 添加请求开始日志
+        logger.info("========== 查询回执请求开始 ==========");
 
         try {
             String username = request.getUsername();
             String timestamp = request.getTimestamp();
             String sign = request.getSign();
 
+            // 打印请求参数（敏感信息脱敏）
+            logger.info("请求参数 - username: {}, timestamp: {}, pageNum: {}, pageSize: {}, callee: {}, mcc: {}, mnc: {}",
+                    username, timestamp, request.getPageNum(), request.getPageSize(),
+                    request.getCallee(), request.getMcc(), request.getMnc());
+
             // 校验必填
             if (StringUtils.isAnyBlank(username, timestamp, sign)) {
+                logger.warn("参数缺失 - username: {}, timestamp: {}, sign存在: {}",
+                        username, timestamp, sign != null);
                 return AjaxResult.error(400, "Required parameters are missing");
             }
 
-            // ============【补】时间戳校验（和其他接口保持一致）============
+            // 时间戳校验
             long reqTimestamp;
             try {
                 reqTimestamp = Long.parseLong(timestamp);
             } catch (NumberFormatException e) {
+                logger.warn("时间戳格式错误 - username: {}, timestamp: {}", username, timestamp);
                 return AjaxResult.error(400, "Invalid timestamp format");
             }
             long reqSec = (timestamp.length() == 13) ? reqTimestamp / 1000 : reqTimestamp;
             long nowSec = System.currentTimeMillis() / 1000;
             if (Math.abs(nowSec - reqSec) > 300) {
+                logger.warn("请求过期 - username: {}, requestTime: {}, nowTime: {}", username, reqSec, nowSec);
                 return AjaxResult.error(401, "Request expired");
             }
 
             String password = getCustomerPassword(username);
             if (StringUtils.isEmpty(password)) {
+                logger.warn("用户不存在或密码错误 - username: {}", username);
                 return AjaxResult.error(401, "Account does not exist or password error");
             }
 
+            // ✅ 验签
             AjaxResult check = CustomerApiSignUtil.verifySign(username, timestamp, sign, password);
-            if (check.get("Code") == null || (Integer) check.get("Code") != 0) {
-                return AjaxResult.error(401, "Authentication failed");
+            if (check != null) {
+                logger.warn("签名验证失败 - username: {}", username);
+                return check;
             }
+            logger.info("签名验证成功 - username: {}", username);
 
-            // ============分页参数保护，对齐task/detail逻辑 ============
+            // 分页参数保护
             Integer pageNum = request.getPageNum();
             Integer pageSize = request.getPageSize();
-            if(pageNum == null || pageNum < 1) pageNum = 1;
-            if(pageSize == null || pageSize < 1) pageSize = 20;
-            if(pageSize > 1000) pageSize = 1000; //对外API最大一页1000
+            if (pageNum == null || pageNum < 1) pageNum = 1;
+            if (pageSize == null || pageSize < 1) pageSize = 10;
+            if (pageSize > 1000) pageSize = 1000; // 对外API最大一页1000
 
+            logger.info("分页参数 - pageNum: {}, pageSize: {}", pageNum, pageSize);
+
+            // 时间解析
             SimpleDateFormat sdf = new SimpleDateFormat("yyyy/MM/dd HH:mm:ss");
             Date start = null;
             Date end = null;
-            if (StringUtils.isNotEmpty(request.getStartTime())) start = sdf.parse(request.getStartTime());
-            if (StringUtils.isNotEmpty(request.getEndTime())) end = sdf.parse(request.getEndTime());
+            if (StringUtils.isNotEmpty(request.getStartTime())) {
+                start = sdf.parse(request.getStartTime());
+                logger.info("开始时间: {}", request.getStartTime());
+            }
+            if (StringUtils.isNotEmpty(request.getEndTime())) {
+                end = sdf.parse(request.getEndTime());
+                logger.info("结束时间: {}", request.getEndTime());
+            }
 
-            // API 专用方法
+            // 查询
+            logger.info("开始查询回执数据 - username: {}, 时间范围: {} ~ {}",
+                    username, request.getStartTime(), request.getEndTime());
+
             SubmitRecordWithStatsDTO stats = submitRecordService.getSubmitRecordWithStatsAPI(
                     username,
                     start, end,
@@ -182,12 +203,24 @@ public class CustomerSmsApiController {
                     pageSize
             );
 
+            // 记录查询结果
+            if (stats != null && stats.getRecords() != null) {
+                logger.info("查询成功 - username: {}, 总记录数: {}, 当前页: {}, 总页数: {}",
+                        username, stats.getSubmitTotal(), stats.getCurrentPage(), stats.getPageCount());
+            }
+
+            logger.info("========== 查询回执请求结束 ==========");
             return AjaxResult.success("Query successful", stats);
 
         } catch (ParseException e) {
+            logger.warn("时间格式解析失败 - username: {}, error: {}", request.getUsername(), e.getMessage());
             return AjaxResult.error(400, "Invalid time format. Use yyyy/MM/dd HH:mm:ss");
+        } catch (IllegalArgumentException e) {
+            // 捕获页码超出异常
+            logger.warn("页码超出范围 - username: {}, error: {}", request.getUsername(), e.getMessage());
+            return AjaxResult.error(400, e.getMessage());
         } catch (Exception e) {
-            e.printStackTrace();
+            logger.error("查询回执异常 - username: {}", request.getUsername(), e);
             return AjaxResult.error(500, "Query failed: " + e.getMessage());
         }
     }
@@ -196,21 +229,30 @@ public class CustomerSmsApiController {
     @PostMapping("/balance")
     public AjaxResult queryBalance(@RequestBody BalanceRequest request) {
         try {
+            // 1. 打印请求参数
+            logger.info("收到余额查询请求 - username: {}, timestamp: {}, sign: {}",
+                    request.getUsername(), request.getTimestamp(), request.getSign());
+
             String username = request.getUsername();
             String timestamp = request.getTimestamp();
             String sign = request.getSign();
 
             if (StringUtils.isAnyBlank(username, timestamp, sign)) {
+                logger.warn("参数缺失 - username: {}, timestamp: {}, sign: {}", username, timestamp, sign);
                 return AjaxResult.error(400, "Required parameters are missing");
             }
 
             String password = getCustomerPassword(username);
+            logger.info("获取密码 - username: {}, password存在: {}", username, password != null);
+
             if (StringUtils.isEmpty(password)) {
+                logger.warn("用户不存在或密码错误 - username: {}", username);
                 return AjaxResult.error(401, "Account does not exist or password error");
             }
 
             AjaxResult checkSign = CustomerApiSignUtil.verifySign(username, timestamp, sign, password);
             if (checkSign != null) {
+                logger.warn("签名验证失败 - username: {}", username);
                 return checkSign;
             }
 
@@ -219,7 +261,24 @@ public class CustomerSmsApiController {
                 db = NCacheDBLink.getNCacheDBLink();
                 db.InitEnv();
                 db.ConnectToCacheDB();
+
+                logger.info("开始查询数据库 - username: {}", username);
                 Map<String, Object> balanceMap = db.prc_MMSIFQueryBalance(username);
+
+                // 打印原始返回数据
+                logger.info("数据库返回原始数据: {}", balanceMap);
+
+                // 检查返回数据是否为空
+                if (balanceMap == null || balanceMap.isEmpty()) {
+                    logger.warn("数据库返回空数据 - username: {}", username);
+                    return AjaxResult.error(404, "No balance data found");
+                }
+
+                // 检查必要的字段是否存在
+                if (!balanceMap.containsKey("Balance") || !balanceMap.containsKey("Credit")) {
+                    logger.error("返回数据缺少必要字段 - balanceMap: {}", balanceMap);
+                    return AjaxResult.error(500, "Invalid data structure from database");
+                }
 
                 long balanceRaw = Long.parseLong(balanceMap.get("Balance").toString());
                 long creditRaw = Long.parseLong(balanceMap.get("Credit").toString());
@@ -230,7 +289,10 @@ public class CustomerSmsApiController {
                 Map<String, Object> data = new HashMap<>();
                 data.put("Balance", String.format("%.4f", balance));
                 data.put("Credit", String.format("%.4f", credit));
+
+                logger.info("查询成功 - username: {}, balance: {}, credit: {}", username, balance, credit);
                 return AjaxResult.success("Query successful", data);
+
             } finally {
                 if (db != null) {
                     db.Disconnect();
@@ -238,8 +300,11 @@ public class CustomerSmsApiController {
                 }
             }
 
+        } catch (NumberFormatException e) {
+            logger.error("数据格式转换错误 - username: {}", request.getUsername(), e);
+            return AjaxResult.error(500, "Data format error: " + e.getMessage());
         } catch (Exception e) {
-            logger.error("/open/api/sms/balance exception", e);
+            logger.error("/open/api/sms/balance exception - username: {}", request.getUsername(), e);
             return AjaxResult.error(500, "Query failed: " + e.getMessage());
         }
     }
@@ -298,64 +363,138 @@ public class CustomerSmsApiController {
     // ====================== 根据TaskId查询短信详情 ======================
     @PostMapping("/task/detail")
     public AjaxResult getTaskDetail(@RequestBody TaskDetailRequest request) {
+        logger.info("========== 查询任务详情请求开始 ==========");
+
         try {
             String username = request.getUsername();
             String timestamp = request.getTimestamp();
             String sign = request.getSign();
             String taskId = request.getTaskId();
             Integer pageNum = request.getPageNum();
-            Integer pageSize = request.getPageSize();
+
+            final int PAGE_SIZE = 10;
+
+            logger.info("请求参数 - username: {}, taskId: {}, pageNum: {}",
+                    username, taskId, pageNum);
 
             if (StringUtils.isAnyBlank(username, timestamp, sign, taskId)) {
+                logger.warn("参数缺失 - username: {}, taskId: {}", username, taskId);
                 return AjaxResult.error(400, "Required parameters are missing");
             }
-            // 分页参数保护
-            if(pageNum == null || pageNum < 1) pageNum = 1;
-            if(pageSize == null || pageSize < 1) pageSize = 200;
-            if(pageSize > 1000) pageSize = 1000; // 对外API最大一页1000条
 
+            if (pageNum == null || pageNum < 1) {
+                pageNum = 1;
+            }
+
+            // 时间戳校验
             long reqTimestamp;
             try {
                 reqTimestamp = Long.parseLong(timestamp);
             } catch (NumberFormatException e) {
+                logger.warn("时间戳格式错误 - username: {}, timestamp: {}", username, timestamp);
                 return AjaxResult.error(400, "Invalid timestamp format");
             }
             long reqSec = (timestamp.length() == 13) ? reqTimestamp / 1000 : reqTimestamp;
             long nowSec = System.currentTimeMillis() / 1000;
             if (Math.abs(nowSec - reqSec) > 300) {
+                logger.warn("请求过期 - username: {}", username);
                 return AjaxResult.error(401, "Request expired");
             }
 
             String password = getCustomerPassword(username);
-            AjaxResult check = CustomerApiSignUtil.verifySign(username, timestamp, sign, password);
-            if (check.get("Code") == null || (Integer) check.get("Code") != 0) {
-                return AjaxResult.error(401, "Authentication failed");
+            if (StringUtils.isEmpty(password)) {
+                logger.warn("用户不存在 - username: {}", username);
+                return AjaxResult.error(401, "Account does not exist or password error");
             }
 
-            // ==========【重要】越权校验：检查taskId是否属于当前username ==========
-            String taskOwnerAccount = smsQueueMapper.getTaskOwnerByTaskId(taskId);
-            if(StringUtils.isEmpty(taskOwnerAccount)){
-                return AjaxResult.error(404, "taskId not found");
+            AjaxResult check = CustomerApiSignUtil.verifySign(username, timestamp, sign, password);
+            if (check != null) {
+                return check;
             }
-            if(!username.equals(taskOwnerAccount)){
+            logger.info("签名验证成功 - username: {}", username);
+
+            // 越权校验
+            String taskOwnerAccount = smsQueueMapper.getTaskOwnerByTaskId(taskId);
+            if (StringUtils.isEmpty(taskOwnerAccount)) {
+                logger.warn("任务不存在 - username: {}, taskId: {}", username, taskId);
+                return AjaxResult.error(404, "Task not found");
+            }
+            if (!username.equals(taskOwnerAccount)) {
+                logger.warn("无权限访问 - username: {}, taskId: {}", username, taskId);
                 return AjaxResult.error(403, "No permission to access this task");
             }
 
-            // 查询任务汇总统计
-            Map<String,Object> taskSummary = smsQueueMapper.getTaskSummary(taskId);
-            // 查询分页明细
-            Map<String, Object> pageResult = smsQueueService.getQueueTaskDetail(taskId, pageNum, pageSize, null);
+            // ==================== 统计全部数据的送达状态 ====================
+            Map<String, Object> stats = smsQueueMapper.selectDrStatsByTaskId(taskId);
 
-            Map<String,Object> respData = new HashMap<>();
-            respData.put("summary", taskSummary); // 任务总统计
-            respData.put("records", pageResult.get("records"));
-            respData.put("total", pageResult.get("total"));
-            respData.put("pageNum", pageResult.get("pageNum"));
-            respData.put("pageSize", pageResult.get("pageSize"));
+            long successCount = 0;
+            long failCount = 0;
+
+            if (stats != null) {
+                Object succObj = stats.get("drSuccCount");
+                Object failObj = stats.get("drFailCount");
+                successCount = succObj != null ? ((Number) succObj).longValue() : 0;
+                failCount = failObj != null ? ((Number) failObj).longValue() : 0;
+            }
+
+            logger.info("全部数据统计 - 成功: {}, 失败: {}", successCount, failCount);
+
+            // ==================== 分页查询明细 ====================
+            Map<String, Object> pageResult = smsQueueService.getQueueTaskDetail(taskId, pageNum, PAGE_SIZE, null);
+
+            if (pageResult == null) {
+                pageResult = new HashMap<>();
+                pageResult.put("records", Collections.emptyList());
+                pageResult.put("total", 0L);
+            }
+
+            // ==================== 构建响应 ====================
+            Long total = (Long) pageResult.getOrDefault("total", 0L);
+            int maxPage = total <= 0 ? 1 : (int) Math.ceil((double) total / PAGE_SIZE);
+
+            if (pageNum > maxPage) {
+                int originalPageNum = pageNum;
+                pageNum = maxPage;
+                logger.warn("页码超出范围，自动修正 - 原始页码: {}, 修正为: {}", originalPageNum, pageNum);
+                pageResult = smsQueueService.getQueueTaskDetail(taskId, pageNum, PAGE_SIZE, null);
+                if (pageResult == null) {
+                    pageResult = new HashMap<>();
+                    pageResult.put("records", Collections.emptyList());
+                    pageResult.put("total", total);
+                }
+            }
+
+            // 查询任务汇总统计
+            Map<String, Object> taskSummary = smsQueueMapper.getTaskSummary(taskId);
+            if (taskSummary == null) {
+                taskSummary = new HashMap<>();
+            }
+
+            // 汇总信息（添加统计字段）
+            Map<String, Object> summaryWithStats = new HashMap<>();
+            if (taskSummary != null) {
+                summaryWithStats.putAll(taskSummary);
+            }
+            summaryWithStats.put("DRSuccCount", successCount);  // 送达成功数（全部数据）
+            summaryWithStats.put("DRFailCount", failCount);     // 送达失败数（全部数据）
+
+            Map<String, Object> respData = new HashMap<>();
+            respData.put("summary", summaryWithStats);
+            respData.put("records", pageResult.getOrDefault("records", Collections.emptyList()));
+            respData.put("total", pageResult.getOrDefault("total", 0L));
+            respData.put("pageNum", pageResult.getOrDefault("pageNum", pageNum));
+            respData.put("pageSize", PAGE_SIZE);
+            respData.put("pageCount", maxPage);
+
+            logger.info("查询成功 - username: {}, taskId: {}, 总记录数: {}, 当前页: {}, 总页数: {}",
+                    username, taskId, total, pageNum, maxPage);
+            logger.info("========== 查询任务详情请求结束 ==========");
 
             return AjaxResult.success("Query successful", respData);
+
         } catch (Exception e) {
-            e.printStackTrace();
+            logger.error("查询任务详情异常 - username: {}, taskId: {}",
+                    request.getUsername(), request.getTaskId(), e);
             return AjaxResult.error(500, "Query failed: " + e.getMessage());
         }
     }
@@ -419,7 +558,7 @@ public class CustomerSmsApiController {
     }
 
     /**
-     * 批量上传 30MB
+     * 批量上传 20MB
      */
     @PostMapping("/uploadCalleeBatch")
     public AjaxResult uploadCalleeBatch(
@@ -554,7 +693,6 @@ public class CustomerSmsApiController {
         private String sign;
         private String taskId;
         private Integer pageNum = 1;
-        private Integer pageSize = 200; // 默认200
 
         public String getUsername() {
             return username;
@@ -594,14 +732,6 @@ public class CustomerSmsApiController {
 
         public void setPageNum(Integer pageNum) {
             this.pageNum = pageNum;
-        }
-
-        public Integer getPageSize() {
-            return pageSize;
-        }
-
-        public void setPageSize(Integer pageSize) {
-            this.pageSize = pageSize;
         }
     }
 

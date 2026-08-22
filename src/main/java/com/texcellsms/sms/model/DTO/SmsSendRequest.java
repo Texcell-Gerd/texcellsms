@@ -12,8 +12,8 @@ public class SmsSendRequest {
     private List<String> numbers;// 手动输入号码（和预任务二选一）
     private String caller;       // 发件人ID（可选）
     private String content;      // 短信内容（必填）
-    private String username;
-    private String timestamp;
-    private String sign;
+    private String username;     //提交账号
+    private String timestamp;    //时间戳
+    private String sign;         //签名
     private String fileName;     // 原始文件名（可选）
 }

@@ -181,6 +181,19 @@ public interface SmsQueueMapper {
 
 
     /**
+     * 统计单个任务的DR状态（成功/失败）
+     * 成功：RecvDRStatus = 'DELIVRD'
+     * 失败：RecvDRStatus 不为空，且不等于 'DELIVRD'
+     * 未回执：RecvDRStatus 为空，不计入统计
+     */
+    @Select("SELECT " +
+            "SUM(CASE WHEN RecvDRStatus = 'DELIVRD' THEN 1 ELSE 0 END) AS drSuccCount, " +
+            "SUM(CASE WHEN RecvDRStatus IS NOT NULL AND RecvDRStatus != '' AND RecvDRStatus != 'DELIVRD' THEN 1 ELSE 0 END) AS drFailCount " +
+            "FROM tbl_APITask " +
+            "WHERE APITaskId = #{taskId}")
+    Map<String, Object> selectDrStatsByTaskId(@Param("taskId") String taskId);
+
+    /**
      * 根据taskId查询任务归属账号，用于鉴权
      */
     @Select("SELECT SubAccount FROM tbl_APIScheduleSend WHERE TaskID = #{taskId}")
