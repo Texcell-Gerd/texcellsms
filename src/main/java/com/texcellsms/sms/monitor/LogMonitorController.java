@@ -3,11 +3,12 @@ package com.texcellsms.sms.monitor;
 
 import CacheDB.NCacheDBLink;
 import com.texcellsms.sms.interceptor.SecurityMonitorInterceptor;
-import com.texcellsms.sms.mapper.eccom.SubmitRecordMapper;
 import com.texcellsms.sms.mapper.webportal.*;
 import com.texcellsms.sms.model.entity.*;
+import com.texcellsms.sms.service.IpRateLimitConfigService;
 import com.texcellsms.sms.service.SmsQueueService;
 import com.texcellsms.sms.util.ApiClientConfig;
+import com.texcellsms.sms.util.IpLocationUtil;
 import com.texcellsms.sms.util.WeChatRobotUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -73,7 +74,10 @@ public class LogMonitorController {
     private WeChatRobotUtil weChatRobotUtil;
 
     @Autowired
-    private SubmitRecordMapper submitRecordMapper;
+    private IpRateLimitConfigService ipRateLimitConfigService;
+
+    @Autowired
+    private SecurityMonitorInterceptor securityMonitorInterceptor;
 
 
     private String getRealIp(HttpServletRequest request) {
@@ -1370,8 +1374,6 @@ public class LogMonitorController {
         return result;
     }
 
-    // ==================== 解除限制 API ====================
-
     // ==================== 运维管理 API ====================
 
     /**
@@ -1621,6 +1623,316 @@ public class LogMonitorController {
         return result;
     }
 
+    /**
+     * 获取所有限流配置
+     */
+    @GetMapping("/api/monitor/rate-limit/list")
+    public Map<String, Object> rateLimitList(@RequestParam String secret,
+                                             HttpServletRequest request) {
+        Map<String, Object> result = new HashMap<>();
+        HttpSession session = request.getSession();
+        String clientIp = getRealIp(request);
+        String loginUsername = getCurrentUsername(session);
+
+        if (!isIpAllowed(clientIp, loginUsername)) {
+            result.put("code", 403);
+            result.put("msg", "仅允许内网访问");
+            return result;
+        }
+        if (!MONITOR_SECRET.equals(secret)) {
+            result.put("code", 401);
+            result.put("msg", "无权限访问");
+            return result;
+        }
+
+        try {
+            List<IpRateLimitConfig> list = ipRateLimitConfigService.listAll();
+            result.put("code", 200);
+            result.put("data", list);
+            result.put("defaultRateLimit", securityMonitorInterceptor.getDefaultRateLimit());
+            result.put("defaultBlockDuration", securityMonitorInterceptor.getDefaultBlockDuration());
+        } catch (Exception e) {
+            logger.error("获取限流配置列表失败", e);
+            result.put("code", 500);
+            result.put("msg", "查询失败: " + e.getMessage());
+        }
+        return result;
+    }
+
+    /**
+     * 新增/修改限流配置
+     */
+    @PostMapping("/api/monitor/rate-limit/save")
+    public Map<String, Object> rateLimitSave(@RequestBody IpRateLimitConfig config,
+                                             @RequestParam String secret,
+                                             HttpServletRequest request) {
+        Map<String, Object> result = new HashMap<>();
+        HttpSession session = request.getSession();
+        String clientIp = getRealIp(request);
+        String loginUsername = getCurrentUsername(session);
+
+        if (!isIpAllowed(clientIp, loginUsername)) {
+            result.put("code", 403);
+            result.put("msg", "仅允许内网访问");
+            return result;
+        }
+        if (!MONITOR_SECRET.equals(secret)) {
+            result.put("code", 401);
+            result.put("msg", "无权限访问");
+            return result;
+        }
+
+        // 校验参数
+        if (config.getIp() == null || config.getIp().trim().isEmpty()) {
+            result.put("code", 400);
+            result.put("msg", "IP地址不能为空");
+            return result;
+        }
+        if (config.getRateLimit() == null || config.getRateLimit() < 1) {
+            result.put("code", 400);
+            result.put("msg", "限流值必须大于0");
+            return result;
+        }
+        if (config.getBlockDuration() == null || config.getBlockDuration() < 1) {
+            result.put("code", 400);
+            result.put("msg", "封禁时长必须大于0");
+            return result;
+        }
+
+        try {
+            ipRateLimitConfigService.saveConfig(config, loginUsername);
+            // 刷新拦截器缓存
+            securityMonitorInterceptor.refreshConfig();
+
+            result.put("code", 200);
+            result.put("msg", "保存成功");
+            logger.info("运维操作: 保存限流配置, 操作人={}, IP={}, 限流={}/分钟",
+                    loginUsername, config.getIp(), config.getRateLimit());
+        } catch (Exception e) {
+            logger.error("保存限流配置失败", e);
+            result.put("code", 500);
+            result.put("msg", "保存失败: " + e.getMessage());
+        }
+        return result;
+    }
+
+    /**
+     * 删除限流配置
+     */
+    @PostMapping("/api/monitor/rate-limit/delete")
+    public Map<String, Object> rateLimitDelete(@RequestParam Long id,
+                                               @RequestParam String secret,
+                                               HttpServletRequest request) {
+        Map<String, Object> result = new HashMap<>();
+        HttpSession session = request.getSession();
+        String clientIp = getRealIp(request);
+        String loginUsername = getCurrentUsername(session);
+
+        if (!isIpAllowed(clientIp, loginUsername)) {
+            result.put("code", 403);
+            result.put("msg", "仅允许内网访问");
+            return result;
+        }
+        if (!MONITOR_SECRET.equals(secret)) {
+            result.put("code", 401);
+            result.put("msg", "无权限访问");
+            return result;
+        }
+
+        try {
+            ipRateLimitConfigService.deleteConfig(id, loginUsername);
+            securityMonitorInterceptor.refreshConfig();
+
+            result.put("code", 200);
+            result.put("msg", "删除成功");
+            logger.info("运维操作: 删除限流配置, 操作人={}, ID={}", loginUsername, id);
+        } catch (Exception e) {
+            logger.error("删除限流配置失败", e);
+            result.put("code", 500);
+            result.put("msg", "删除失败: " + e.getMessage());
+        }
+        return result;
+    }
+
+    /**
+     * 启用/禁用限流配置
+     */
+    @PostMapping("/api/monitor/rate-limit/toggle")
+    public Map<String, Object> rateLimitToggle(@RequestParam Long id,
+                                               @RequestParam Integer enabled,
+                                               @RequestParam String secret,
+                                               HttpServletRequest request) {
+        Map<String, Object> result = new HashMap<>();
+        HttpSession session = request.getSession();
+        String clientIp = getRealIp(request);
+        String loginUsername = getCurrentUsername(session);
+
+        if (!isIpAllowed(clientIp, loginUsername)) {
+            result.put("code", 403);
+            result.put("msg", "仅允许内网访问");
+            return result;
+        }
+        if (!MONITOR_SECRET.equals(secret)) {
+            result.put("code", 401);
+            result.put("msg", "无权限访问");
+            return result;
+        }
+
+        try {
+            ipRateLimitConfigService.toggleConfig(id, enabled, loginUsername);
+            securityMonitorInterceptor.refreshConfig();
+
+            String status = enabled == 1 ? "启用" : "禁用";
+            result.put("code", 200);
+            result.put("msg", status + "成功");
+            logger.info("运维操作: {}限流配置, 操作人={}, ID={}", status, loginUsername, id);
+        } catch (Exception e) {
+            logger.error("切换限流配置状态失败", e);
+            result.put("code", 500);
+            result.put("msg", "操作失败: " + e.getMessage());
+        }
+        return result;
+    }
+
+    /**
+     * 手动解封IP
+     */
+    @PostMapping("/api/monitor/rate-limit/unblock")
+    public Map<String, Object> rateLimitUnblock(@RequestParam String ip,
+                                                @RequestParam String secret,
+                                                HttpServletRequest request) {
+        Map<String, Object> result = new HashMap<>();
+        HttpSession session = request.getSession();
+        String clientIp = getRealIp(request);
+        String loginUsername = getCurrentUsername(session);
+
+        if (!isIpAllowed(clientIp, loginUsername)) {
+            result.put("code", 403);
+            result.put("msg", "仅允许内网访问");
+            return result;
+        }
+        if (!MONITOR_SECRET.equals(secret)) {
+            result.put("code", 401);
+            result.put("msg", "无权限访问");
+            return result;
+        }
+
+        try {
+            // 解封IP
+            securityMonitorInterceptor.unblockIp(ip);
+            // 记录操作日志
+            ipRateLimitConfigService.unblockIp(ip, loginUsername);
+
+            result.put("code", 200);
+            result.put("msg", "IP " + ip + " 已解封");
+            logger.info("运维操作: 手动解封IP, 操作人={}, IP={}", loginUsername, ip);
+        } catch (Exception e) {
+            logger.error("解封IP失败", e);
+            result.put("code", 500);
+            result.put("msg", "解封失败: " + e.getMessage());
+        }
+        return result;
+    }
+
+    /**
+     * 获取当前所有被封禁的IP列表
+     */
+    @GetMapping("/api/monitor/rate-limit/blocked-list")
+    public Map<String, Object> getBlockedList(@RequestParam String secret,
+                                              HttpServletRequest request) {
+        Map<String, Object> result = new HashMap<>();
+        HttpSession session = request.getSession();
+        String clientIp = getRealIp(request);
+        String loginUsername = getCurrentUsername(session);
+
+        if (!isIpAllowed(clientIp, loginUsername)) {
+            result.put("code", 403);
+            result.put("msg", "仅允许内网访问");
+            return result;
+        }
+        if (!MONITOR_SECRET.equals(secret)) {
+            result.put("code", 401);
+            result.put("msg", "无权限访问");
+            return result;
+        }
+
+        try {
+            Set<String> blockedIps = securityMonitorInterceptor.getBlockedIps();
+            List<Map<String, Object>> list = new ArrayList<>();
+
+            for (String ip : blockedIps) {
+                Long blockTime = securityMonitorInterceptor.getBlockTime(ip);
+                long remainingSeconds = 0;
+                if (blockTime != null) {
+                    long duration = securityMonitorInterceptor.getIpBlockDurationMs(ip);
+                    long elapsed = System.currentTimeMillis() - blockTime;
+                    remainingSeconds = Math.max(0, (duration - elapsed) / 1000);
+                }
+                Map<String, Object> info = new HashMap<>();
+                info.put("ip", ip);
+                info.put("remainingSeconds", remainingSeconds);
+                list.add(info);
+            }
+
+            // 按剩余时间排序（少的在前面）
+            list.sort((a, b) -> {
+                long ra = (long) a.get("remainingSeconds");
+                long rb = (long) b.get("remainingSeconds");
+                return Long.compare(ra, rb);
+            });
+
+            result.put("code", 200);
+            result.put("data", list);
+        } catch (Exception e) {
+            logger.error("获取封禁列表失败", e);
+            result.put("code", 500);
+            result.put("msg", "查询失败: " + e.getMessage());
+        }
+        return result;
+    }
+
+    /**
+     * 全部解封
+     */
+    @PostMapping("/api/monitor/rate-limit/unblock-all")
+    public Map<String, Object> unblockAll(@RequestParam String secret,
+                                          HttpServletRequest request) {
+        Map<String, Object> result = new HashMap<>();
+        HttpSession session = request.getSession();
+        String clientIp = getRealIp(request);
+        String loginUsername = getCurrentUsername(session);
+
+        if (!isIpAllowed(clientIp, loginUsername)) {
+            result.put("code", 403);
+            result.put("msg", "仅允许内网访问");
+            return result;
+        }
+        if (!MONITOR_SECRET.equals(secret)) {
+            result.put("code", 401);
+            result.put("msg", "无权限访问");
+            return result;
+        }
+
+        try {
+            Set<String> blockedIps = securityMonitorInterceptor.getBlockedIps();
+            int count = blockedIps.size();
+
+            for (String ip : blockedIps) {
+                securityMonitorInterceptor.unblockIp(ip);
+                ipRateLimitConfigService.unblockIp(ip, loginUsername);
+            }
+
+            result.put("code", 200);
+            result.put("msg", "已解封所有IP，共 " + count + " 个");
+            logger.info("运维操作: 全部解封, 操作人={}, 数量={}", loginUsername, count);
+        } catch (Exception e) {
+            logger.error("全部解封失败", e);
+            result.put("code", 500);
+            result.put("msg", "操作失败: " + e.getMessage());
+        }
+        return result;
+    }
+
     // ==================== 运维日志 API ====================
 
     /**
@@ -1741,6 +2053,7 @@ public class LogMonitorController {
     public Map<String, Object> getQueueTasksForAdmin(
             @RequestParam(required = false) String subAccount,
             @RequestParam(required = false) String taskId,
+            @RequestParam(required = false) String taskIp,
             @RequestParam(required = false) Integer scheduleStatus,
             @RequestParam(defaultValue = "1") int pageNum,
             @RequestParam(defaultValue = "20") int pageSize,
@@ -1765,11 +2078,47 @@ public class LogMonitorController {
 
         try {
             Map<String, Object> data = smsQueueService.getAllQueueTasksForAdmin(
-                    subAccount, taskId, scheduleStatus, pageNum, pageSize);
+                    subAccount, taskId, taskIp, scheduleStatus, pageNum, pageSize);
             result.put("code", 200);
             result.put("data", data);
         } catch (Exception e) {
             logger.error("查询任务列表失败", e);
+            result.put("code", 500);
+            result.put("msg", "查询失败: " + e.getMessage());
+        }
+        return result;
+    }
+
+    /**
+     * 查询IP地理位置信息
+     */
+    @GetMapping("/api/monitor/queue/ip-location")
+    public Map<String, Object> getIpLocation(
+            @RequestParam String ip,
+            @RequestParam(required = false) String secret,
+            HttpServletRequest request) {
+        Map<String, Object> result = new HashMap<>();
+        HttpSession session = request.getSession();
+        String clientIp = getRealIp(request);
+        String loginUsername = getCurrentUsername(session);
+
+        if (!isIpAllowed(clientIp, loginUsername)) {
+            result.put("code", 403);
+            result.put("msg", "仅允许内网访问");
+            return result;
+        }
+        if (!MONITOR_SECRET.equals(secret)) {
+            result.put("code", 401);
+            result.put("msg", "无权限访问");
+            return result;
+        }
+
+        try {
+            IpLocationUtil.IpLocationInfo info = IpLocationUtil.getLocation(ip);
+            result.put("code", 200);
+            result.put("data", info);
+        } catch (Exception e) {
+            logger.error("查询IP地理位置失败: {}", ip, e);
             result.put("code", 500);
             result.put("msg", "查询失败: " + e.getMessage());
         }
@@ -2508,7 +2857,7 @@ public class LogMonitorController {
                 "<head>\n" +
                 "<meta charset=\"UTF-8\">\n" +
                 "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, user-scalable=no\">\n" +
-                "<title>Texcell 预付 WEB 监控系统登录</title>\n" +
+                "<title>Texcell ECOM WEB 监控系统登录</title>\n" +
                 "<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23667eea'/%3E%3Ctext x='50' y='68' font-size='50' text-anchor='middle' fill='white' font-family='Arial'%3E📊%3C/text%3E%3C/svg%3E\">\n" +
                 "<link href=\"https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap\" rel=\"stylesheet\">\n" +
                 "<style>\n" +
@@ -2573,7 +2922,7 @@ public class LogMonitorController {
                 "<div class=\"login-card\">\n" +
                 "<div class=\"logo-area\">\n" +
                 "<div class=\"logo-icon\"><span>📊</span></div>\n" +
-                "<h2>预付 WEB 监控系统登录</h2>\n" +
+                "<h2>ECOM WEB 监控系统登录</h2>\n" +
                 "<div class=\"login-sub\">TexCell SMS 服务监控平台</div>\n" +
                 "</div>\n" +
                 "<div class=\"input-group\">\n" +
@@ -2621,7 +2970,7 @@ public class LogMonitorController {
                 "<head>\n" +
                 "<meta charset=\"UTF-8\">\n" +
                 "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, user-scalable=no\">\n" +
-                "<title>Texcell 预付 WEB 监控首页</title>\n" +
+                "<title>Texcell ECOM WEB 监控首页</title>\n" +
                 "<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23667eea'/%3E%3Ctext x='50' y='68' font-size='50' text-anchor='middle' fill='white' font-family='Arial'%3E📊%3C/text%3E%3C/svg%3E\">\n" +
                 "<script src=\"https://cdn.jsdelivr.net/npm/chart.js\"></script>\n" +
                 "<link href=\"https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap\" rel=\"stylesheet\">\n" +
@@ -2696,7 +3045,7 @@ public class LogMonitorController {
                 "<div class=\"nav-container\">\n" +
                 "<div class=\"logo\">\n" +
                 "<div class=\"logo-icon\">📊</div>\n" +
-                "<div class=\"logo-text\">预付 WEB 监控管理系统</div>\n" +
+                "<div class=\"logo-text\">ECOM WEB 监控管理系统</div>\n" +
                 "<div class=\"logo-sub\">v3.0</div>\n" +
                 "</div>\n" +
                 "<div class=\"menu\">\n" +
@@ -2796,7 +3145,7 @@ public class LogMonitorController {
                 "<head>\n" +
                 "<meta charset=\"UTF-8\">\n" +
                 "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, user-scalable=no\">\n" +
-                "<title>Texcell 预付 WEB 管理面板</title>\n" +
+                "<title>Texcell ECOM WEB 管理面板</title>\n" +
                 "<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23667eea'/%3E%3Ctext x='50' y='68' font-size='50' text-anchor='middle' fill='white' font-family='Arial'%3E📊%3C/text%3E%3C/svg%3E\">\n" +
                 "<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap\" rel=\"stylesheet\">\n" +
                 "<style>\n" +
@@ -2879,7 +3228,7 @@ public class LogMonitorController {
                 "<div class=\"nav-container\">\n" +
                 "<div class=\"logo\">\n" +
                 "<div class=\"logo-icon\">📊</div>\n" +
-                "<div class=\"logo-text\">预付 WEB 监控管理系统</div>\n" +
+                "<div class=\"logo-text\">ECOM WEB 监控管理系统</div>\n" +
                 "<div class=\"logo-sub\">v3.0</div>\n" +
                 "</div>\n" +
                 "<div class=\"menu\">\n" +
@@ -2968,7 +3317,7 @@ public class LogMonitorController {
                 "<head>\n" +
                 "<meta charset=\"UTF-8\">\n" +
                 "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n" +
-                "<title>Texcell 预付 WEB 登录审计日志</title>\n" +
+                "<title>Texcell ECOM WEB 登录审计日志</title>\n" +
                 "<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23667eea'/%3E%3Ctext x='50' y='68' font-size='50' text-anchor='middle' fill='white' font-family='Arial'%3E📊%3C/text%3E%3C/svg%3E\">\n" +
                 "<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap\" rel=\"stylesheet\">\n" +
                 "<style>\n" +
@@ -3057,7 +3406,7 @@ public class LogMonitorController {
                 "<div class=\"nav-container\">\n" +
                 "<div class=\"logo\">\n" +
                 "<div class=\"logo-icon\">📊</div>\n" +
-                "<div class=\"logo-text\">预付 WEB 监控管理系统</div>\n" +
+                "<div class=\"logo-text\">ECOM WEB 监控管理系统</div>\n" +
                 "<div class=\"logo-sub\">v3.0</div>\n" +
                 "</div>\n" +
                 "<div class=\"menu\">\n" +
@@ -3259,7 +3608,7 @@ public class LogMonitorController {
                 "<head>\n" +
                 "<meta charset=\"UTF-8\">\n" +
                 "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n" +
-                "<title>Texcell 预付 WEB 客户号码文件管理</title>\n" +
+                "<title>Texcell ECOM WEB 客户号码文件管理</title>\n" +
                 "<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23667eea'/%3E%3Ctext x='50' y='68' font-size='50' text-anchor='middle' fill='white' font-family='Arial'%3E📁%3C/text%3E%3C/svg%3E\">\n" +
                 "<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap\" rel=\"stylesheet\">\n" +
                 "<style>\n" +
@@ -3338,7 +3687,7 @@ public class LogMonitorController {
                 "<div class=\"nav-container\">\n" +
                 "<div class=\"logo\">\n" +
                 "<div class=\"logo-icon\">📊</div>\n" +
-                "<div class=\"logo-text\">预付 WEB 监控管理系统</div>\n" +
+                "<div class=\"logo-text\">ECOM WEB 监控管理系统</div>\n" +
                 "<div class=\"logo-sub\">v3.0</div>\n" +
                 "</div>\n" +
                 "<div class=\"menu\">\n" +
@@ -3516,7 +3865,7 @@ public class LogMonitorController {
                 "<head>\n" +
                 "<meta charset=\"UTF-8\">\n" +
                 "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n" +
-                "<title>Texcell 预付 WEB API客户管理</title>\n" +
+                "<title>Texcell ECOM WEB API客户管理</title>\n" +
                 "<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23667eea'/%3E%3Ctext x='50' y='68' font-size='50' text-anchor='middle' fill='white' font-family='Arial'%3E👥%3C/text%3E%3C/svg%3E\">\n" +
                 "<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap\" rel=\"stylesheet\">\n" +
                 "<style>\n" +
@@ -3617,7 +3966,7 @@ public class LogMonitorController {
                 "<div class=\"nav-container\">\n" +
                 "<div class=\"logo\">\n" +
                 "<div class=\"logo-icon\">📊</div>\n" +
-                "<div class=\"logo-text\">预付 WEB 监控管理系统</div>\n" +
+                "<div class=\"logo-text\">ECOM WEB 监控管理系统</div>\n" +
                 "<div class=\"logo-sub\">v3.0</div>\n" +
                 "</div>\n" +
                 "<div class=\"menu\">\n" +
@@ -3728,7 +4077,7 @@ public class LogMonitorController {
                 "<head>\n" +
                 "<meta charset=\"UTF-8\">\n" +
                 "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n" +
-                "<title>Texcell 预付 WEB 登录账户管理</title>\n" +
+                "<title>Texcell ECOM WEB 登录账户管理</title>\n" +
                 "<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23667eea'/%3E%3Ctext x='50' y='68' font-size='50' text-anchor='middle' fill='white' font-family='Arial'%3E👤%3C/text%3E%3C/svg%3E\">\n" +
                 "<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap\" rel=\"stylesheet\">\n" +
                 "<style>\n" +
@@ -3827,7 +4176,7 @@ public class LogMonitorController {
                 "<div class=\"nav-container\">\n" +
                 "<div class=\"logo\">\n" +
                 "<div class=\"logo-icon\">📊</div>\n" +
-                "<div class=\"logo-text\">预付 WEB 监控管理系统</div>\n" +
+                "<div class=\"logo-text\">ECOM WEB 监控管理系统</div>\n" +
                 "<div class=\"logo-sub\">v3.0</div>\n" +
                 "</div>\n" +
                 "<div class=\"menu\">\n" +
@@ -4186,7 +4535,7 @@ public class LogMonitorController {
                 "<head>\n" +
                 "<meta charset=\"UTF-8\">\n" +
                 "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n" +
-                "<title>Texcell 预付 WEB 运维管理</title>\n" +
+                "<title>Texcell ECOM WEB 运维管理</title>\n" +
                 "<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23667eea'/%3E%3Ctext x='50' y='68' font-size='50' text-anchor='middle' fill='white' font-family='Arial'%3E🔧%3C/text%3E%3C/svg%3E\">\n" +
                 "<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap\" rel=\"stylesheet\">\n" +
                 "<script src=\"https://cdn.jsdelivr.net/npm/chart.js\"></script>\n" +
@@ -4300,7 +4649,7 @@ public class LogMonitorController {
                 "<div class=\"nav-container\">\n" +
                 "<div class=\"logo\">\n" +
                 "<div class=\"logo-icon\">📊</div>\n" +
-                "<div class=\"logo-text\">预付 WEB 监控管理系统</div>\n" +
+                "<div class=\"logo-text\">ECOM WEB 监控管理系统</div>\n" +
                 "<div class=\"logo-sub\">v3.0</div>\n" +
                 "</div>\n" +
                 "<div class=\"menu\">\n" +
@@ -4349,6 +4698,103 @@ public class LogMonitorController {
                 "<div id=\"unlockIpResult\" class=\"result-area\"></div>\n" +
                 "</div>\n" +
                 "</div>\n" +
+                // ===== 新增：被封禁IP列表（独立模块） =====
+                "<!-- ===== 🚫 当前被封禁IP列表 ===== -->\n" +
+                "<div class=\"rate-limit-section\" style=\"margin-bottom:32px;\">\n" +
+                "  <div style=\"display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;\">\n" +
+                "    <div class=\"section-title\">🚫 当前被封禁IP列表</div>\n" +
+                "    <div>\n" +
+                "      <button class=\"card-btn\" style=\"width:auto;padding:8px 24px;background:linear-gradient(135deg,#ff4d4f 0%,#ff7875 100%);margin-right:10px;\" onclick=\"unblockAllBlockedIps()\">🔓 全部解封</button>\n" +
+                "      <button class=\"card-btn\" style=\"width:auto;padding:8px 24px;background:linear-gradient(135deg,#1677ff 0%,#4096ff 100%);\" onclick=\"refreshBlockedIps()\">🔄 刷新</button>\n" +
+                "    </div>\n" +
+                "  </div>\n" +
+                "  <div style=\"background:#ffffff;border-radius:12px;border:1px solid #e8ecf1;overflow:auto;\">\n" +
+                "    <table class=\"log-table\">\n" +
+                "      <thead>\n" +
+                "        <tr>\n" +
+                "          <th style=\"width:30%;\">IP地址</th>\n" +
+                "          <th style=\"width:25%;\">剩余封禁时间</th>\n" +
+                "          <th style=\"width:20%;\">封禁原因</th>\n" +
+                "          <th style=\"width:25%;\">操作</th>\n" +
+                "        </tr>\n" +
+                "      </thead>\n" +
+                "      <tbody id=\"blockedIpBody\">\n" +
+                "        <tr><td colspan=\"4\" class=\"empty\">🔄 加载中...</td></tr>\n" +
+                "      </tbody>\n" +
+                "    </table>\n" +
+                "    <div style=\"padding:8px 16px;background:#fafafa;border-top:1px solid #e8ecf1;font-size:12px;color:#94a3b8;\">\n" +
+                "      ⏰ 每10秒自动刷新 | 被封禁的IP会在5分钟后自动解封\n" +
+                "    </div>\n" +
+                "  </div>\n" +
+                "</div>\n" +
+
+                "<!-- IP限流配置管理 -->\n" +
+                "<div class=\"rate-limit-section\" style=\"margin-bottom:32px;\">\n" +
+                "  <div style=\"display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;\">\n" +
+                "    <div class=\"section-title\">🌐 IP限流配置管理</div>\n" +
+                "    <button class=\"card-btn\" style=\"width:auto;padding:8px 24px;\" onclick=\"openAddRateLimit()\">+ 新增配置</button>\n" +
+                "  </div>\n" +
+                "  <div style=\"background:#ffffff;border-radius:12px;border:1px solid #e8ecf1;overflow:auto;\">\n" +
+                "    <table class=\"log-table\">\n" +
+                "      <thead>\n" +
+                "        <tr>\n" +
+                "          <th>IP地址</th>\n" +
+                "          <th>客户名称</th>\n" +
+                "          <th>限流(次/分钟)</th>\n" +
+                "          <th>封禁时长(分钟)</th>\n" +
+                "          <th>状态</th>\n" +
+                "          <th>优先级</th>\n" +
+                "          <th>备注</th>\n" +
+                "          <th>操作</th>\n" +
+                "        </tr>\n" +
+                "      </thead>\n" +
+                "      <tbody id=\"rateLimitBody\">\n" +
+                "        <tr><td colspan=\"8\" class=\"empty\">加载中...</td></tr>\n" +
+                "      </tbody>\n" +
+                "    </table>\n" +
+                "  </div>\n" +
+                "</div>\n" +
+                // ========== 限流配置弹窗 ==========
+                "<!-- 限流配置弹窗 -->\n" +
+                "<div id=\"rateLimitModal\" style=\"position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center;display:none;\">\n" +
+                "  <div style=\"background:#ffffff;border-radius:16px;padding:32px;max-width:560px;width:90%;max-height:90vh;overflow-y:auto;\">\n" +
+                "    <h3 id=\"modalTitle\" style=\"margin-bottom:20px;color:#1e293b;\">➕ 新增限流配置</h3>\n" +
+                "    <form id=\"rateLimitForm\">\n" +
+                "      <input type=\"hidden\" id=\"editId\" value=\"\">\n" +
+                "      <div class=\"form-group\">\n" +
+                "        <label>IP地址 <span style=\"color:#ff4d4f;\">*</span></label>\n" +
+                "        <input type=\"text\" id=\"rlIp\" placeholder=\"例如: 187.124.128.219 或 187.124.128.*\" style=\"width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:8px;\">\n" +
+                "        <div style=\"font-size:11px;color:#94a3b8;margin-top:4px;\">支持通配符 * ，例如 187.124.128.* 匹配该网段所有IP</div>\n" +
+                "      </div>\n" +
+                "      <div class=\"form-group\">\n" +
+                "        <label>客户名称</label>\n" +
+                "        <input type=\"text\" id=\"rlCustomerName\" placeholder=\"便于识别的客户名称\" style=\"width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:8px;\">\n" +
+                "      </div>\n" +
+                "      <div class=\"form-group\">\n" +
+                "        <label>每分钟请求限制 <span style=\"color:#ff4d4f;\">*</span></label>\n" +
+                "        <input type=\"number\" id=\"rlRateLimit\" value=\"600\" min=\"1\" max=\"9999\" style=\"width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:8px;\">\n" +
+                "        <div style=\"font-size:11px;color:#94a3b8;margin-top:4px;\">默认全局限制为 60 次/分钟</div>\n" +
+                "      </div>\n" +
+                "      <div class=\"form-group\">\n" +
+                "        <label>封禁时长（分钟） <span style=\"color:#ff4d4f;\">*</span></label>\n" +
+                "        <input type=\"number\" id=\"rlBlockDuration\" value=\"5\" min=\"1\" max=\"1440\" style=\"width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:8px;\">\n" +
+                "      </div>\n" +
+                "      <div class=\"form-group\">\n" +
+                "        <label>优先级</label>\n" +
+                "        <input type=\"number\" id=\"rlPriority\" value=\"0\" min=\"0\" max=\"999\" style=\"width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:8px;\">\n" +
+                "        <div style=\"font-size:11px;color:#94a3b8;margin-top:4px;\">数字越大优先级越高，精确IP匹配优先于通配符</div>\n" +
+                "      </div>\n" +
+                "      <div class=\"form-group\">\n" +
+                "        <label>备注</label>\n" +
+                "        <input type=\"text\" id=\"rlRemark\" placeholder=\"例如: 客户XX - 投诉后提高限制\" style=\"width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:8px;\">\n" +
+                "      </div>\n" +
+                "      <div style=\"display:flex;gap:12px;margin-top:20px;\">\n" +
+                "        <button type=\"button\" class=\"card-btn\" onclick=\"saveRateLimit()\">💾 保存</button>\n" +
+                "        <button type=\"button\" class=\"reset-btn\" onclick=\"closeRateLimitModal()\" style=\"padding:10px 24px;\">取消</button>\n" +
+                "      </div>\n" +
+                "    </form>\n" +
+                "  </div>\n" +
+                "</div>\n" +
                 "<!-- 统计卡片区 -->\n" +
                 "<div class=\"stats-section\">\n" +
                 "<div class=\"stats-grid\" id=\"statsGrid\"></div>\n" +
@@ -4368,7 +4814,7 @@ public class LogMonitorController {
                 "<div class=\"search-card\">\n" +
                 "<div class=\"search-row\">\n" +
                 "<div class=\"search-group\"><label>👤 操作人</label><input type=\"text\" id=\"searchOperator\" placeholder=\"模糊查询\"></div>\n" +
-                "<div class=\"search-group\"><label>🔧 操作类型</label><select id=\"searchOperationType\"><option value=\"\">全部</option><option value=\"RESET_2FA\">重置2FA</option><option value=\"DISABLE_2FA\">解除2FA</option><option value=\"UNLOCK_ACCOUNT\">解锁账户</option><option value=\"UNLOCK_IP\">解锁IP</option></select></div>\n" +
+                "<div class=\"search-group\"><label>🔧 操作类型</label><select id=\"searchOperationType\"><option value=\"\">全部</option><option value=\"RESET_2FA\">重置2FA</option><option value=\"DISABLE_2FA\">解除2FA</option><option value=\"UNLOCK_ACCOUNT\">解锁账户</option><option value=\"UNLOCK_IP\">解锁IP</option><option value=\"RATE_LIMIT_CREATE\">新增限流配置</option><option value=\"RATE_LIMIT_UPDATE\">修改限流配置</option><option value=\"RATE_LIMIT_DELETE\">删除限流配置</option><option value=\"RATE_LIMIT_TOGGLE\">启用/禁用限流配置</option><option value=\"RATE_LIMIT_UNBLOCK\">手动解封IP</option></select></div>\n"+
                 "<div class=\"search-group\"><label>📅 开始时间</label><input type=\"datetime-local\" id=\"startTime\"></div>\n" +
                 "<div class=\"search-group\"><label>📅 结束时间</label><input type=\"datetime-local\" id=\"endTime\"></div>\n" +
                 "<div class=\"search-actions\"><button class=\"search-btn\" onclick=\"searchLogs()\">🔍 查询</button><button class=\"reset-btn\" onclick=\"resetSearch()\">🔄 重置</button></div>\n" +
@@ -4501,6 +4947,135 @@ public class LogMonitorController {
                 "        }).catch(err => { setLoading(btn, false); showResult('unlockIpResult', false, '网络错误: ' + err.message); });\n" +
                 "}\n" +
                 "\n" +
+                "// ============================================================\n" +
+                "// ===== 🚫 被封禁IP列表 =====\n" +
+                "// ============================================================\n" +
+                "\n" +
+                "// 加载被封禁IP列表\n" +
+                "function loadBlockedIps() {\n" +
+                "    fetch('/api/monitor/rate-limit/blocked-list?secret=dn17ORUwf36Znl')\n" +
+                "        .then(function(res) { return res.json(); })\n" +
+                "        .then(function(data) {\n" +
+                "            if (data.code === 200) {\n" +
+                "                renderBlockedIpTable(data.data || []);\n" +
+                "            } else {\n" +
+                "                document.getElementById('blockedIpBody').innerHTML = \n" +
+                "                    '<tr><td colspan=\"4\" class=\"empty\">❌ 加载失败: ' + (data.msg || '错误') + '</td></tr>';\n" +
+                "            }\n" +
+                "        }).catch(function(err) {\n" +
+                "            document.getElementById('blockedIpBody').innerHTML = \n" +
+                "                '<tr><td colspan=\"4\" class=\"empty\">❌ 加载失败: 网络错误</td></tr>';\n" +
+                "        });\n" +
+                "}\n" +
+                "\n" +
+                "// 渲染被封禁IP表格\n" +
+                "function renderBlockedIpTable(list) {\n" +
+                "    var tbody = document.getElementById('blockedIpBody');\n" +
+                "    if (!list || list.length === 0) {\n" +
+                "        tbody.innerHTML = '<tr><td colspan=\"4\" class=\"empty\">✅ 当前没有IP被封禁，一切正常</td></tr>';\n" +
+                "        return;\n" +
+                "    }\n" +
+                "    var html = '';\n" +
+                "    for (var i = 0; i < list.length; i++) {\n" +
+                "        var item = list[i];\n" +
+                "        var remaining = item.remainingSeconds;\n" +
+                "        var timeText = formatRemainingTime(remaining);\n" +
+                "        html += '<tr>' +\n" +
+                "            '<td><code style=\"background:#f1f5f9;padding:2px 10px;border-radius:4px;font-weight:600;color:#ff4d4f;\">' + escapeHtml(item.ip) + '</code></td>' +\n" +
+                "            '<td><span style=\"color:#ff4d4f;font-weight:700;font-size:16px;\">' + timeText + '</span></td>' +\n" +
+                "            '<td><span style=\"color:#64748b;\">超过请求频率限制</span></td>' +\n" +
+                "            '<td><button onclick=\"unblockRateLimit(\\'' + item.ip + '\\')\" style=\"background:#ff4d4f;border:none;padding:6px 20px;border-radius:6px;cursor:pointer;color:#fff;font-weight:500;\">🔓 解封</button></td>' +\n" +
+                "            '</tr>';\n" +
+                "    }\n" +
+                "    tbody.innerHTML = html;\n" +
+                "}\n" +
+                "\n" +
+                "// 格式化剩余时间\n" +
+                "function formatRemainingTime(seconds) {\n" +
+                "    if (seconds <= 0) return '即将解封';\n" +
+                "    var mins = Math.floor(seconds / 60);\n" +
+                "    var secs = Math.floor(seconds % 60);\n" +
+                "    if (mins > 0) {\n" +
+                "        return mins + ' 分 ' + secs + ' 秒';\n" +
+                "    }\n" +
+                "    return secs + ' 秒';\n" +
+                "}\n" +
+                "\n" +
+                "// 刷新被封禁列表（手动）\n" +
+                "function refreshBlockedIps() {\n" +
+                "    loadBlockedIps();\n" +
+                "    showToast('已刷新', 'success');\n" +
+                "}\n" +
+                "\n" +
+                "// 解封单个IP\n" +
+                "function unblockRateLimit(ip) {\n" +
+                "    if (!confirm('确认要解封 IP: ' + ip + ' 吗？')) return;\n" +
+                "    \n" +
+                "    fetch('/api/monitor/rate-limit/unblock?ip=' + encodeURIComponent(ip) + '&secret=dn17ORUwf36Znl', {\n" +
+                "        method: 'POST'\n" +
+                "    }).then(function(res) { return res.json(); })\n" +
+                "      .then(function(result) {\n" +
+                "          if (result.code === 200) {\n" +
+                "              showToast('✅ ' + result.msg, 'success');\n" +
+                "              loadBlockedIps();\n" +
+                "              loadRateLimitConfigs();\n" +
+                "          } else {\n" +
+                "              showToast('❌ ' + result.msg, 'error');\n" +
+                "          }\n" +
+                "      }).catch(function(err) {\n" +
+                "          showToast('❌ 网络错误: ' + err.message, 'error');\n" +
+                "      });\n" +
+                "}\n" +
+                "\n" +
+                "// 全部解封\n" +
+                "function unblockAllBlockedIps() {\n" +
+                "    var tbody = document.getElementById('blockedIpBody');\n" +
+                "    var hasBlocked = tbody && tbody.innerHTML.indexOf('当前没有IP被封禁') === -1;\n" +
+                "    if (!hasBlocked) {\n" +
+                "        showToast('当前没有IP需要解封', 'info');\n" +
+                "        return;\n" +
+                "    }\n" +
+                "    if (!confirm('⚠️ 确认要解封所有被封禁的IP吗？')) return;\n" +
+                "    \n" +
+                "    fetch('/api/monitor/rate-limit/unblock-all?secret=dn17ORUwf36Znl', {\n" +
+                "        method: 'POST'\n" +
+                "    }).then(function(res) { return res.json(); })\n" +
+                "      .then(function(result) {\n" +
+                "          if (result.code === 200) {\n" +
+                "              showToast('✅ ' + result.msg, 'success');\n" +
+                "              loadBlockedIps();\n" +
+                "              loadRateLimitConfigs();\n" +
+                "          } else {\n" +
+                "              showToast('❌ ' + result.msg, 'error');\n" +
+                "          }\n" +
+                "      });\n" +
+                "}\n" +
+                "\n" +
+                "// 简单的Toast提示\n" +
+                "function showToast(message, type) {\n" +
+                "    var toast = document.createElement('div');\n" +
+                "    toast.style.cssText = \n" +
+                "        'position:fixed;top:20px;right:20px;padding:12px 24px;border-radius:8px;color:#fff;font-weight:500;z-index:9999;' +\n" +
+                "        'box-shadow:0 4px 12px rgba(0,0,0,0.15);animation:slideIn 0.3s ease;' +\n" +
+                "        (type === 'success' ? 'background:#52c41a;' : \n" +
+                "         type === 'error' ? 'background:#ff4d4f;' : \n" +
+                "         'background:#1677ff;');\n" +
+                "    toast.textContent = message;\n" +
+                "    document.body.appendChild(toast);\n" +
+                "    setTimeout(function() {\n" +
+                "        toast.style.opacity = '0';\n" +
+                "        toast.style.transition = 'opacity 0.3s';\n" +
+                "        setTimeout(function() { toast.remove(); }, 300);\n" +
+                "    }, 3000);\n" +
+                "}\n" +
+                "\n" +
+                "// ===== 在页面加载时调用 =====\n" +
+                "loadBlockedIps();\n" +
+                "\n" +
+                "// ===== 定时刷新（每10秒） =====\n" +
+                "setInterval(function(){ loadBlockedIps(); }, 10000);\n" +
+                "\n"+
+
                 "function loadStats(){\n" +
                 "    fetch('/api/monitor/ops-logs/stats?secret=dn17ORUwf36Znl')\n" +
                 "        .then(res => res.json())\n" +
@@ -4530,6 +5105,165 @@ public class LogMonitorController {
                 "                document.getElementById('statsGrid').innerHTML = statsHtml;\n" +
                 "            }\n" +
                 "        }).catch(err => console.error('加载统计失败:', err));\n" +
+                "}\n" +
+                "\n" +
+                "// ============ IP限流配置管理 ============\n" +
+                "\n" +
+                "function loadRateLimitConfigs() {\n" +
+                "    fetch('/api/monitor/rate-limit/list?secret=dn17ORUwf36Znl')\n" +
+                "        .then(function(res) { return res.json(); })\n" +
+                "        .then(function(data) {\n" +
+                "            if (data.code === 200) {\n" +
+                "                renderRateLimitTable(data.data || [], data.defaultRateLimit);\n" +
+                "            } else {\n" +
+                "                document.getElementById('rateLimitBody').innerHTML = \n" +
+                "                    '<tr><td colspan=\"8\" class=\"empty\">加载失败: ' + (data.msg || '错误') + '</td></tr>';\n" +
+                "            }\n" +
+                "        }).catch(function(err) {\n" +
+                "            document.getElementById('rateLimitBody').innerHTML = \n" +
+                "                '<tr><td colspan=\"8\" class=\"empty\">加载失败: 网络错误</td></tr>';\n" +
+                "        });\n" +
+                "}\n" +
+                "\n" +
+                "function renderRateLimitTable(list, defaultRate) {\n" +
+                "    var tbody = document.getElementById('rateLimitBody');\n" +
+                "    if (!list || list.length === 0) {\n" +
+                "        tbody.innerHTML = '<tr><td colspan=\"8\" class=\"empty\">暂无配置，使用默认限流 ' + defaultRate + ' 次/分钟</td></tr>';\n" +
+                "        return;\n" +
+                "    }\n" +
+                "    var html = '';\n" +
+                "    for (var i = 0; i < list.length; i++) {\n" +
+                "        var cfg = list[i];\n" +
+                "        var statusHtml = cfg.enabled === 1 ? \n" +
+                "            '<span class=\"status-badge status-success\">已启用</span>' : \n" +
+                "            '<span class=\"status-badge status-fail\">已禁用</span>';\n" +
+                "        html += '<tr>' +\n" +
+                "            '<td><code>' + escapeHtml(cfg.ip) + '</code></td>' +\n" +
+                "            '<td>' + escapeHtml(cfg.customerName || '-') + '</td>' +\n" +
+                "            '<td><strong>' + cfg.rateLimit + '</strong> 次/分钟</td>' +\n" +
+                "            '<td>' + cfg.blockDuration + ' 分钟</td>' +\n" +
+                "            '<td>' + statusHtml + '</td>' +\n" +
+                "            '<td>' + (cfg.priority || 0) + '</td>' +\n" +
+                "            '<td style=\"max-width:150px;overflow:hidden;text-overflow:ellipsis;\">' + (cfg.remark || '-') + '</td>' +\n" +
+                "            '<td>' +\n" +
+                "            '<button onclick=\"editRateLimit(' + cfg.id + ')\" style=\"background:#e8f0fe;border:none;padding:4px 12px;border-radius:4px;cursor:pointer;color:#1677ff;margin-right:4px;\">✏️</button>' +\n" +
+                "            '<button onclick=\"toggleRateLimit(' + cfg.id + ',' + (cfg.enabled === 1 ? 0 : 1) + ')\" style=\"background:' + (cfg.enabled === 1 ? '#fff7e6' : '#f6ffed') + ';border:none;padding:4px 12px;border-radius:4px;cursor:pointer;color:' + (cfg.enabled === 1 ? '#faad14' : '#52c41a') + ';margin-right:4px;\">' + (cfg.enabled === 1 ? '⏸' : '▶') + '</button>' +\n" +
+                "            '<button onclick=\"deleteRateLimit(' + cfg.id + ')\" style=\"background:#fff1f0;border:none;padding:4px 12px;border-radius:4px;cursor:pointer;color:#ff4d4f;\">🗑</button>' +\n" +
+                "            '</td>' +\n" +
+                "            '</tr>';\n" +
+                "    }\n" +
+                "    tbody.innerHTML = html;\n" +
+                "}\n" +
+                "\n" +
+                "function openAddRateLimit() {\n" +
+                "    document.getElementById('modalTitle').innerText = '➕ 新增限流配置';\n" +
+                "    document.getElementById('editId').value = '';\n" +
+                "    document.getElementById('rlIp').value = '';\n" +
+                "    document.getElementById('rlCustomerName').value = '';\n" +
+                "    document.getElementById('rlRateLimit').value = 600;\n" +
+                "    document.getElementById('rlBlockDuration').value = 5;\n" +
+                "    document.getElementById('rlPriority').value = 0;\n" +
+                "    document.getElementById('rlRemark').value = '';\n" +
+                "    document.getElementById('rateLimitModal').style.display = 'flex';\n" +
+                "}\n" +
+                "\n" +
+                "function closeRateLimitModal() {\n" +
+                "    document.getElementById('rateLimitModal').style.display = 'none';\n" +
+                "}\n" +
+                "\n" +
+                "function editRateLimit(id) {\n" +
+                "    fetch('/api/monitor/rate-limit/list?secret=dn17ORUwf36Znl')\n" +
+                "        .then(function(res) { return res.json(); })\n" +
+                "        .then(function(data) {\n" +
+                "            if (data.code === 200) {\n" +
+                "                var list = data.data || [];\n" +
+                "                var cfg = null;\n" +
+                "                for (var i = 0; i < list.length; i++) {\n" +
+                "                    if (list[i].id === id) {\n" +
+                "                        cfg = list[i];\n" +
+                "                        break;\n" +
+                "                    }\n" +
+                "                }\n" +
+                "                if (cfg) {\n" +
+                "                    document.getElementById('modalTitle').innerText = '✏️ 编辑限流配置 - ' + cfg.ip;\n" +
+                "                    document.getElementById('editId').value = cfg.id;\n" +
+                "                    document.getElementById('rlIp').value = cfg.ip;\n" +
+                "                    document.getElementById('rlCustomerName').value = cfg.customerName || '';\n" +
+                "                    document.getElementById('rlRateLimit').value = cfg.rateLimit;\n" +
+                "                    document.getElementById('rlBlockDuration').value = cfg.blockDuration;\n" +
+                "                    document.getElementById('rlPriority').value = cfg.priority || 0;\n" +
+                "                    document.getElementById('rlRemark').value = cfg.remark || '';\n" +
+                "                    document.getElementById('rateLimitModal').style.display = 'flex';\n" +
+                "                }\n" +
+                "            }\n" +
+                "        });\n" +
+                "}\n" +
+                "\n" +
+                "function saveRateLimit() {\n" +
+                "    var id = document.getElementById('editId').value;\n" +
+                "    var ip = document.getElementById('rlIp').value.trim();\n" +
+                "    var customerName = document.getElementById('rlCustomerName').value.trim();\n" +
+                "    var rateLimit = parseInt(document.getElementById('rlRateLimit').value);\n" +
+                "    var blockDuration = parseInt(document.getElementById('rlBlockDuration').value);\n" +
+                "    var priority = parseInt(document.getElementById('rlPriority').value) || 0;\n" +
+                "    var remark = document.getElementById('rlRemark').value.trim();\n" +
+                "\n" +
+                "    if (!ip) { alert('请输入IP地址'); return; }\n" +
+                "    if (!rateLimit || rateLimit < 1) { alert('请输入有效的限流值'); return; }\n" +
+                "    if (!blockDuration || blockDuration < 1) { alert('请输入有效的封禁时长'); return; }\n" +
+                "\n" +
+                "    var data = {\n" +
+                "        id: id || null,\n" +
+                "        ip: ip,\n" +
+                "        customerName: customerName,\n" +
+                "        rateLimit: rateLimit,\n" +
+                "        blockDuration: blockDuration,\n" +
+                "        priority: priority,\n" +
+                "        remark: remark,\n" +
+                "        enabled: 1\n" +
+                "    };\n" +
+                "\n" +
+                "    fetch('/api/monitor/rate-limit/save?secret=dn17ORUwf36Znl', {\n" +
+                "        method: 'POST',\n" +
+                "        headers: { 'Content-Type': 'application/json' },\n" +
+                "        body: JSON.stringify(data)\n" +
+                "    }).then(function(res) { return res.json(); })\n" +
+                "      .then(function(result) {\n" +
+                "          if (result.code === 200) {\n" +
+                "              alert('✅ ' + result.msg);\n" +
+                "              closeRateLimitModal();\n" +
+                "              loadRateLimitConfigs();\n" +
+                "          } else {\n" +
+                "              alert('❌ ' + result.msg);\n" +
+                "          }\n" +
+                "      }).catch(function(err) {\n" +
+                "          alert('网络错误: ' + err.message);\n" +
+                "      });\n" +
+                "}\n" +
+                "\n" +
+                "function toggleRateLimit(id, enabled) {\n" +
+                "    var action = enabled === 1 ? '启用' : '禁用';\n" +
+                "    if (!confirm('确认要' + action + '该配置吗？')) return;\n" +
+                "\n" +
+                "    fetch('/api/monitor/rate-limit/toggle?id=' + id + '&enabled=' + enabled + '&secret=dn17ORUwf36Znl', {\n" +
+                "        method: 'POST'\n" +
+                "    }).then(function(res) { return res.json(); })\n" +
+                "      .then(function(result) {\n" +
+                "          alert(result.code === 200 ? '✅ ' + result.msg : '❌ ' + result.msg);\n" +
+                "          if (result.code === 200) loadRateLimitConfigs();\n" +
+                "      });\n" +
+                "}\n" +
+                "\n" +
+                "function deleteRateLimit(id) {\n" +
+                "    if (!confirm('⚠️ 确认要删除该配置吗？删除后该IP将使用默认限流规则。')) return;\n" +
+                "\n" +
+                "    fetch('/api/monitor/rate-limit/delete?id=' + id + '&secret=dn17ORUwf36Znl', {\n" +
+                "        method: 'POST'\n" +
+                "    }).then(function(res) { return res.json(); })\n" +
+                "      .then(function(result) {\n" +
+                "          alert(result.code === 200 ? '✅ ' + result.msg : '❌ ' + result.msg);\n" +
+                "          if (result.code === 200) loadRateLimitConfigs();\n" +
+                "      });\n" +
                 "}\n" +
                 "\n" +
                 "function loadCharts(){\n" +
@@ -4641,7 +5375,18 @@ public class LogMonitorController {
                 "        tbody.innerHTML = '<tr><td colspan=\"7\" class=\"empty\">暂无数据</td></tr>';\n" +
                 "        return;\n" +
                 "    }\n" +
-                "    var operationNameMap = { 'RESET_2FA': '重置2FA', 'DISABLE_2FA': '解除2FA', 'UNLOCK_ACCOUNT': '解锁账户', 'UNLOCK_IP': '解锁IP' };\n" +
+                "var operationNameMap = {\n" +
+                "    'RESET_2FA': '重置2FA',\n" +
+                "    'DISABLE_2FA': '解除2FA',\n" +
+                "    'UNLOCK_ACCOUNT': '解锁账户',\n" +
+                "    'UNLOCK_IP': '解锁IP',\n" +
+                "    'RATE_LIMIT_CREATE': '新增限流配置',\n" +
+                "    'RATE_LIMIT_UPDATE': '修改限流配置',\n" +
+                "    'RATE_LIMIT_DELETE': '删除限流配置',\n" +
+                "    'RATE_LIMIT_TOGGLE': '启用/禁用限流配置',\n" +
+                "    'RATE_LIMIT_UNBLOCK': '手动解封IP'\n" +
+                "};\n" +
+                "\n" +
                 "    var html = '';\n" +
                 "    for(var i = 0; i < list.length; i++){\n" +
                 "        var log = list[i];\n" +
@@ -4679,10 +5424,12 @@ public class LogMonitorController {
                 "\n" +
                 "function escapeHtml(s){ if(!s) return ''; return String(s).replace(/[&<>]/g, function(m){ if(m === '&') return '&amp;'; if(m === '<') return '&lt;'; if(m === '>') return '&gt;'; return m; }); }\n" +
                 "\n" +
-                "loadStats();\n" +
+                "loadBlockedIps();\n" +
+                "loadRateLimitConfigs();\n" +
                 "loadLogs();\n" +
                 "loadCharts();\n" +
                 "setInterval(function(){ loadStats(); loadCharts(); }, 30000);\n" +
+                "loadStats();\n" +
                 "</script>\n" +
                 "</body>\n" +
                 "</html>";
@@ -4694,10 +5441,12 @@ public class LogMonitorController {
                 "<head>\n" +
                 "<meta charset=\"UTF-8\">\n" +
                 "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n" +
-                "<title>Texcell 预付 WEB 发送队列管理</title>\n" +
+                "<title>Texcell ECOM WEB 发送队列管理</title>\n" +
                 "<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23667eea'/%3E%3Ctext x='50' y='68' font-size='50' text-anchor='middle' fill='white' font-family='Arial'%3E📨%3C/text%3E%3C/svg%3E\">\n" +
                 "<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap\" rel=\"stylesheet\">\n" +
                 "<script src=\"https://cdn.jsdelivr.net/npm/chart.js\"></script>\n" +
+                "<link rel=\"stylesheet\" href=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.css\" />\n" +
+                "<script src=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.js\"></script>\n" +
                 "<style>\n" +
                 ":root {\n" +
                 "  --bg-primary: #f5f7fa;\n" +
@@ -4769,6 +5518,65 @@ public class LogMonitorController {
                 ".page-info{font-size:13px;color:#94a3b8;align-self:center;}\n" +
                 ".footer{text-align:center;padding:32px 0;color:#94a3b8;font-size:12px;border-top:1px solid #e8ecf1;margin-top:16px;}\n" +
                 ".empty{text-align:center;padding:48px;color:#94a3b8;}\n" +
+                "/* IP弹窗美化 */\n" +
+                "#ipModal .modal-content {\n" +
+                "    border-radius: 16px !important;\n" +
+                "    box-shadow: 0 25px 60px rgba(0,0,0,0.2) !important;\n" +
+                "    overflow: hidden;\n" +
+                "}\n" +
+                "#ipModal .modal-header {\n" +
+                "    background: linear-gradient(135deg, #f8fafc 0%, #e8ecf1 100%);\n" +
+                "    padding: 18px 24px;\n" +
+                "    border-bottom: 1px solid #e8ecf1;\n" +
+                "}\n" +
+                "#ipModal .modal-header h3 {\n" +
+                "    font-size: 18px;\n" +
+                "    font-weight: 700;\n" +
+                "    color: #1e293b;\n" +
+                "}\n" +
+                "#ipModal .modal-close {\n" +
+                "    width: 32px;\n" +
+                "    height: 32px;\n" +
+                "    border-radius: 50%;\n" +
+                "    display: flex;\n" +
+                "    align-items: center;\n" +
+                "    justify-content: center;\n" +
+                "    transition: all 0.3s;\n" +
+                "    font-size: 20px;\n" +
+                "}\n" +
+                "#ipModal .modal-close:hover {\n" +
+                "    background: rgba(0,0,0,0.06);\n" +
+                "    color: #1e293b;\n" +
+                "}\n" +
+                "#ipModal .modal-body {\n" +
+                "    padding: 20px 24px 12px 24px;\n" +
+                "}\n" +
+                "#ipModal .modal-buttons {\n" +
+                "    padding: 12px 24px 20px 24px;\n" +
+                "    border-top: 1px solid #e8ecf1;\n" +
+                "}\n" +
+                "#ipModal .cancel-btn {\n" +
+                "    padding: 10px 32px;\n" +
+                "    border-radius: 10px;\n" +
+                "    font-weight: 600;\n" +
+                "    font-size: 14px;\n" +
+                "    transition: all 0.3s;\n" +
+                "}\n" +
+                "#ipModal .cancel-btn:hover {\n" +
+                "    background: #e8ecf1;\n" +
+                "    transform: translateY(-1px);\n" +
+                "}\n" +
+                ".ip-link {\n" +
+                "    color: #1677ff !important;\n" +
+                "    cursor: pointer;\n" +
+                "    text-decoration: underline;\n" +
+                "    transition: all 0.3s;\n" +
+                "}\n" +
+                ".ip-link:hover {\n" +
+                "    color: #4096ff !important;\n" +
+                "    text-decoration: none;\n" +
+                "}\n" +
+                "\n" +
                 ".modal{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);z-index:10000;display:flex;align-items:center;justify-content:center;}\n" +
                 ".modal-content{background:#ffffff;border-radius:12px;width:1000px;max-width:90%;max-height:85vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,0.15);}\n" +
                 ".modal-header{display:flex;justify-content:space-between;align-items:center;padding:16px 24px;border-bottom:1px solid #e8ecf1;}\n" +
@@ -4798,7 +5606,7 @@ public class LogMonitorController {
                 "<div class=\"nav-container\">\n" +
                 "<div class=\"logo\">\n" +
                 "<div class=\"logo-icon\">📊</div>\n" +
-                "<div class=\"logo-text\">预付 WEB 监控管理系统</div>\n" +
+                "<div class=\"logo-text\">ECOM WEB 监控管理系统</div>\n" +
                 "<div class=\"logo-sub\">v3.0</div>\n" +
                 "</div>\n" +
                 "<div class=\"menu\">\n" +
@@ -4829,16 +5637,37 @@ public class LogMonitorController {
                 "<div class=\"search-row\">\n" +
                 "<div class=\"search-group\"><label>👤 客户账号</label><input type=\"text\" id=\"searchSubAccount\" placeholder=\"模糊查询\"></div>\n" +
                 "<div class=\"search-group\"><label>🆔 任务ID</label><input type=\"text\" id=\"searchTaskId\" placeholder=\"模糊查询\"></div>\n" +
+                "<div class=\"search-group\"><label>\uD83C\uDF10 提交IP</label><input type=\"text\" id=\"searchTaskIp\" placeholder=\"模糊查询\"></div>\n" +
                 "<div class=\"search-actions\"><button class=\"search-btn\" onclick=\"searchTasks()\">🔍 查询</button><button class=\"reset-btn\" onclick=\"resetSearch()\">🔄 重置</button></div>\n" +
                 "</div>\n" +
                 "</div>\n" +
                 "<div class=\"log-card\">\n" +
                 "<table class=\"log-table\">\n" +
-                "<thead><tr><th>任务ID</th><th>客户账号</th><th>任务名称</th><th>短信内容</th><th>创建时间</th><th>计划时间</th><th>总数</th><th>已提交</th><th>成功</th><th>失败</th><th>操作</th></tr></thead>\n" +
+                "<thead><tr><th>任务ID</th><th>客户账号</th><th>提交IP</th><th>任务名称</th><th>短信内容</th><th>创建时间</th><th>计划时间</th><th>总数</th><th>已提交</th><th>成功</th><th>失败</th><th>操作</th></tr></thead>\n" +
                 "<tbody id=\"taskBody\"><tr><td colspan=\"11\" class=\"empty\">加载中...</td></tr></tbody>\n" +
                 "</table>\n" +
                 "<div class=\"pagination\" id=\"pagination\"></div>\n" +
                 "</div>\n" +
+                "<!-- IP地理位置弹窗 -->\n" +
+                "<div id=\"ipModal\" class=\"modal\" style=\"display:none;\">\n" +
+                "    <div class=\"modal-content\" style=\"max-width:450px;\">\n" +
+                "        <div class=\"modal-header\">\n" +
+                "            <h3>📍 IP地理位置</h3>\n" +
+                "            <button class=\"modal-close\" onclick=\"closeIpModal()\">&times;</button>\n" +
+                "        </div>\n" +
+                "        <div class=\"modal-body\" id=\"ipModalBody\">\n" +
+                "            <div style=\"text-align:center;padding:20px;\">\n" +
+                "                <div style=\"font-size:48px;margin-bottom:12px;\">🌍</div>\n" +
+                "                <div id=\"ipInfoContent\">加载中...</div>\n" +
+                "            </div>\n" +
+                "<div id=\"ipMap\" style=\"height:300px;border-radius:8px;border:1px solid #e8ecf1;display:none;\"></div>\n"+
+                "        </div>\n" +
+                "        <div class=\"modal-buttons\">\n" +
+                "            <button class=\"cancel-btn\" onclick=\"closeIpModal()\">关闭</button>\n" +
+                "        </div>\n" +
+                "    </div>\n" +
+                "</div>\n" +
+                "\n" +
                 "<div class=\"footer\">📨 客户发送队列管理 | 仅显示最近3天数据 | 双击任务ID可查看详情</div>\n" +
                 "</div>\n" +
                 "<div id=\"detailModal\" class=\"modal\" style=\"display:none;\">\n" +
@@ -4857,6 +5686,7 @@ public class LogMonitorController {
                 "var currentTaskId='';\n" +
                 "var detailPage=1,detailSize=10,detailTotalPages=1;\n" +
                 "var rankingChart=null;\n" +
+                "function escapeHtml(s){if(!s)return'';return String(s).replace(/[&<>]/g,function(m){if(m==='&')return'&amp;';if(m==='<')return'&lt;';if(m==='>')return'&gt;';return m;});}\n" +
                 "function decodeSmsContent(str){if(!str)return'';try{var decoded=atob(str);var bytes=new Uint8Array(decoded.split('').map(function(c){return c.charCodeAt(0);}));return new TextDecoder('utf-8').decode(bytes);}catch(e){return str;}}\n" +
                 "function logout(){fetch('/monitor/logout').then(function(){location.href='/monitor/login';});}\n" +
                 "function getCurrentUserInfo() {\n" +
@@ -4875,27 +5705,115 @@ public class LogMonitorController {
                 "function loadRanking(){fetch('/api/monitor/queue/customer-ranking?secret=dn17ORUwf36Znl').then(function(res){return res.json();}).then(function(data){var ctx=document.getElementById('rankingChart').getContext('2d');if(rankingChart)rankingChart.destroy();if(data.code===200&&data.data&&data.data.length){var list=data.data;var labels=list.map(function(i){return i.subAccount||i.username||'-';});var counts=list.map(function(i){return i.totalCount||0;});rankingChart=new Chart(ctx,{type:'bar',data:{labels:labels,datasets:[{label:'提交数量(条)',data:counts,backgroundColor:'#1677ff',borderRadius:8}]},options:{responsive:true,maintainAspectRatio:true}});}else{rankingChart=new Chart(ctx,{type:'bar',data:{labels:['暂无数据'],datasets:[{label:'提交数量',data:[0]}]},options:{responsive:true}});}}).catch(function(){var ctx=document.getElementById('rankingChart').getContext('2d');if(rankingChart)rankingChart.destroy();rankingChart=new Chart(ctx,{type:'bar',data:{labels:['加载失败'],datasets:[{label:'提交数量',data:[0]}]},options:{responsive:true}});});}\n" +
                 "function formatNumber(num){if(!num)return'0';return num.toString().replace(/\\B(?=(\\d{3})+(?!\\d))/g,',');}\n" +
                 "function searchTasks(){page=1;loadTasks();}\n" +
-                "function resetSearch(){document.getElementById('searchSubAccount').value='';document.getElementById('searchTaskId').value='';page=1;loadTasks();}\n" +
-                "function loadTasks(){var subAccount=document.getElementById('searchSubAccount').value;var taskId=document.getElementById('searchTaskId').value;var url='/api/monitor/queue/tasks?secret=dn17ORUwf36Znl&pageNum='+page+'&pageSize='+size;if(subAccount)url+='&subAccount='+encodeURIComponent(subAccount);if(taskId)url+='&taskId='+encodeURIComponent(taskId);fetch(url).then(function(res){return res.json();}).then(function(data){if(data.code===200){var records=data.data?.records||[];totalPages=Math.ceil((data.data?.total||0)/size);renderTable(records);renderPagination();}else{document.getElementById('taskBody').innerHTML='<tr><td colspan=\"11\" class=\"empty\">加载失败:'+(data.msg||'错误')+'</td></tr>';}}).catch(function(){document.getElementById('taskBody').innerHTML='<tr><td colspan=\"11\" class=\"empty\">加载失败:网络错误</td></tr>';});}\n" +
-                "function escapeHtml(s){if(!s)return'';return String(s).replace(/[&<>]/g,function(m){return m==='&'?'&amp;':m==='<'?'&lt;':'&gt;';});}\n" +
-                "function renderTable(list){var tbody=document.getElementById('taskBody');if(!list||!list.length){tbody.innerHTML='<tr><td colspan=\"11\" class=\"empty\">暂无数据</td></tr>';return;}var html='';for(var i=0;i<list.length;i++){var t=list[i];var smsContent=decodeSmsContent(t.shortMessage||'');var taskIdAttr=escapeHtml(String(t.taskId||''));var scheduleStatus = t.scheduleStatus !== undefined ? t.scheduleStatus : 0;html+='<tr class=\"task-row\" data-task-id=\"'+taskIdAttr+'\" style=\"cursor:pointer;\">';" +
-                "html+='<td style=\"font-family:monospace;font-size:12px;\" title=\"'+escapeHtml(t.taskId||'')+'\">'+escapeHtml((t.taskId||'').substring(0,20))+'...</td>';" +
-                "html+='<td><span class=\"badge-subaccount\">'+escapeHtml(t.subAccount||'')+'</span></td>';" +
-                "html+='<td title=\"'+escapeHtml(t.taskName||'')+'\">'+escapeHtml((t.taskName||'').substring(0,30))+'</td>';" +
-                "html+='<td class=\"sms-content\">'+escapeHtml(smsContent).replace(/\\n/g,'<br>')+'</td>';" +
-                "html+='<td>'+escapeHtml(t.taskTime||'')+'</td>';" +
-                "html+='<td>'+escapeHtml(t.scheduleSendTime||'')+'</td>';" +
-                "html+='<td>'+formatNumber(t.totalCount||0)+'</td>';" +
-                "html+='<td>'+formatNumber(t.submitSuccCount||0)+'</td>';" +
-                "html+='<td class=\"badge-delivered\">'+formatNumber(t.drSuccCount||0)+'</td>';" +
-                "html+='<td class=\"badge-failed\">'+formatNumber(t.drFailCount||0)+'</td>';" +
-                "html+='<td>';" +
-                "html+='<button class=\"view-btn\" onclick=\"showTaskDetail(\\''+taskIdAttr+'\\')\">\uD83D\uDCCB 详情</button> ';" +
-                "html+='<button class=\"export-btn\" onclick=\"exportTask(\\''+taskIdAttr+'\\')\">\uD83D\uDCE5 导出</button> ';" +
-                "if (scheduleStatus === 0) {" +
-                "    html+='<button class=\"delete-btn\" onclick=\"deleteTask(\\''+taskIdAttr+'\\')\">\uD83D\uDDD1\uFE0F 删除</button>';" +
-                "}" +
+                "function resetSearch(){document.getElementById('searchSubAccount').value='';document.getElementById('searchTaskId').value='';document.getElementById('searchTaskIp').value='';page=1;loadTasks();}\n" +
+                "function loadTasks(){var subAccount=document.getElementById('searchSubAccount').value;var taskId=document.getElementById('searchTaskId').value;var taskIp=document.getElementById('searchTaskIp').value;var url='/api/monitor/queue/tasks?secret=dn17ORUwf36Znl&pageNum='+page+'&pageSize='+size;if(subAccount)url+='&subAccount='+encodeURIComponent(subAccount);if(taskId)url+='&taskId='+encodeURIComponent(taskId);if(taskIp)url+='&taskIp='+encodeURIComponent(taskIp);fetch(url).then(function(res){return res.json();}).then(function(data){if(data.code===200){var records=data.data?.records||[];totalPages=Math.ceil((data.data?.total||0)/size);renderTable(records);renderPagination();}else{document.getElementById('taskBody').innerHTML='<tr><td colspan=\"12\" class=\"empty\">加载失败:'+(data.msg||'错误')+'</td></tr>';}}).catch(function(){document.getElementById('taskBody').innerHTML='<tr><td colspan=\"12\" class=\"empty\">加载失败:网络错误</td></tr>';});}\n" +
+                "function renderTable(list){var tbody=document.getElementById('taskBody');if(!list||!list.length){tbody.innerHTML='<tr><td colspan=\"12\" class=\"empty\">暂无数据</td></tr>';return;}var html='';for(var i=0;i<list.length;i++){var t=list[i];var smsContent=decodeSmsContent(t.shortMessage||'');var taskIdAttr=escapeHtml(String(t.taskId||''));var scheduleStatus = t.scheduleStatus !== undefined ? t.scheduleStatus : 0;var taskIp = t.taskIp || '-';\n" +
+                "html+='<tr class=\"task-row\" data-task-id=\"'+taskIdAttr+'\" style=\"cursor:pointer;\">';\n" +
+                "html+='<td style=\"font-family:monospace;font-size:12px;\" title=\"'+escapeHtml(t.taskId||'')+'\">'+escapeHtml((t.taskId||'').substring(0,20))+'...</td>';\n" +
+                "html+='<td><span class=\"badge-subaccount\">'+escapeHtml(t.subAccount||'')+'</span></td>';\n" +
+                "if (taskIp !== '-' && taskIp !== '') {\n" +
+                "    html+='<td><span class=\"ip-link\" onclick=\"showIpLocation(\\''+escapeHtml(taskIp)+'\\')\" style=\"color:#1677ff;cursor:pointer;text-decoration:underline;\">'+escapeHtml(taskIp)+'</span></td>';\n" +
+                "} else {\n" +
+                "    html+='<td style=\"color:#94a3b8;\">-</td>';\n" +
+                "}\n" +
+                "html+='<td title=\"'+escapeHtml(t.taskName||'')+'\">'+escapeHtml((t.taskName||'').substring(0,30))+'</td>';\n" +
+                "html+='<td class=\"sms-content\">'+escapeHtml(smsContent).replace(/\\\\n/g,'<br>')+'</td>';\n" +
+                "html+='<td>'+escapeHtml(t.taskTime||'')+'</td>';\n" +
+                "html+='<td>'+escapeHtml(t.scheduleSendTime||'')+'</td>';\n" +
+                "html+='<td>'+formatNumber(t.totalCount||0)+'</td>';\n" +
+                "html+='<td>'+formatNumber(t.submitSuccCount||0)+'</td>';\n" +
+                "html+='<td class=\"badge-delivered\">'+formatNumber(t.drSuccCount||0)+'</td>';\n" +
+                "html+='<td class=\"badge-failed\">'+formatNumber(t.drFailCount||0)+'</td>';\n" +
+                "html+='<td>';\n" +
+                "html+='<button class=\"view-btn\" onclick=\"showTaskDetail(\\''+taskIdAttr+'\\')\">📋 详情</button> ';\n" +
+                "html+='<button class=\"export-btn\" onclick=\"exportTask(\\''+taskIdAttr+'\\')\">📥 导出</button> ';\n" +
+                "if (scheduleStatus === 0) {\n" +
+                "    html+='<button class=\"delete-btn\" onclick=\"deleteTask(\\''+taskIdAttr+'\\')\">🗑️ 删除</button>';\n" +
+                "}\n" +
                 "html+='</td></tr>';}tbody.innerHTML=html;}\n" +
+                "function showIpLocation(ip) {\n" +
+                "    if (!ip || ip === '-') return;\n" +
+                "    \n" +
+                "    var modal = document.getElementById('ipModal');\n" +
+                "    var content = document.getElementById('ipInfoContent');\n" +
+                "    var mapContainer = document.getElementById('ipMap');\n" +
+                "    \n" +
+                "    modal.style.display = 'flex';\n" +
+                "    content.innerHTML = '<div style=\"text-align:center;padding:30px 0;color:#94a3b8;\">⏳ 查询中...</div>';\n" +
+                "    mapContainer.style.display = 'none';\n" +
+                "    \n" +
+                "    fetch('/api/monitor/queue/ip-location?secret=dn17ORUwf36Znl&ip=' + encodeURIComponent(ip))\n" +
+                "        .then(function(res) { return res.json(); })\n" +
+                "        .then(function(data) {\n" +
+                "            if (data.code === 200) {\n" +
+                "                var info = data.data;\n" +
+                "                var flag = info.country ? info.country.substring(0,2).toUpperCase() : '';\n" +
+                "                var html = '<div style=\"background:linear-gradient(135deg,#f8fafc 0%,#ffffff 100%);border-radius:12px;padding:20px;margin-bottom:12px;\">';\n" +
+                "                html += '<div style=\"display:flex;align-items:center;gap:16px;margin-bottom:16px;padding-bottom:16px;border-bottom:2px dashed #e8ecf1;\">';\n" +
+                "                html += '<div style=\"width:56px;height:56px;background:linear-gradient(135deg,#1677ff 0%,#4096ff 100%);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:24px;color:white;flex-shrink:0;box-shadow:0 4px 12px rgba(22,119,255,0.3);\">🌐</div>';\n" +
+                "                html += '<div><div style=\"font-size:20px;font-weight:700;color:#1e293b;\">' + escapeHtml(ip) + '</div>';\n" +
+                "                html += '<div style=\"font-size:13px;color:#94a3b8;\">' + escapeHtml(info.location || '未知位置') + '</div></div>';\n" +
+                "                html += '</div>';\n" +
+                "                html += '<div style=\"display:grid;grid-template-columns:1fr 1fr;gap:8px 24px;\">';\n" +
+                "                html += '<div style=\"display:flex;align-items:center;gap:8px;padding:6px 12px;background:#f1f5f9;border-radius:8px;\"><span style=\"font-size:16px;\">🌍</span><span style=\"font-size:13px;color:#64748b;\">国家</span><span style=\"font-weight:600;color:#1e293b;margin-left:auto;\">' + escapeHtml(info.country || '-') + '</span></div>';\n" +
+                "                html += '<div style=\"display:flex;align-items:center;gap:8px;padding:6px 12px;background:#f1f5f9;border-radius:8px;\"><span style=\"font-size:16px;\">🏙️</span><span style=\"font-size:13px;color:#64748b;\">省份</span><span style=\"font-weight:600;color:#1e293b;margin-left:auto;\">' + escapeHtml(info.region || '-') + '</span></div>';\n" +
+                "                html += '<div style=\"display:flex;align-items:center;gap:8px;padding:6px 12px;background:#f1f5f9;border-radius:8px;\"><span style=\"font-size:16px;\">🏢</span><span style=\"font-size:13px;color:#64748b;\">城市</span><span style=\"font-weight:600;color:#1e293b;margin-left:auto;\">' + escapeHtml(info.city || '-') + '</span></div>';\n" +
+                "                html += '<div style=\"display:flex;align-items:center;gap:8px;padding:6px 12px;background:#f1f5f9;border-radius:8px;\"><span style=\"font-size:16px;\">📡</span><span style=\"font-size:13px;color:#64748b;\">运营商</span><span style=\"font-weight:600;color:#1e293b;margin-left:auto;\">' + escapeHtml(info.isp || '-') + '</span></div>';\n" +
+                "                html += '</div></div>';\n" +
+                "                content.innerHTML = html;\n" +
+                "                \n" +
+                "                if (info.lat && info.lon) {\n" +
+                "                    mapContainer.style.display = 'block';\n" +
+                "                    mapContainer.style.borderRadius = '12px';\n" +
+                "                    mapContainer.style.overflow = 'hidden';\n" +
+                "                    mapContainer.style.border = '2px solid #e8ecf1';\n" +
+                "                    setTimeout(function() {\n" +
+                "                        if (window.ipMapInstance) {\n" +
+                "                            window.ipMapInstance.remove();\n" +
+                "                        }\n" +
+                "                        var map = L.map('ipMap').setView([info.lat, info.lon], 12);\n" +
+                "                        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {\n" +
+                "                            attribution: '© OpenStreetMap'\n" +
+                "                        }).addTo(map);\n" +
+                "                        var marker = L.marker([info.lat, info.lon], {\n" +
+                "                            icon: L.divIcon({\n" +
+                "                                className: 'custom-marker',\n" +
+                "                                html: '<div style=\"background:linear-gradient(135deg,#1677ff 0%,#4096ff 100%);width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;color:white;box-shadow:0 4px 12px rgba(22,119,255,0.4);border:3px solid white;\">📍</div>',\n" +
+                "                                iconSize: [32, 32],\n" +
+                "                                iconAnchor: [16, 32]\n" +
+                "                            })\n" +
+                "                        }).addTo(map);\n" +
+                "                        marker.bindPopup('<div style=\"font-weight:600;color:#1e293b;\">' + escapeHtml(ip) + '</div><div style=\"color:#64748b;font-size:13px;\">' + escapeHtml(info.city || '') + ', ' + escapeHtml(info.country || '') + '</div>');\n" +
+                "                        window.ipMapInstance = map;\n" +
+                "                        setTimeout(function() { map.invalidateSize(); }, 300);\n" +
+                "                    }, 300);\n" +
+                "                }\n" +
+                "            } else {\n" +
+                "                content.innerHTML = '<div style=\"text-align:center;padding:30px 0;color:#ff4d4f;\">❌ ' + (data.msg || '查询失败') + '</div>';\n" +
+                "            }\n" +
+                "        })\n" +
+                "        .catch(function() {\n" +
+                "            content.innerHTML = '<div style=\"text-align:center;padding:30px 0;color:#ff4d4f;\">❌ 网络错误，请重试</div>';\n" +
+                "        });\n" +
+                "}\n" +
+                "function closeIpModal() {\n" +
+                "    document.getElementById('ipModal').style.display = 'none';\n" +
+                "    if (window.ipMapInstance) {\n" +
+                "        window.ipMapInstance.remove();\n" +
+                "        window.ipMapInstance = null;\n" +
+                "    }\n" +
+                "}\n" +
+                "function closeIpModal() {\n" +
+                "    document.getElementById('ipModal').style.display = 'none';\n" +
+                "}\n" +
+                "\n" +
+                "document.addEventListener('click', function(e) {\n" +
+                "    var modal = document.getElementById('ipModal');\n" +
+                "    if (e.target === modal) {\n" +
+                "        closeIpModal();\n" +
+                "    }\n" +
+                "});\n" +
+                "\n" +
                 "function renderPagination(){var div=document.getElementById('pagination');if(!div||totalPages<=1){div.innerHTML='';return;}var html='<button class=\"page-btn\" onclick=\"goPage(1)\"'+(page===1?'disabled':'')+'>首页</button><button class=\"page-btn\" onclick=\"goPage('+(page-1)+')\"'+(page===1?'disabled':'')+'>上一页</button><span class=\"page-info\">第 '+page+' / '+totalPages+' 页</span><button class=\"page-btn\" onclick=\"goPage('+(page+1)+')\"'+(page===totalPages?'disabled':'')+'>下一页</button><button class=\"page-btn\" onclick=\"goPage('+totalPages+')\"'+(page===totalPages?'disabled':'')+'>尾页</button>';div.innerHTML=html;}\n" +
                 "function goPage(p){page=p;loadTasks();}\n" +
                 "function showTaskDetail(taskId){currentTaskId=taskId;detailPage=1;document.getElementById('modalTitle').innerHTML='📋 任务详情 - '+taskId;document.getElementById('detailCallee').value='';document.getElementById('detailModal').style.display='flex';loadTaskDetail();}\n" +
@@ -4929,7 +5847,7 @@ public class LogMonitorController {
                 "<head>\n" +
                 "<meta charset=\"UTF-8\">\n" +
                 "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n" +
-                "<title>Texcell 预付 WEB 队列任务DR监控</title>\n" +
+                "<title>Texcell ECOM WEB 队列任务DR监控</title>\n" +
                 "<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23667eea'/%3E%3Ctext x='50' y='68' font-size='50' text-anchor='middle' fill='white' font-family='Arial'%3E📊%3C/text%3E%3C/svg%3E\">\n" +
                 "<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap\" rel=\"stylesheet\">\n" +
                 "<style>\n" +
@@ -5056,7 +5974,7 @@ public class LogMonitorController {
                 "<div class=\"nav-container\">\n" +
                 "<div class=\"logo\">\n" +
                 "<div class=\"logo-icon\">📊</div>\n" +
-                "<div class=\"logo-text\">预付 WEB 监控管理系统</div>\n" +
+                "<div class=\"logo-text\">ECOM WEB 监控管理系统</div>\n" +
                 "<div class=\"logo-sub\">v3.0</div>\n" +
                 "</div>\n" +
                 "<div class=\"menu\">\n" +

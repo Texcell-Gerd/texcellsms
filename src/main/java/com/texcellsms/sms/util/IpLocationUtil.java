@@ -68,6 +68,9 @@ public class IpLocationUtil {
                         json.getString("country"),
                         json.getString("regionName"),
                         json.getString("city")));
+                // 获取经纬度
+                info.setLat(json.getDouble("lat"));
+                info.setLon(json.getDouble("lon"));
             } else {
                 info.setLocation("未知位置");
             }
@@ -89,6 +92,8 @@ public class IpLocationUtil {
         private String city;
         private String isp;
         private String location;
+        private Double lat;
+        private Double lon;
 
         // Getters and Setters
         public String getCountry() { return country; }
@@ -101,5 +106,9 @@ public class IpLocationUtil {
         public void setIsp(String isp) { this.isp = isp; }
         public String getLocation() { return location; }
         public void setLocation(String location) { this.location = location; }
+        public Double getLat() { return lat; }
+        public void setLat(Double lat) { this.lat = lat; }
+        public Double getLon() { return lon; }
+        public void setLon(Double lon) { this.lon = lon; }
     }
 }

@@ -34,4 +34,6 @@ public class ScheduleTaskVO {
     private String shortMessage;
     @Schema(description = "计费数量")
     private Integer splitCount;
+    @Schema(description = "提交IP")
+    private String taskIp;
 }

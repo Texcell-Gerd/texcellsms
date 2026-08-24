@@ -194,7 +194,8 @@ public class SmsQueueService {
     /**
      * 内部管理 - 分页获取所有客户的任务列表
      */
-    public Map<String, Object> getAllQueueTasksForAdmin(String subAccount, String taskId, Integer scheduleStatus,
+    public Map<String, Object> getAllQueueTasksForAdmin(String subAccount, String taskId, String taskIp,
+                                                        Integer scheduleStatus,
                                                         Integer pageNum, Integer pageSize) {
         DataSourceInterceptor.setCurrentDataSource(DynamicDataSourceConfig.DS_WEB_PORTAL);
 
@@ -202,7 +203,7 @@ public class SmsQueueService {
         int offset = (pageNum - 1) * pageSize;
 
         List<ScheduleTaskVO> list = smsQueueMapper.selectAllScheduleTaskList(
-                subAccount, taskId, scheduleStatus, threeDaysAgoTime, offset, pageSize
+                subAccount, taskId, taskIp, scheduleStatus, threeDaysAgoTime, offset, pageSize
         );
 
         // 统计 DR 成功/失败数量
@@ -234,7 +235,7 @@ public class SmsQueueService {
             }
         }
 
-        Long total = smsQueueMapper.countAllScheduleTaskList(subAccount, taskId, scheduleStatus, threeDaysAgoTime);
+        Long total = smsQueueMapper.countAllScheduleTaskList(subAccount, taskId, taskIp, scheduleStatus, threeDaysAgoTime);
 
         Map<String, Object> result = new HashMap<>();
         result.put("records", list == null ? Collections.emptyList() : list);

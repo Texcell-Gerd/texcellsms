@@ -212,7 +212,7 @@ public interface SmsQueueMapper {
      */
     @Select({
             "<script>",
-            "SELECT TaskName, TaskID, SubAccount, ",
+            "SELECT TaskName, TaskID, SubAccount, TaskIP, ",
             "       DATE_FORMAT(TaskTime, '%Y-%m-%d %H:%i:%s') AS TaskTime, ",
             "       DATE_FORMAT(ScheduleSendTime, '%Y-%m-%d %H:%i:%s') AS ScheduleSendTime, ",
             "       TaskTimeZone, ScheduleStatus, TotalCount, CalleeCount, ",
@@ -226,6 +226,9 @@ public interface SmsQueueMapper {
             "  <if test='taskId != null and taskId != \"\"'>",
             "    AND TaskID LIKE CONCAT('%', #{taskId}, '%')",
             "  </if>",
+            "  <if test='taskIp != null and taskIp != \"\"'>",
+            "    AND TaskIP LIKE CONCAT('%', #{taskIp}, '%')",
+            "  </if>",
             "  <if test='scheduleStatus != null'>",
             "    AND ScheduleStatus = #{scheduleStatus}",
             "  </if>",
@@ -238,6 +241,7 @@ public interface SmsQueueMapper {
     List<ScheduleTaskVO> selectAllScheduleTaskList(
             @Param("subAccount") String subAccount,
             @Param("taskId") String taskId,
+            @Param("taskIp") String taskIp,
             @Param("scheduleStatus") Integer scheduleStatus,
             @Param("threeDaysAgoTime") String threeDaysAgoTime,
             @Param("offset") Integer offset,
@@ -258,6 +262,9 @@ public interface SmsQueueMapper {
             "  <if test='taskId != null and taskId != \"\"'>",
             "    AND TaskID LIKE CONCAT('%', #{taskId}, '%')",
             "  </if>",
+            "  <if test='taskIp != null and taskIp != \"\"'>",
+            "    AND TaskIP LIKE CONCAT('%', #{taskIp}, '%')",
+            "  </if>",
             "  <if test='scheduleStatus != null'>",
             "    AND ScheduleStatus = #{scheduleStatus}",
             "  </if>",
@@ -267,6 +274,7 @@ public interface SmsQueueMapper {
     Long countAllScheduleTaskList(
             @Param("subAccount") String subAccount,
             @Param("taskId") String taskId,
+            @Param("taskIp") String taskIp,
             @Param("scheduleStatus") Integer scheduleStatus,
             @Param("threeDaysAgoTime") String threeDaysAgoTime
     );
