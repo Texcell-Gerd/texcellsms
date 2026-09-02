@@ -25,23 +25,31 @@ public class WeChatRobotUtil {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    /**
-     * 判断是否启用
-     */
     public boolean isEnabled() {
         return enabled;
     }
 
     /**
-     * 发送 Markdown 类型消息
+     * 发送 Markdown 类型消息（使用默认 Webhook）
      */
     public boolean sendMarkdownMessage(String content) {
+        return sendMarkdownMessage(content, null);
+    }
+
+    /**
+     * 发送 Markdown 类型消息（支持自定义 Webhook）
+     */
+    public boolean sendMarkdownMessage(String content, String webhookUrl) {
         if (!enabled) {
             logger.info("企业微信机器人未启用，消息内容：\n{}", content);
             return false;
         }
 
-        if (webhookUrl == null || webhookUrl.trim().isEmpty()) {
+        String targetUrl = (webhookUrl != null && !webhookUrl.trim().isEmpty())
+                ? webhookUrl
+                : this.webhookUrl;
+
+        if (targetUrl == null || targetUrl.trim().isEmpty()) {
             logger.error("企业微信机器人 Webhook URL 未配置");
             return false;
         }
@@ -54,7 +62,7 @@ public class WeChatRobotUtil {
             markdown.put("content", content);
             message.put("markdown", markdown);
 
-            return sendMessage(message);
+            return sendMessageToUrl(message, targetUrl);
         } catch (Exception e) {
             logger.error("发送企业微信消息失败", e);
             return false;
@@ -62,7 +70,7 @@ public class WeChatRobotUtil {
     }
 
     /**
-     * 发送文本类型消息（支持 @ 所有人或指定人）
+     * 发送文本类型消息
      */
     public boolean sendTextMessage(String content, List<String> mentionedList, boolean mentionAll) {
         if (!enabled) {
@@ -90,7 +98,7 @@ public class WeChatRobotUtil {
 
             message.put("text", text);
 
-            return sendMessage(message);
+            return sendMessageToUrl(message, webhookUrl);
         } catch (Exception e) {
             logger.error("发送企业微信消息失败", e);
             return false;
@@ -98,12 +106,12 @@ public class WeChatRobotUtil {
     }
 
     /**
-     * 发送消息到企业微信
+     * 发送消息到指定 URL
      */
-    private boolean sendMessage(Map<String, Object> message) {
+    private boolean sendMessageToUrl(Map<String, Object> message, String urlStr) {
         HttpURLConnection connection = null;
         try {
-            URL url = new URL(webhookUrl);
+            URL url = new URL(urlStr);
             connection = (HttpURLConnection) url.openConnection();
             connection.setRequestMethod("POST");
             connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8");

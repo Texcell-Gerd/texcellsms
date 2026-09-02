@@ -426,4 +426,49 @@ public interface SmsQueueMapper {
             "LIMIT 10"
     })
     List<Map<String, Object>> getTaskSampleCallees(@Param("taskId") String taskId);
+
+    /**
+     * 查询指定客户的超时任务
+     * 只查询当天的任务，且只查询 status = PENDING 的（避免重复扫描已处理的）
+     */
+    @Select({
+            "SELECT ",
+            "  s.TaskID as taskId, ",
+            "  s.SubAccount as subAccount, ",
+            "  s.TaskName as taskName, ",
+            "  s.TotalCount as totalCount, ",
+            "  s.SubmitSuccCount as submitSuccCount, ",
+            "  s.DRSuccCount as drSuccCount, ",
+            "  s.DRFailCount as drFailCount, ",
+            "  s.TaskTime as taskTimeStr, ",
+            "  TIMESTAMPDIFF(MINUTE, STR_TO_DATE(s.TaskTime, '%Y-%m-%d %H:%i:%s.%f'), NOW()) as elapsedMinutes, ",
+            "  (",
+            "    SELECT COUNT(*) FROM tbl_APITask t ",
+            "    WHERE t.APITaskId = s.TaskID ",
+            "    AND (t.RecvDRStatus IS NULL OR t.RecvDRStatus = '' OR ",
+            "         t.RecvDRTime IS NULL OR t.RecvDRTime = '')",
+            "  ) as detailPendingCount ",
+            "FROM tbl_APIScheduleSend s ",
+            "WHERE s.SubAccount = #{subAccount} ",
+            "  AND s.TotalCount = s.SubmitSuccCount ",
+            "  AND DATE(STR_TO_DATE(s.TaskTime, '%Y-%m-%d %H:%i:%s.%f')) = CURDATE() ",  // ✅ 只查当天
+            "  AND TIMESTAMPDIFF(MINUTE, STR_TO_DATE(s.TaskTime, '%Y-%m-%d %H:%i:%s.%f'), NOW()) >= #{timeoutMinutes} ",
+            "  AND (",
+            "    SELECT COUNT(*) FROM tbl_APITask t ",
+            "    WHERE t.APITaskId = s.TaskID ",
+            "    AND (t.RecvDRStatus IS NULL OR t.RecvDRStatus = '' OR ",
+            "         t.RecvDRTime IS NULL OR t.RecvDRTime = '')",
+            "  ) > 0 ",
+            "  AND NOT EXISTS (",  // ✅ 排除已处理的（避免重复扫描）
+            "    SELECT 1 FROM tbl_queue_monitor_log l ",
+            "    WHERE l.task_id = s.TaskID ",
+            "    AND l.status = 'PROCESSED'",
+            "  ) ",
+            "ORDER BY STR_TO_DATE(s.TaskTime, '%Y-%m-%d %H:%i:%s.%f') ASC ",
+            "LIMIT 10"  // ✅ 每次最多处理10个任务，避免一次处理太多
+    })
+    List<Map<String, Object>> findTimeoutTasksForCustomer(
+            @Param("subAccount") String subAccount,
+            @Param("timeoutMinutes") int timeoutMinutes
+    );
 }

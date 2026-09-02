@@ -2,9 +2,11 @@ package com.texcellsms.sms.monitor;
 
 import com.texcellsms.sms.interceptor.SecurityMonitorInterceptor;
 import com.texcellsms.sms.mapper.eccom.SubmitRecordMapper;
+import com.texcellsms.sms.mapper.webportal.CustomerDrAutoFixConfigMapper;
 import com.texcellsms.sms.mapper.webportal.QueueMonitorLogMapper;
 import com.texcellsms.sms.mapper.webportal.SmsQueueMapper;
 import com.texcellsms.sms.model.entity.QueueMonitorLog;
+import com.texcellsms.sms.service.CustomerDrAutoFixService;
 import com.texcellsms.sms.util.WeChatRobotUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -71,6 +73,9 @@ public class LogMonitorTask {
 
     @Autowired
     private SubmitRecordMapper submitRecordMapper;
+
+    @Autowired
+    private CustomerDrAutoFixService customerDrAutoFixConfigService;
 
     @PostConstruct
     public void init() {
@@ -367,9 +372,21 @@ public class LogMonitorTask {
         try {
             logger.info("开始扫描队列任务DR未更新");
 
+            // 获取已配置自动修复的客户列表
+            List<String> autoFixSubAccounts = customerDrAutoFixConfigService.getEnabledSubAccounts();
+            Set<String> autoFixSet = new HashSet<>(autoFixSubAccounts);
+
             // 1. 查询超时任务（30分钟和60分钟）
             List<Map<String, Object>> warningTasks = smsQueueMapper.findTimeoutTasks(30);
             List<Map<String, Object>> criticalTasks = smsQueueMapper.findTimeoutTasks(60);
+
+            // 过滤掉已配置自动修复的客户
+            warningTasks = warningTasks.stream()
+                    .filter(task -> !autoFixSet.contains(task.get("subAccount")))
+                    .collect(Collectors.toList());
+            criticalTasks = criticalTasks.stream()
+                    .filter(task -> !autoFixSet.contains(task.get("subAccount")))
+                    .collect(Collectors.toList());
 
             // 2. 获取当前所有待处理的任务ID（用于检测已恢复的任务）
             List<QueueMonitorLog> pendingLogs = queueMonitorLogMapper.findPendingAlerts();
@@ -546,8 +563,8 @@ public class LogMonitorTask {
             }
 
             String levelText = "CRITICAL".equals(log.getAlertLevel())
-                    ? "🔴【严重】超过60分钟"
-                    : "🟡【警告】超过30分钟";
+                    ? "【严重】超过60分钟"
+                    : "【警告】超过30分钟";
 
             String msg = String.format(
                     "## 📨 队列任务DR未更新告警\n\n" +
@@ -556,14 +573,13 @@ public class LogMonitorTask {
                             "|------|------|\n" +
                             "| 任务ID | `%s` |\n" +
                             "| 客户账号 | %s |\n" +
-                            "| 总发送数 | **%d** ⚠️ |\n" +
+                            "| 总发送数 | **%d** |\n" +
                             "| 已提交数 | %d |\n" +
                             "| 成功数 | %d |\n" +
                             "| 失败数 | %d |\n" +
                             "| **DR未更新数** | **%d 条** |\n" +
                             "| 已过时间 | **%d 分钟** |\n\n" +
-                            "> ⏰ 任务已完成但部分DR一直未更新，请留意检查处理！\n\n" +
-                            "> 🔗 [点击查看监控详情](https://internalsms.texcellsms.com:1443/monitor/queue-monitor)",
+                            ">  任务已完成但部分DR一直未更新，请留意检查处理！\n\n" +
                     levelText,
                     log.getTaskId(),
                     log.getSubAccount(),

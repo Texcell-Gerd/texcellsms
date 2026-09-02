@@ -5,6 +5,7 @@ import CacheDB.NCacheDBLink;
 import com.texcellsms.sms.interceptor.SecurityMonitorInterceptor;
 import com.texcellsms.sms.mapper.webportal.*;
 import com.texcellsms.sms.model.entity.*;
+import com.texcellsms.sms.service.CustomerDrAutoFixService;
 import com.texcellsms.sms.service.IpRateLimitConfigService;
 import com.texcellsms.sms.service.SmsQueueService;
 import com.texcellsms.sms.util.ApiClientConfig;
@@ -78,6 +79,9 @@ public class LogMonitorController {
 
     @Autowired
     private SecurityMonitorInterceptor securityMonitorInterceptor;
+
+    @Autowired
+    private CustomerDrAutoFixService customerDrAutoFixService;
 
 
     private String getRealIp(HttpServletRequest request) {
@@ -402,6 +406,21 @@ public class LogMonitorController {
             return "<script>location.href='/monitor/login';</script>";
         }
         return generateQueueMonitorHtml();
+    }
+
+    @GetMapping("/monitor/dr-auto-fix")
+    public String drAutoFix(HttpServletRequest request) {
+        HttpSession session = request.getSession();
+        String clientIp = getRealIp(request);
+        String loginUsername = getCurrentUsername(session);
+
+        if (!isIpAllowed(clientIp, loginUsername)) {
+            return "<h1 style='color:red;text-align:center;margin-top:100px;'>❌ 仅允许内网访问<br/>您的IP：" + clientIp + "</h1>";
+        }
+        if (!isLogin(session)) {
+            return "<script>location.href='/monitor/login';</script>";
+        }
+        return generateDrAutoFixHtml();
     }
 
     @GetMapping("/api/monitor/logs")
@@ -2495,17 +2514,27 @@ public class LogMonitorController {
         }
 
         try {
-            // 1. 查询超时任务（30分钟和60分钟）
+            List<String> autoFixSubAccounts = customerDrAutoFixService.getEnabledSubAccounts();
+            Set<String> autoFixSet = new HashSet<>(autoFixSubAccounts);
+
             List<Map<String, Object>> warningTasks = smsQueueMapper.findTimeoutTasks(30);
             List<Map<String, Object>> criticalTasks = smsQueueMapper.findTimeoutTasks(60);
 
-            // 2. 获取当前所有待处理的任务ID（用于检测已恢复的任务）
-            List<QueueMonitorLog> pendingLogs = queueMonitorLogMapper.findPendingAlerts();
-            Set<String> pendingTaskIds = pendingLogs.stream()
-                    .map(QueueMonitorLog::getTaskId)
-                    .collect(Collectors.toSet());
+            warningTasks = warningTasks.stream()
+                    .filter(task -> !autoFixSet.contains(task.get("subAccount")))
+                    .collect(Collectors.toList());
+            criticalTasks = criticalTasks.stream()
+                    .filter(task -> !autoFixSet.contains(task.get("subAccount")))
+                    .collect(Collectors.toList());
 
-            // 3. 当前超时任务ID集合
+            int MAX_TASKS_PER_SCAN = 50;
+            if (warningTasks.size() > MAX_TASKS_PER_SCAN) {
+                warningTasks = warningTasks.subList(0, MAX_TASKS_PER_SCAN);
+            }
+            if (criticalTasks.size() > MAX_TASKS_PER_SCAN) {
+                criticalTasks = criticalTasks.subList(0, MAX_TASKS_PER_SCAN);
+            }
+
             Map<String, Map<String, Object>> allTasks = new LinkedHashMap<>();
             for (Map<String, Object> task : warningTasks) {
                 allTasks.putIfAbsent((String) task.get("taskId"), task);
@@ -2513,29 +2542,19 @@ public class LogMonitorController {
             for (Map<String, Object> task : criticalTasks) {
                 allTasks.put((String) task.get("taskId"), task);
             }
-            Set<String> currentTimeoutTaskIds = allTasks.keySet();
 
-            // 4. 自动关闭已恢复的任务（不再超时的任务）
-            int autoClosed = 0;
-            for (String taskId : pendingTaskIds) {
-                if (!currentTimeoutTaskIds.contains(taskId)) {
-                    queueMonitorLogMapper.updateStatus(taskId, "PROCESSED", "系统自动", LocalDateTime.now());
-                    autoClosed++;
-                    logger.info("手动扫描：任务 {} 已恢复，自动关闭告警", taskId);
-                }
-            }
+            // 不再自动关闭已恢复的任务
 
             if (allTasks.isEmpty()) {
                 result.put("code", 200);
-                result.put("msg", "扫描完成，未发现超时任务，自动关闭 " + autoClosed + " 条告警");
+                result.put("msg", "扫描完成，未发现超时任务");
                 result.put("total", 0);
                 result.put("newAlerts", 0);
                 result.put("updatedAlerts", 0);
-                result.put("autoClosed", autoClosed);
+                result.put("autoClosed", 0);
                 return result;
             }
 
-            // 5. 处理仍在超时中的任务
             int newAlerts = 0;
             int updatedAlerts = 0;
             int weChatAlerts = 0;
@@ -2545,7 +2564,6 @@ public class LogMonitorController {
                 Integer totalCount = ((Number) task.getOrDefault("totalCount", 0)).intValue();
                 Integer detailPendingCount = ((Number) task.getOrDefault("detailPendingCount", 0)).intValue();
 
-                // 如果 detailPendingCount = 0，说明已经没有未更新的记录了，跳过
                 if (detailPendingCount == 0) {
                     continue;
                 }
@@ -2553,18 +2571,15 @@ public class LogMonitorController {
                 QueueMonitorLog existing = queueMonitorLogMapper.selectLatestByTaskId(taskId);
 
                 if (existing != null) {
-                    // 已处理或已忽略的，跳过
                     if ("PROCESSED".equals(existing.getStatus()) || "IGNORED".equals(existing.getStatus())) {
                         continue;
                     }
 
-                    // 🔧 更新现有记录
                     QueueMonitorLog updatedLog = buildQueueMonitorLog(task);
                     updatedLog.setId(existing.getId());
                     queueMonitorLogMapper.update(updatedLog);
                     updatedAlerts++;
 
-                    // 如果告警未发送过 且 totalCount > 5000，发送企微
                     if (totalCount > 5000 && existing.getAlertSent() == 0) {
                         sendQueueAlertToWeChat(updatedLog);
                         queueMonitorLogMapper.updateAlertSent(taskId);
@@ -2573,7 +2588,6 @@ public class LogMonitorController {
                     continue;
                 }
 
-                // 新记录：插入
                 QueueMonitorLog log = buildQueueMonitorLog(task);
                 queueMonitorLogMapper.insert(log);
 
@@ -2585,16 +2599,16 @@ public class LogMonitorController {
                 newAlerts++;
             }
 
-            logger.info("手动扫描完成：新增 {} 条，更新 {} 条，自动关闭 {} 条，企微发送 {} 条",
-                    newAlerts, updatedAlerts, autoClosed, weChatAlerts);
+            logger.info("手动扫描完成：新增 {} 条，更新 {} 条，企微发送 {} 条",
+                    newAlerts, updatedAlerts, weChatAlerts);
 
             result.put("code", 200);
-            result.put("msg", String.format("扫描完成：新增 %d 条，更新 %d 条，自动关闭 %d 条，企微发送 %d 条",
-                    newAlerts, updatedAlerts, autoClosed, weChatAlerts));
+            result.put("msg", String.format("扫描完成：新增 %d 条告警，更新 %d 条告警，企微发送 %d 条",
+                    newAlerts, updatedAlerts, weChatAlerts));
             result.put("total", allTasks.size());
             result.put("newAlerts", newAlerts);
             result.put("updatedAlerts", updatedAlerts);
-            result.put("autoClosed", autoClosed);
+            result.put("autoClosed", 0);
             result.put("weChatAlerts", weChatAlerts);
         } catch (Exception e) {
             logger.error("扫描超时任务失败", e);
@@ -2803,6 +2817,174 @@ public class LogMonitorController {
         } catch (Exception e) {
             logger.error("发送企微告警失败", e);
         }
+    }
+
+    /**
+     * 获取客户定时任务配置(DR自动修复)配置列表
+     */
+    @GetMapping("/api/monitor/dr-auto-fix/list")
+    public Map<String, Object> getDrAutoFixList(
+            @RequestParam(required = false) String subAccount,
+            @RequestParam(required = false) Integer enabled,
+            @RequestParam(defaultValue = "1") int pageNum,
+            @RequestParam(defaultValue = "20") int pageSize,
+            @RequestParam(required = false) String secret,
+            HttpServletRequest request) {
+
+        Map<String, Object> result = new HashMap<>();
+        HttpSession session = request.getSession();
+        String clientIp = getRealIp(request);
+        String loginUsername = getCurrentUsername(session);
+
+        if (!isIpAllowed(clientIp, loginUsername)) {
+            result.put("code", 403);
+            result.put("msg", "仅允许内网访问");
+            return result;
+        }
+        if (!MONITOR_SECRET.equals(secret)) {
+            result.put("code", 401);
+            result.put("msg", "无权限访问");
+            return result;
+        }
+
+        try {
+            Map<String, Object> data = customerDrAutoFixService.getConfigList(subAccount, enabled, pageNum, pageSize);
+            result.put("code", 200);
+            result.put("data", data);
+        } catch (Exception e) {
+            logger.error("查询定时任务配置(DR自动修复)配置列表失败", e);
+            result.put("code", 500);
+            result.put("msg", "查询失败: " + e.getMessage());
+        }
+        return result;
+    }
+
+    /**
+     * 保存客户定时任务配置(DR自动修复)配置
+     */
+    @PostMapping("/api/monitor/dr-auto-fix/save")
+    public Map<String, Object> saveDrAutoFix(@RequestBody CustomerDrAutoFixConfig config,
+                                             @RequestParam String secret,
+                                             HttpServletRequest request) {
+        Map<String, Object> result = new HashMap<>();
+        HttpSession session = request.getSession();
+        String clientIp = getRealIp(request);
+        String loginUsername = getCurrentUsername(session);
+
+        if (!isIpAllowed(clientIp, loginUsername)) {
+            result.put("code", 403);
+            result.put("msg", "仅允许内网访问");
+            return result;
+        }
+        if (!MONITOR_SECRET.equals(secret)) {
+            result.put("code", 401);
+            result.put("msg", "无权限访问");
+            return result;
+        }
+
+        // 参数校验
+        if (config.getSubAccount() == null || config.getSubAccount().trim().isEmpty()) {
+            result.put("code", 400);
+            result.put("msg", "客户账号不能为空");
+            return result;
+        }
+        if (config.getTimeoutMinutes() == null || config.getTimeoutMinutes() < 1) {
+            result.put("code", 400);
+            result.put("msg", "超时时间必须大于0");
+            return result;
+        }
+
+        try {
+            customerDrAutoFixService.saveConfig(config, loginUsername);
+            result.put("code", 200);
+            result.put("msg", "保存成功");
+        } catch (Exception e) {
+            logger.error("保存定时任务配置(DR自动修复)配置失败", e);
+            result.put("code", 500);
+            result.put("msg", "保存失败: " + e.getMessage());
+        }
+        return result;
+    }
+
+    /**
+     * 切换配置启用/禁用状态
+     */
+    @PostMapping("/api/monitor/dr-auto-fix/toggle")
+    public Map<String, Object> toggleDrAutoFix(@RequestParam Long id,
+                                               @RequestParam Integer enabled,
+                                               @RequestParam String secret,
+                                               HttpServletRequest request) {
+        Map<String, Object> result = new HashMap<>();
+        HttpSession session = request.getSession();
+        String clientIp = getRealIp(request);
+        String loginUsername = getCurrentUsername(session);
+
+        if (!isIpAllowed(clientIp, loginUsername)) {
+            result.put("code", 403);
+            result.put("msg", "仅允许内网访问");
+            return result;
+        }
+        if (!MONITOR_SECRET.equals(secret)) {
+            result.put("code", 401);
+            result.put("msg", "无权限访问");
+            return result;
+        }
+
+        try {
+            CustomerDrAutoFixConfig config = customerDrAutoFixService.getConfigById(id);
+            if (config == null) {
+                result.put("code", 404);
+                result.put("msg", "配置不存在");
+                return result;
+            }
+            config.setEnabled(enabled);
+            config.setUpdatedBy(loginUsername);
+            customerDrAutoFixService.saveConfig(config, loginUsername);
+
+            String status = enabled == 1 ? "启用" : "禁用";
+            result.put("code", 200);
+            result.put("msg", status + "成功");
+        } catch (Exception e) {
+            logger.error("切换定时任务配置(DR自动修复)配置状态失败", e);
+            result.put("code", 500);
+            result.put("msg", "操作失败: " + e.getMessage());
+        }
+        return result;
+    }
+
+    /**
+     * 删除客户定时任务配置(DR自动修复)配置
+     */
+    @PostMapping("/api/monitor/dr-auto-fix/delete")
+    public Map<String, Object> deleteDrAutoFix(@RequestParam Long id,
+                                               @RequestParam String secret,
+                                               HttpServletRequest request) {
+        Map<String, Object> result = new HashMap<>();
+        HttpSession session = request.getSession();
+        String clientIp = getRealIp(request);
+        String loginUsername = getCurrentUsername(session);
+
+        if (!isIpAllowed(clientIp, loginUsername)) {
+            result.put("code", 403);
+            result.put("msg", "仅允许内网访问");
+            return result;
+        }
+        if (!MONITOR_SECRET.equals(secret)) {
+            result.put("code", 401);
+            result.put("msg", "无权限访问");
+            return result;
+        }
+
+        try {
+            customerDrAutoFixService.deleteConfig(id, loginUsername);
+            result.put("code", 200);
+            result.put("msg", "删除成功");
+        } catch (Exception e) {
+            logger.error("删除定时任务配置(DR自动修复)配置失败", e);
+            result.put("code", 500);
+            result.put("msg", "删除失败: " + e.getMessage());
+        }
+        return result;
     }
 
     private String formatCsvValue(Object value) {
@@ -3058,6 +3240,7 @@ public class LogMonitorController {
                 "<a href=\"/monitor/ops-management\">运维管理</a>\n" +
                 "<a href=\"/monitor/queue-management\">发送队列管理</a>" +
                 "<a href=\"/monitor/queue-monitor\">队列DR监控</a>\n" +
+                "<a href=\"/monitor/dr-auto-fix\">定时任务配置</a>\n" +
                 "</div>\n" +
                 "<div class=\"user-info\">\n" +
                 "<span class=\"user-name\" id=\"currentUsername\">加载中...</span>\n" +
@@ -3241,6 +3424,7 @@ public class LogMonitorController {
                 "<a href=\"/monitor/ops-management\">运维管理</a>\n" +
                 "<a href=\"/monitor/queue-management\">发送队列管理</a>\n" +
                 "<a href=\"/monitor/queue-monitor\">队列DR监控</a>\n" +
+                "<a href=\"/monitor/dr-auto-fix\">定时任务配置</a>\n" +
                 "</div>\n" +
                 "<div class=\"user-info\">\n" +
                 "<span class=\"user-name\" id=\"currentUsername\">加载中...</span>\n" +
@@ -3700,6 +3884,7 @@ public class LogMonitorController {
                 "<a href=\"/monitor/ops-management\">运维管理</a>\n" +
                 "<a href=\"/monitor/queue-management\">发送队列管理</a>\n" +
                 "<a href=\"/monitor/queue-monitor\">队列DR监控</a>\n" +
+                "<a href=\"/monitor/dr-auto-fix\">定时任务配置</a>\n" +
                 "</div>\n" +
                 "<div class=\"user-info\">\n" +
                 "<span class=\"user-name\" id=\"currentUsername\">加载中...</span>\n" +
@@ -3979,6 +4164,7 @@ public class LogMonitorController {
                 "<a href=\"/monitor/ops-management\">运维管理</a>\n" +
                 "<a href=\"/monitor/queue-management\">发送队列管理</a>\n" +
                 "<a href=\"/monitor/queue-monitor\">队列DR监控</a>\n" +
+                "<a href=\"/monitor/dr-auto-fix\">定时任务配置</a>\n" +
                 "</div>\n" +
                 "<div class=\"user-info\">\n" +
                 "<span class=\"user-name\" id=\"currentUsername\">加载中...</span>\n" +
@@ -4189,6 +4375,7 @@ public class LogMonitorController {
                 "<a href=\"/monitor/ops-management\">运维管理</a>\n" +
                 "<a href=\"/monitor/queue-management\">发送队列管理</a>\n" +
                 "<a href=\"/monitor/queue-monitor\">队列DR监控</a>\n" +
+                "<a href=\"/monitor/dr-auto-fix\">定时任务配置</a>\n" +
                 "</div>\n" +
                 "<div class=\"user-info\">\n" +
                 "<span class=\"user-name\" id=\"currentUsername\">加载中...</span>\n" +
@@ -4662,6 +4849,7 @@ public class LogMonitorController {
                 "<a href=\"/monitor/ops-management\" class=\"active\">运维管理</a>\n" +
                 "<a href=\"/monitor/queue-management\">发送队列管理</a>\n" +
                 "<a href=\"/monitor/queue-monitor\">队列DR监控</a>\n" +
+                "<a href=\"/monitor/dr-auto-fix\">定时任务配置</a>\n" +
                 "</div>\n" +
                 "<div class=\"user-info\">\n" +
                 "<span class=\"user-name\" id=\"currentUsername\">加载中...</span>\n" +
@@ -5619,6 +5807,7 @@ public class LogMonitorController {
                 "<a href=\"/monitor/ops-management\">运维管理</a>\n" +
                 "<a href=\"/monitor/queue-management\" class=\"active\">发送队列管理</a>\n" +
                 "<a href=\"/monitor/queue-monitor\">队列DR监控</a>\n" +
+                "<a href=\"/monitor/dr-auto-fix\">定时任务配置</a>\n" +
                 "</div>\n" +
                 "<div class=\"user-info\">\n" +
                 "<span class=\"user-name\" id=\"currentUsername\">加载中...</span>\n" +
@@ -5949,6 +6138,29 @@ public class LogMonitorController {
                 ".modal-buttons .confirm-btn:hover{box-shadow:0 4px 12px rgba(22,119,255,0.3);}\n" +
                 ".modal-buttons .cancel-btn{background:#f1f5f9;border:1px solid #d1d5db;padding:8px 24px;border-radius:8px;cursor:pointer;color:#64748b;}\n" +
                 ".modal-buttons .cancel-btn:hover{background:#e8ecf1;}\n" +
+                ".fee-help-icon {\n" +
+                "    display: inline-flex;\n" +
+                "    align-items: center;\n" +
+                "    justify-content: center;\n" +
+                "    width: 16px;\n" +
+                "    height: 16px;\n" +
+                "    font-size: 11px;\n" +
+                "    font-weight: 700;\n" +
+                "    color: #1677ff;\n" +
+                "    background: #e8f0fe;\n" +
+                "    border-radius: 50%;\n" +
+                "    cursor: help;\n" +
+                "    transition: all 0.3s;\n" +
+                "    margin-left: 2px;\n" +
+                "    font-family: 'Inter', sans-serif;\n" +
+                "    line-height: 1;\n" +
+                "    user-select: none;\n" +
+                "}\n" +
+                ".fee-help-icon:hover {\n" +
+                "    background: #1677ff;\n" +
+                "    color: #ffffff;\n" +
+                "    transform: scale(1.1);\n" +
+                "}\n" +
                 ".modal-content-wide{width:650px !important;max-width:95% !important;}\n" +
                 ".numbers-info{display:flex;gap:24px;flex-wrap:wrap;font-size:13px;color:#475569;margin-bottom:12px;}\n" +
                 ".numbers-info code{background:#f1f5f9;padding:2px 8px;border-radius:4px;font-size:12px;word-break:break-all;}\n" +
@@ -5987,6 +6199,7 @@ public class LogMonitorController {
                 "<a href=\"/monitor/ops-management\">运维管理</a>\n" +
                 "<a href=\"/monitor/queue-management\">发送队列管理</a>\n" +
                 "<a href=\"/monitor/queue-monitor\" class=\"active\">队列DR监控</a>\n" +
+                "<a href=\"/monitor/dr-auto-fix\">定时任务配置</a>\n" +
                 "</div>\n" +
                 "<div class=\"user-info\">\n" +
                 "<span class=\"user-name\" id=\"currentUsername\">加载中...</span>\n" +
@@ -6041,6 +6254,7 @@ public class LogMonitorController {
                 "<th>告警级别</th>\n" +
                 "<th>FEE是否存在记录</th>\n" +
                 "<th>状态</th>\n" +
+                "<th>操作人</th>\n" +
                 "<th>操作</th>\n" +
                 "</tr>\n" +
                 "</thead>\n" +
@@ -6187,10 +6401,10 @@ public class LogMonitorController {
                 "                totalPages = data.totalPages || 1;\n" +
                 "                renderPagination();\n" +
                 "            } else {\n" +
-                "                document.getElementById('logBody').innerHTML = '<tr><td colspan=\"15\" class=\"empty\">加载失败: ' + (data.msg || '错误') + '</td></tr>';\n" +
+                "                document.getElementById('logBody').innerHTML = '<tr><td colspan=\"14\" class=\"empty\">加载失败: ' + (data.msg || '错误') + '</td></tr>';\n" +
                 "            }\n" +
                 "        }).catch(function() {\n" +
-                "            document.getElementById('logBody').innerHTML = '<tr><td colspan=\"15\" class=\"empty\">加载失败: 网络错误</td></tr>';\n" +
+                "            document.getElementById('logBody').innerHTML = '<tr><td colspan=\"14\" class=\"empty\">加载失败: 网络错误</td></tr>';\n" +
                 "        });\n" +
                 "}\n" +
                 "\n" +
@@ -6288,7 +6502,7 @@ public class LogMonitorController {
                 "    var tbody = document.getElementById('logBody');\n" +
                 "    if (!tbody) return;\n" +
                 "    if (!list || list.length === 0) {\n" +
-                "        tbody.innerHTML = '<tr><td colspan=\"13\" class=\"empty\">暂无数据</td></tr>';\n" +
+                "        tbody.innerHTML = '<tr><td colspan=\"14\" class=\"empty\">暂无数据</td></tr>';\n" +
                 "        return;\n" +
                 "    }\n" +
                 "    var html = '';\n" +
@@ -6302,10 +6516,9 @@ public class LogMonitorController {
                 "        var canIgnore = log.status === 'PENDING';\n" +
                 "        var pendingCount = log.detailPendingCount || 0;\n" +
                 "        var taskId = log.taskId || '';\n" +
-                "        // feeExist 从数据库读取（扫描时写入）\n" +
                 "        var feeExist = log.feeExist === true;\n" +
-                "        var feeExistText = feeExist ? '✅ 已存在' : (log.status === 'PENDING' ? '⏳ 待扫描' : '-');\n" +
                 "        var feeExistClass = feeExist ? 'fee-exist-true' : 'fee-exist-false';\n" +
+                "        var feeDisplay = feeExist ? '✅ 已存在' : (log.status === 'PENDING' ? '<span style=\"display:inline-flex;align-items:center;gap:2px;\">⏳ 待扫描<span class=\"fee-help-icon\" title=\"如果一直处于待扫描状态，请挑选样本号码手动去FEE表验证是否存在回执记录\">?</span></span>' : '-');\n" +
                 "        html += '<tr>' +\n" +
                 "            '<td style=\"text-align:center;\"><input type=\"checkbox\" class=\"task-checkbox\" id=\"check_' + escapeHtml(taskId) + '\" value=\"' + escapeHtml(taskId) + '\" onchange=\"toggleTask(\\'' + escapeHtml(taskId) + '\\')\" ' + (log.status !== 'PENDING' ? 'disabled' : '') + '></td>' +\n" +
                 "            '<td style=\"font-family:monospace;font-size:12px;\" title=\"' + escapeHtml(taskId) + '\">' + escapeHtml((taskId || '').substring(0, 25)) + '...</td>' +\n" +
@@ -6322,8 +6535,9 @@ public class LogMonitorController {
                 "            '</td>' +\n" +
                 "            '<td>' + (log.elapsedMinutes || 0) + '分钟</td>' +\n" +
                 "            '<td><span class=\"status-badge ' + alertClassMap[log.alertLevel] + '\">' + alertMap[log.alertLevel] + '</span></td>' +\n" +
-                "            '<td class=\"' + feeExistClass + '\">' + feeExistText + '</td>' +\n" +
+                "            '<td class=\"' + feeExistClass + '\">' + feeDisplay + '</td>' +\n" +
                 "            '<td><span class=\"status-badge ' + statusClassMap[log.status] + '\">' + statusMap[log.status] + '</span></td>' +\n" +
+                "            '<td>' + (log.processedBy || '-') + '</td>' +\n" +
                 "            '<td>';\n" +
                 "        if (canFix) {\n" +
                 "            html += '<button class=\"action-btn fix-btn\" onclick=\"showConfirmModal(\\'' + escapeHtml(taskId) + '\\', \\'' + escapeHtml(log.subAccount || '-') + '\\', ' + (log.totalCount || 0) + ', ' + pendingCount + ')\">修复</button> ';\n" +
@@ -6424,26 +6638,84 @@ public class LogMonitorController {
                 "function manualScan() {\n" +
                 "    if (!confirm('确定要手动扫描超时未更新DR的队列任务吗？')) return;\n" +
                 "    var btn = document.querySelector('.scan-btn');\n" +
+                "    var originalText = btn.innerText;\n" +
                 "    btn.disabled = true;\n" +
-                "    btn.innerText = '扫描中...';\n" +
+                "    btn.innerText = '⏳ 扫描中...';\n" +
+                "    var overlay = document.createElement('div');\n" +
+                "    overlay.id = 'scanOverlay';\n" +
+                "    overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:9998;backdrop-filter:blur(4px);';\n" +
+                "    document.body.appendChild(overlay);\n" +
+                "    var modal = document.createElement('div');\n" +
+                "    modal.id = 'scanModal';\n" +
+                "    modal.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:9999;background:#ffffff;border-radius:20px;padding:40px 50px;min-width:420px;box-shadow:0 30px 80px rgba(0,0,0,0.35);text-align:center;animation:slideUp 0.4s ease;';\n" +
+                "    modal.innerHTML = '<div style=\"margin-bottom:20px;\"><span style=\"font-size:48px;display:inline-block;animation:spin 1.2s linear infinite;\">🔄</span></div><h3 style=\"color:#1e293b;font-size:20px;margin-bottom:8px;font-weight:600;\">正在扫描超时任务...</h3><p style=\"color:#94a3b8;font-size:14px;margin-bottom:20px;\">请稍候，正在检查未更新DR的队列任务</p><div style=\"background:#f1f5f9;border-radius:12px;height:10px;overflow:hidden;margin-bottom:16px;position:relative;\"><div id=\"scanBar\" style=\"width:0%;height:100%;background:linear-gradient(135deg,#1677ff 0%,#4096ff 50%,#52c41a 100%);background-size:300% 100%;border-radius:12px;transition:width 0.6s cubic-bezier(0.22,1,0.36,1);animation:shimmer 1.5s ease-in-out infinite;\"></div></div><div style=\"display:flex;justify-content:space-between;font-size:13px;color:#94a3b8;\"><span id=\"scanStatus\">⏳ 正在连接服务器...</span><span id=\"scanPercent\" style=\"font-weight:600;color:#1677ff;\">0%</span></div><div style=\"margin-top:16px;font-size:12px;color:#cbd5e1;\">⏱️ 预计耗时 5-30 秒</div>';\n" +
+                "    document.body.appendChild(modal);\n" +
+                "    var style = document.createElement('style');\n" +
+                "    style.textContent = '@keyframes slideUp{from{opacity:0;transform:translate(-50%,-40%);}to{opacity:1;transform:translate(-50%,-50%);}}@keyframes spin{0%{transform:rotate(0deg);}100%{transform:rotate(360deg);}}@keyframes shimmer{0%{background-position:0% 50%;}50%{background-position:100% 50%;}100%{background-position:0% 50%;}}';\n" +
+                "    document.head.appendChild(style);\n" +
+                "    var bar = document.getElementById('scanBar');\n" +
+                "    var status = document.getElementById('scanStatus');\n" +
+                "    var percent = document.getElementById('scanPercent');\n" +
+                "    var progress = 0;\n" +
+                "    var statuses = ['⏳ 正在连接服务器...', '🔍 查询超时任务...', '📋 分析任务状态...', '📊 更新告警记录...', '✅ 扫描完成！'];\n" +
+                "    var statusIndex = 0;\n" +
+                "    var interval = setInterval(function() {\n" +
+                "        if (progress < 90) {\n" +
+                "            progress += Math.random() * 4 + 1;\n" +
+                "            if (progress > 90) progress = 90;\n" +
+                "            bar.style.width = progress + '%';\n" +
+                "            percent.innerText = Math.round(progress) + '%';\n" +
+                "        }\n" +
+                "        if (progress > 20 && statusIndex < 1) { statusIndex = 1; status.innerText = statuses[1]; }\n" +
+                "        if (progress > 50 && statusIndex < 2) { statusIndex = 2; status.innerText = statuses[2]; }\n" +
+                "        if (progress > 70 && statusIndex < 3) { statusIndex = 3; status.innerText = statuses[3]; }\n" +
+                "    }, 400);\n" +
+                "    var startTime = Date.now();\n" +
                 "    fetch('/api/monitor/queue-monitor/scan?secret=dn17ORUwf36Znl', { method: 'POST' })\n" +
                 "        .then(function(res) { return res.json(); })\n" +
                 "        .then(function(data) {\n" +
+                "            clearInterval(interval);\n" +
+                "            bar.style.width = '100%';\n" +
+                "            percent.innerText = '100%';\n" +
+                "            status.innerText = '✅ 扫描完成！';\n" +
+                "            status.style.color = '#52c41a';\n" +
+                "            var elapsed = Math.round((Date.now() - startTime) / 1000);\n" +
                 "            btn.disabled = false;\n" +
-                "            btn.innerText = '🔄 手动扫描';\n" +
+                "            btn.innerText = originalText;\n" +
                 "            if (data.code === 200) {\n" +
-                "                alert(data.msg);\n" +
-                "                // 扫描完成后重新加载数据（此时数据库已有fee_exist值）\n" +
-                "                loadLogs();\n" +
-                "                loadStats();\n" +
+                "                var detailMsg = '📊 扫描结果（耗时 ' + elapsed + ' 秒）：\\n\\n' +\n" +
+                "                    '   📌 新增告警: ' + (data.newAlerts || 0) + ' 条\\n' +\n" +
+                "                    '   🔄 更新告警: ' + (data.updatedAlerts || 0) + ' 条\\n' +\n" +
+                "                    '   ✅ 自动关闭: ' + (data.autoClosed || 0) + ' 条\\n' +\n" +
+                "                    '   📨 企微发送: ' + (data.weChatAlerts || 0) + ' 条\\n' +\n" +
+                "                    '   📋 总任务数: ' + (data.total || 0) + ' 个';\n" +
+                "                setTimeout(function() {\n" +
+                "                    closeScanModal();\n" +
+                "                    alert(detailMsg);\n" +
+                "                    loadLogs();\n" +
+                "                    loadStats();\n" +
+                "                }, 800);\n" +
                 "            } else {\n" +
-                "                alert('扫描失败: ' + (data.msg || '未知错误'));\n" +
+                "                status.innerText = '❌ ' + (data.msg || '扫描失败');\n" +
+                "                status.style.color = '#ff4d4f';\n" +
+                "                setTimeout(function() { closeScanModal(); alert('❌ 扫描失败: ' + (data.msg || '未知错误')); }, 1200);\n" +
                 "            }\n" +
                 "        }).catch(function(err) {\n" +
+                "            clearInterval(interval);\n" +
                 "            btn.disabled = false;\n" +
-                "            btn.innerText = '🔄 手动扫描';\n" +
-                "            alert('网络错误: ' + err.message);\n" +
+                "            btn.innerText = originalText;\n" +
+                "            bar.style.width = '100%';\n" +
+                "            status.innerText = '❌ 网络错误';\n" +
+                "            status.style.color = '#ff4d4f';\n" +
+                "            setTimeout(function() { closeScanModal(); alert('❌ 网络错误: ' + err.message); }, 1200);\n" +
                 "        });\n" +
+                "}\n" +
+                "\n" +
+                "function closeScanModal() {\n" +
+                "    var overlay = document.getElementById('scanOverlay');\n" +
+                "    var modal = document.getElementById('scanModal');\n" +
+                "    if (overlay) overlay.remove();\n" +
+                "    if (modal) modal.remove();\n" +
                 "}\n" +
                 "\n" +
                 "function escapeHtml(s) {\n" +
@@ -6541,6 +6813,425 @@ public class LogMonitorController {
                 "\n" +
                 "loadStats();\n" +
                 "loadLogs();\n" +
+                "</script>\n" +
+                "</body>\n" +
+                "</html>";
+    }
+
+    private String generateDrAutoFixHtml() {
+        return "<!DOCTYPE html>\n" +
+                "<html lang=\"zh-CN\">\n" +
+                "<head>\n" +
+                "<meta charset=\"UTF-8\">\n" +
+                "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n" +
+                "<title>客户定时任务配置(DR自动修复)配置</title>\n" +
+                "<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23667eea'/%3E%3Ctext x='50' y='68' font-size='50' text-anchor='middle' fill='white' font-family='Arial'%3E📊%3C/text%3E%3C/svg%3E\">\n" +
+                "<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap\" rel=\"stylesheet\">\n" +
+                "<style>\n" +
+                ":root {\n" +
+                "  --bg-primary: #f5f7fa;\n" +
+                "  --bg-card: #ffffff;\n" +
+                "  --text-primary: #1e293b;\n" +
+                "  --text-secondary: #64748b;\n" +
+                "  --text-muted: #94a3b8;\n" +
+                "  --border-color: #e8ecf1;\n" +
+                "  --shadow: 0 1px 3px rgba(0,0,0,0.06);\n" +
+                "  --navbar-bg: #ffffff;\n" +
+                "  --hover-bg: rgba(0,0,0,0.02);\n" +
+                "  --primary-color: #1677ff;\n" +
+                "  --primary-hover: #4096ff;\n" +
+                "}\n" +
+                "*{margin:0;padding:0;box-sizing:border-box;}\n" +
+                "body{background:#f5f7fa;font-family:'Inter',sans-serif;}\n" +
+                ".navbar{background:#ffffff;box-shadow:0 1px 3px rgba(0,0,0,0.06);border-bottom:1px solid #e8ecf1;position:sticky;top:0;z-index:100;}\n" +
+                ".nav-container{max-width:2000px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:70px;}\n" +
+                ".logo{display:flex;align-items:center;gap:12px;}\n" +
+                ".logo-icon{width:40px;height:40px;background:linear-gradient(135deg,#1677ff 0%,#4096ff 100%);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;}\n" +
+                ".logo-text{font-size:18px;font-weight:700;color:#1e293b;letter-spacing:1px;}\n" +
+                ".logo-sub{font-size:11px;color:#94a3b8;margin-left:8px;}\n" +
+                ".menu{display:flex;gap:12px;}\n" +
+                ".menu a{color:#64748b;text-decoration:none;padding:8px 20px;border-radius:40px;transition:all 0.3s;font-weight:500;font-size:14px;}\n" +
+                ".menu a:hover{background:#f1f5f9;color:#1e293b;}\n" +
+                ".menu a.active{background:#e8f0fe;color:#1677ff;box-shadow:none;}\n" +
+                ".user-info{display:flex;align-items:center;gap:20px;}\n" +
+                ".user-name{color:#475569;font-size:14px;}\n" +
+                ".user-role{background:rgba(22,119,255,0.1);padding:4px 12px;border-radius:20px;font-size:12px;color:#1677ff;}\n" +
+                ".logout-btn{background:#f1f5f9;border:1px solid #e8ecf1;color:#475569;padding:8px 20px;border-radius:40px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;}\n" +
+                ".logout-btn:hover{background:#e8ecf1;transform:translateY(-1px);}\n" +
+                ".page-wrap{max-width:2000px;margin:0 auto;padding:32px;}\n" +
+                ".page-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;flex-wrap:wrap;gap:16px;}\n" +
+                ".page-title{font-size:24px;font-weight:700;color:#1e293b;display:flex;align-items:center;gap:12px;}\n" +
+                ".search-card{background:#ffffff;border-radius:12px;padding:20px 24px;margin-bottom:24px;border:1px solid #e8ecf1;box-shadow:0 1px 3px rgba(0,0,0,0.04);}\n" +
+                ".search-row{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end;}\n" +
+                ".search-group{display:flex;flex-direction:column;gap:6px;}\n" +
+                ".search-group label{font-size:12px;color:#64748b;font-weight:500;}\n" +
+                ".search-group input,.search-group select{padding:8px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;min-width:150px;background:#ffffff;color:#1e293b;}\n" +
+                ".search-actions{display:flex;gap:10px;margin-left:auto;align-items:center;flex-wrap:wrap;}\n" +
+                ".search-btn{background:linear-gradient(135deg,#1677ff 0%,#4096ff 100%);color:white;border:none;padding:8px 20px;border-radius:8px;cursor:pointer;font-weight:500;font-size:13px;}\n" +
+                ".search-btn:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(22,119,255,0.3);}\n" +
+                ".reset-btn{background:#f1f5f9;border:1px solid #d1d5db;padding:8px 20px;border-radius:8px;cursor:pointer;font-weight:500;font-size:13px;color:#64748b;}\n" +
+                ".reset-btn:hover{background:#e8ecf1;}\n" +
+                ".add-btn{background:linear-gradient(135deg,#52c41a 0%,#389e0d 100%);color:white;border:none;padding:8px 20px;border-radius:8px;cursor:pointer;font-weight:500;font-size:13px;}\n" +
+                ".add-btn:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(82,196,26,0.3);}\n" +
+                ".log-card{background:#ffffff;border-radius:12px;overflow:auto;border:1px solid #e8ecf1;box-shadow:0 1px 3px rgba(0,0,0,0.04);}\n" +
+                ".log-table{width:100%;border-collapse:collapse;min-width:900px;}\n" +
+                ".log-table th{background:#f8fafc;padding:12px 16px;text-align:left;font-size:12px;font-weight:600;color:#64748b;border-bottom:1px solid #e8ecf1;white-space:nowrap;}\n" +
+                ".log-table td{padding:12px 16px;font-size:13px;color:#1e293b;border-bottom:1px solid #e8ecf1;vertical-align:middle;}\n" +
+                ".log-table tr:hover td{background:#f8fafc;}\n" +
+                ".status-badge{display:inline-block;padding:2px 10px;border-radius:12px;font-size:11px;font-weight:500;}\n" +
+                ".status-enabled{background:rgba(82,196,26,0.15);color:#52c41a;}\n" +
+                ".status-disabled{background:rgba(255,77,79,0.15);color:#ff4d4f;}\n" +
+                ".action-btn{padding:4px 12px;border-radius:6px;cursor:pointer;font-size:12px;transition:all 0.3s;border:none;}\n" +
+                ".action-btn.edit-btn{background:#1677ff;color:white;}\n" +
+                ".action-btn.edit-btn:hover{background:#4096ff;}\n" +
+                ".action-btn.delete-btn{background:#ff4d4f;color:white;margin-left:4px;}\n" +
+                ".action-btn.delete-btn:hover{background:#ff7875;}\n" +
+                ".action-btn.toggle-btn{background:#faad14;color:white;margin-left:4px;}\n" +
+                ".action-btn.toggle-btn:hover{background:#ffc53d;}\n" +
+                ".pagination{display:flex;justify-content:center;gap:12px;padding:16px;border-top:1px solid #e8ecf1;flex-wrap:wrap;}\n" +
+                ".page-btn{padding:6px 14px;border:1px solid #d1d5db;background:#ffffff;color:#1e293b;border-radius:8px;cursor:pointer;font-size:12px;}\n" +
+                ".page-btn:hover:not(:disabled){border-color:#1677ff;color:#1677ff;}\n" +
+                ".page-btn:disabled{opacity:0.5;cursor:not-allowed;background:#f1f5f9;}\n" +
+                ".page-info{font-size:12px;color:#94a3b8;align-self:center;}\n" +
+                ".empty{text-align:center;padding:48px;color:#94a3b8;}\n" +
+                ".footer{text-align:center;padding:32px 0;color:#94a3b8;font-size:12px;border-top:1px solid #e8ecf1;margin-top:16px;}\n" +
+                ".modal{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:10000;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);}\n" +
+                ".modal-content{background:#ffffff;border-radius:12px;width:560px;max-width:90%;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,0.15);}\n" +
+                ".modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid #e8ecf1;}\n" +
+                ".modal-header h3{color:#1e293b;margin:0;}\n" +
+                ".modal-close{background:none;border:none;font-size:28px;cursor:pointer;color:#94a3b8;}\n" +
+                ".modal-close:hover{color:#1e293b;}\n" +
+                ".modal-body{color:#475569;font-size:14px;line-height:1.8;margin-bottom:20px;}\n" +
+                ".modal-body .highlight{color:#ff4d4f;font-weight:600;}\n" +
+                ".modal-body code{background:#f1f5f9;padding:2px 8px;border-radius:4px;font-size:13px;word-break:break-all;}\n" +
+                ".modal-buttons{display:flex;gap:12px;justify-content:flex-end;margin-top:16px;padding-top:16px;border-top:1px solid #e8ecf1;}\n" +
+                ".modal-buttons .confirm-btn{background:linear-gradient(135deg,#1677ff 0%,#4096ff 100%);color:white;border:none;padding:8px 24px;border-radius:8px;cursor:pointer;font-weight:500;}\n" +
+                ".modal-buttons .cancel-btn{background:#f1f5f9;border:1px solid #d1d5db;padding:8px 24px;border-radius:8px;cursor:pointer;color:#64748b;}\n" +
+                ".form-group{margin-bottom:16px;}\n" +
+                ".form-group label{display:block;font-size:13px;font-weight:500;color:#64748b;margin-bottom:6px;}\n" +
+                ".form-group label .required{color:#ff4d4f;}\n" +
+                ".form-group input,.form-group select,.form-group textarea{width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:14px;background:#ffffff;color:#1e293b;}\n" +
+                ".form-group input:focus,.form-group select:focus,.form-group textarea:focus{outline:none;border-color:#1677ff;box-shadow:0 0 0 3px rgba(22,119,255,0.1);}\n" +
+                ".form-group .help-text{font-size:11px;color:#94a3b8;margin-top:4px;}\n" +
+                ".form-row{display:grid;grid-template-columns:1fr 1fr;gap:16px;}\n" +
+                ".form-row .form-group{margin-bottom:0;}\n" +
+                "@media(max-width:768px){.form-row{grid-template-columns:1fr;}.search-actions{margin-left:0;flex-wrap:wrap;}.nav-container{padding:0 20px;}.menu a{padding:6px 12px;font-size:12px;}.page-wrap{padding:20px;}}\n" +
+                "</style>\n" +
+                "</head>\n" +
+                "<body>\n" +
+                "<div class=\"navbar\">\n" +
+                "<div class=\"nav-container\">\n" +
+                "<div class=\"logo\">\n" +
+                "<div class=\"logo-icon\">📊</div>\n" +
+                "<div class=\"logo-text\">ECOM WEB 监控管理系统</div>\n" +
+                "<div class=\"logo-sub\">v3.0</div>\n" +
+                "</div>\n" +
+                "<div class=\"menu\">\n" +
+                "<a href=\"/monitor/index\">首页</a>\n" +
+                "<a href=\"/monitor/dashboard\">服务监控</a>\n" +
+                "<a href=\"/monitor/login-audit\">登录审计</a>\n" +
+                "<a href=\"/monitor/number-files\">号码备份</a>\n" +
+                "<a href=\"/monitor/customer-management\">API客户管理</a>\n" +
+                "<a href=\"/monitor/user-management\">登录账户管理</a>\n" +
+                "<a href=\"/monitor/ops-management\">运维管理</a>\n" +
+                "<a href=\"/monitor/queue-management\">发送队列管理</a>\n" +
+                "<a href=\"/monitor/queue-monitor\">队列DR监控</a>\n" +
+                "<a href=\"/monitor/dr-auto-fix\" class=\"active\">定时任务配置</a>\n" +
+                "</div>\n" +
+                "<div class=\"user-info\">\n" +
+                "<span class=\"user-name\" id=\"currentUsername\">加载中...</span>\n" +
+                "<span class=\"user-role\" id=\"currentUserRole\">加载中...</span>\n" +
+                "<button class=\"logout-btn\" onclick=\"logout()\">退出</button>\n" +
+                "</div>\n" +
+                "</div>\n" +
+                "</div>\n" +
+                "<div class=\"page-wrap\">\n" +
+                "<div class=\"page-header\">\n" +
+                "<div class=\"page-title\">🤖 客户定时任务配置(DR自动修复)配置</div>\n" +
+                "</div>\n" +
+                "<div class=\"search-card\">\n" +
+                "<div class=\"search-row\">\n" +
+                "<div class=\"search-group\"><label>👤 客户账号</label><input type=\"text\" id=\"searchSubAccount\" placeholder=\"模糊查询\"></div>\n" +
+                "<div class=\"search-group\"><label>📊 状态</label><select id=\"searchStatus\"><option value=\"\">全部</option><option value=\"1\">已启用</option><option value=\"0\">已禁用</option></select></div>\n" +
+                "<div class=\"search-actions\">\n" +
+                "<button class=\"search-btn\" onclick=\"searchConfigs()\">🔍 查询</button>\n" +
+                "<button class=\"reset-btn\" onclick=\"resetSearch()\">🔄 重置</button>\n" +
+                "<button class=\"add-btn\" onclick=\"openAddModal()\">➕ 新增配置</button>\n" +
+                "</div>\n" +
+                "</div>\n" +
+                "</div>\n" +
+                "<div class=\"log-card\">\n" +
+                "<table class=\"log-table\">\n" +
+                "<thead>\n" +
+                "<tr>\n" +
+                "<th>客户账号</th>\n" +
+                "<th>超时时间(分钟)</th>\n" +
+                "<th>最大未回执数</th>\n" +
+                "<th>最小发送总数</th>\n" +
+                "<th>状态</th>\n" +
+                "<th>备注</th>\n" +
+                "<th>操作</th>\n" +
+                "</tr>\n" +
+                "</thead>\n" +
+                "<tbody id=\"configBody\"><tr><td colspan=\"7\" class=\"empty\">加载中...</td></tr></tbody>\n" +
+                "</table>\n" +
+                "<div class=\"pagination\" id=\"pagination\"></div>\n" +
+                "</div>\n" +
+                "<div class=\"footer\">🤖 客户定时任务配置(DR自动修复) | 配置后客户不参与全局扫描，独立定时任务自动修复 | 每分钟执行一次</div>\n" +
+                "</div>\n" +
+                "<!-- 新增/编辑弹窗 -->\n" +
+                "<div id=\"configModal\" class=\"modal\" style=\"display:none;\">\n" +
+                "<div class=\"modal-content\">\n" +
+                "<div class=\"modal-header\">\n" +
+                "<h3 id=\"modalTitle\">➕ 新增配置</h3>\n" +
+                "<button class=\"modal-close\" onclick=\"closeModal()\">&times;</button>\n" +
+                "</div>\n" +
+                "<div class=\"modal-body\">\n" +
+                "<input type=\"hidden\" id=\"editId\" value=\"\">\n" +
+                "<div class=\"form-group\">\n" +
+                "<label>客户账号 <span class=\"required\">*</span></label>\n" +
+                "<input type=\"text\" id=\"inputSubAccount\" placeholder=\"请输入客户账号，如 CTU714E\">\n" +
+                "</div>\n" +
+                "<div class=\"form-row\">\n" +
+                "<div class=\"form-group\">\n" +
+                "<label>超时时间 <span class=\"required\">*</span></label>\n" +
+                "<input type=\"number\" id=\"inputTimeoutMinutes\" value=\"30\" min=\"1\" max=\"999\">\n" +
+                "<div class=\"help-text\">超过此时间未回执则自动修复</div>\n" +
+                "</div>\n" +
+                "<div class=\"form-group\">\n" +
+                "<label>最大未回执数</label>\n" +
+                "<input type=\"number\" id=\"inputMaxPendingCount\" value=\"10000\" min=\"0\" max=\"999999\">\n" +
+                "<div class=\"help-text\">超过此值不自动修复（0表示不限制）</div>\n" +
+                "</div>\n" +
+                "</div>\n" +
+                "<div class=\"form-row\">\n" +
+                "<div class=\"form-group\">\n" +
+                "<label>最小发送总数</label>\n" +
+                "<input type=\"number\" id=\"inputMinTotalCount\" value=\"0\" min=\"0\" max=\"999999\">\n" +
+                "<div class=\"help-text\">低于此值不触发自动修复（0表示不限制）</div>\n" +
+                "</div>\n" +
+                "<div class=\"form-group\">\n" +
+                "<label>状态</label>\n" +
+                "<select id=\"inputEnabled\"><option value=\"1\">启用</option><option value=\"0\">禁用</option></select>\n" +
+                "</div>\n" +
+                "</div>\n" +
+                "<div class=\"form-group\">\n" +
+                "<label>备注</label>\n" +
+                "<textarea id=\"inputRemark\" rows=\"2\" placeholder=\"备注说明\"></textarea>\n" +
+                "</div>\n" +
+                "</div>\n" +
+                "<div class=\"modal-buttons\">\n" +
+                "<button class=\"confirm-btn\" onclick=\"saveConfig()\">💾 保存</button>\n" +
+                "<button class=\"cancel-btn\" onclick=\"closeModal()\">取消</button>\n" +
+                "</div>\n" +
+                "</div>\n" +
+                "</div>\n" +
+                "<script>\n" +
+                "var page = 1, size = 20, totalPages = 1;\n" +
+                "\n" +
+                "function logout(){ fetch('/monitor/logout').then(function(){ location.href = '/monitor/login'; }); }\n" +
+                "\n" +
+                "function getCurrentUserInfo() {\n" +
+                "    fetch('/api/monitor/current-user?secret=dn17ORUwf36Znl')\n" +
+                "        .then(function(res) { return res.json(); })\n" +
+                "        .then(function(data) {\n" +
+                "            if (data.code === 200) {\n" +
+                "                document.getElementById('currentUsername').innerText = data.data.username;\n" +
+                "                var roleSpan = document.getElementById('currentUserRole');\n" +
+                "                var roleText = data.data.role === 'ADMIN' ? '👑 管理员' : '🔧 NOC';\n" +
+                "                roleSpan.innerText = roleText;\n" +
+                "            }\n" +
+                "        }).catch(function(err) { console.error('获取用户信息失败:', err); });\n" +
+                "}\n" +
+                "getCurrentUserInfo();\n" +
+                "\n" +
+                "function escapeHtml(s){if(!s)return'';return String(s).replace(/[&<>]/g,function(m){if(m==='&')return'&amp;';if(m==='<')return'&lt;';if(m==='>')return'&gt;';return m;});}\n" +
+                "\n" +
+                "function searchConfigs(){ page = 1; loadConfigs(); }\n" +
+                "\n" +
+                "function resetSearch(){\n" +
+                "    document.getElementById('searchSubAccount').value = '';\n" +
+                "    document.getElementById('searchStatus').value = '';\n" +
+                "    page = 1;\n" +
+                "    loadConfigs();\n" +
+                "}\n" +
+                "\n" +
+                "function loadConfigs(){\n" +
+                "    var subAccount = document.getElementById('searchSubAccount').value;\n" +
+                "    var status = document.getElementById('searchStatus').value;\n" +
+                "    var url = '/api/monitor/dr-auto-fix/list?secret=dn17ORUwf36Znl&pageNum=' + page + '&pageSize=' + size;\n" +
+                "    if(subAccount) url += '&subAccount=' + encodeURIComponent(subAccount);\n" +
+                "    if(status) url += '&enabled=' + status;\n" +
+                "    fetch(url).then(function(res){ return res.json(); })\n" +
+                "        .then(function(data){\n" +
+                "            if(data.code === 200){\n" +
+                "                var records = data.data.records || [];\n" +
+                "                totalPages = data.data.totalPages || 1;\n" +
+                "                renderTable(records);\n" +
+                "                renderPagination();\n" +
+                "            }else{\n" +
+                "                document.getElementById('configBody').innerHTML = '<tr><td colspan=\"7\" class=\"empty\">加载失败: ' + (data.msg || '错误') + '</td></tr>';\n" +
+                "            }\n" +
+                "        }).catch(function(){\n" +
+                "            document.getElementById('configBody').innerHTML = '<tr><td colspan=\"7\" class=\"empty\">加载失败: 网络错误</td></tr>';\n" +
+                "        });\n" +
+                "}\n" +
+                "\n" +
+                "function renderTable(list){\n" +
+                "    var tbody = document.getElementById('configBody');\n" +
+                "    if(!list || !list.length){\n" +
+                "        tbody.innerHTML = '<tr><td colspan=\"7\" class=\"empty\">暂无配置</td></tr>';\n" +
+                "        return;\n" +
+                "    }\n" +
+                "    var html = '';\n" +
+                "    for(var i = 0; i < list.length; i++){\n" +
+                "        var cfg = list[i];\n" +
+                "        var statusHtml = cfg.enabled === 1 ? '<span class=\"status-badge status-enabled\">✅ 已启用</span>' : '<span class=\"status-badge status-disabled\">⛔ 已禁用</span>';\n" +
+                "        html += '<tr>';\n" +
+                "        html += '<td><strong>' + escapeHtml(cfg.subAccount) + '</strong></td>';\n" +
+                "        html += '<td>' + cfg.timeoutMinutes + ' 分钟</td>';\n" +
+                "        html += '<td>' + (cfg.maxPendingCount || 0) + '</td>';\n" +
+                "        html += '<td>' + (cfg.minTotalCount || 0) + '</td>';\n" +
+                "        html += '<td>' + statusHtml + '</td>';\n" +
+                "        html += '<td>' + (cfg.remark || '-') + '</td>';\n" +
+                "        html += '<td>';\n" +
+                "        html += '<button class=\"action-btn edit-btn\" onclick=\"editConfig(' + cfg.id + ')\">✏️ 编辑</button>';\n" +
+                "        html += '<button class=\"action-btn toggle-btn\" onclick=\"toggleConfig(' + cfg.id + ',' + (cfg.enabled === 1 ? 0 : 1) + ')\">' + (cfg.enabled === 1 ? '⏸ 禁用' : '▶ 启用') + '</button>';\n" +
+                "        html += '<button class=\"action-btn delete-btn\" onclick=\"deleteConfig(' + cfg.id + ')\">🗑️ 删除</button>';\n" +
+                "        html += '</td>';\n" +
+                "        html += '</tr>';\n" +
+                "    }\n" +
+                "    tbody.innerHTML = html;\n" +
+                "}\n" +
+                "\n" +
+                "function renderPagination(){\n" +
+                "    var div = document.getElementById('pagination');\n" +
+                "    if(!div || totalPages <= 1){ div.innerHTML = ''; return; }\n" +
+                "    var html = '<button class=\"page-btn\" onclick=\"goPage(1)\"' + (page === 1 ? 'disabled' : '') + '>首页</button>' +\n" +
+                "        '<button class=\"page-btn\" onclick=\"goPage(' + (page - 1) + ')\"' + (page === 1 ? 'disabled' : '') + '>上一页</button>' +\n" +
+                "        '<span class=\"page-info\">第 ' + page + ' / ' + totalPages + ' 页</span>' +\n" +
+                "        '<button class=\"page-btn\" onclick=\"goPage(' + (page + 1) + ')\"' + (page === totalPages ? 'disabled' : '') + '>下一页</button>' +\n" +
+                "        '<button class=\"page-btn\" onclick=\"goPage(' + totalPages + ')\"' + (page === totalPages ? 'disabled' : '') + '>尾页</button>';\n" +
+                "    div.innerHTML = html;\n" +
+                "}\n" +
+                "\n" +
+                "function goPage(p){ page = p; loadConfigs(); }\n" +
+                "\n" +
+                "function openAddModal(){\n" +
+                "    document.getElementById('modalTitle').innerText = '➕ 新增配置';\n" +
+                "    document.getElementById('editId').value = '';\n" +
+                "    document.getElementById('inputSubAccount').value = '';\n" +
+                "    document.getElementById('inputSubAccount').readOnly = false;\n" +
+                "    document.getElementById('inputTimeoutMinutes').value = 30;\n" +
+                "    document.getElementById('inputMaxPendingCount').value = 10000;\n" +
+                "    document.getElementById('inputMinTotalCount').value = 0;\n" +
+                "    document.getElementById('inputEnabled').value = 1;\n" +
+                "    document.getElementById('inputRemark').value = '';\n" +
+                "    document.getElementById('configModal').style.display = 'flex';\n" +
+                "}\n" +
+                "\n" +
+                "function closeModal(){\n" +
+                "    document.getElementById('configModal').style.display = 'none';\n" +
+                "}\n" +
+                "\n" +
+                "function editConfig(id){\n" +
+                "    fetch('/api/monitor/dr-auto-fix/list?secret=dn17ORUwf36Znl&pageNum=1&pageSize=999')\n" +
+                "        .then(function(res){ return res.json(); })\n" +
+                "        .then(function(data){\n" +
+                "            if(data.code === 200){\n" +
+                "                var list = data.data.records || [];\n" +
+                "                var cfg = null;\n" +
+                "                for(var i = 0; i < list.length; i++){\n" +
+                "                    if(list[i].id === id){ cfg = list[i]; break; }\n" +
+                "                }\n" +
+                "                if(cfg){\n" +
+                "                    document.getElementById('modalTitle').innerText = '✏️ 编辑配置 - ' + cfg.subAccount;\n" +
+                "                    document.getElementById('editId').value = cfg.id;\n" +
+                "                    document.getElementById('inputSubAccount').value = cfg.subAccount;\n" +
+                "                    document.getElementById('inputSubAccount').readOnly = true;\n" +
+                "                    document.getElementById('inputTimeoutMinutes').value = cfg.timeoutMinutes;\n" +
+                "                    document.getElementById('inputMaxPendingCount').value = cfg.maxPendingCount || 0;\n" +
+                "                    document.getElementById('inputMinTotalCount').value = cfg.minTotalCount || 0;\n" +
+                "                    document.getElementById('inputEnabled').value = cfg.enabled;\n" +
+                "                    document.getElementById('inputRemark').value = cfg.remark || '';\n" +
+                "                    document.getElementById('configModal').style.display = 'flex';\n" +
+                "                }\n" +
+                "            }\n" +
+                "        });\n" +
+                "}\n" +
+                "\n" +
+                "function saveConfig(){\n" +
+                "    var id = document.getElementById('editId').value;\n" +
+                "    var subAccount = document.getElementById('inputSubAccount').value.trim();\n" +
+                "    var timeoutMinutes = parseInt(document.getElementById('inputTimeoutMinutes').value);\n" +
+                "    var maxPendingCount = parseInt(document.getElementById('inputMaxPendingCount').value) || 0;\n" +
+                "    var minTotalCount = parseInt(document.getElementById('inputMinTotalCount').value) || 0;\n" +
+                "    var enabled = parseInt(document.getElementById('inputEnabled').value);\n" +
+                "    var remark = document.getElementById('inputRemark').value.trim();\n" +
+                "\n" +
+                "    if(!subAccount){ alert('请输入客户账号'); return; }\n" +
+                "    if(!timeoutMinutes || timeoutMinutes < 1){ alert('请输入有效的超时时间'); return; }\n" +
+                "\n" +
+                "    var data = {\n" +
+                "        id: id ? parseInt(id) : null,\n" +
+                "        subAccount: subAccount,\n" +
+                "        timeoutMinutes: timeoutMinutes,\n" +
+                "        maxPendingCount: maxPendingCount,\n" +
+                "        minTotalCount: minTotalCount,\n" +
+                "        enabled: enabled,\n" +
+                "        remark: remark\n" +
+                "    };\n" +
+                "\n" +
+                "    fetch('/api/monitor/dr-auto-fix/save?secret=dn17ORUwf36Znl', {\n" +
+                "        method: 'POST',\n" +
+                "        headers: { 'Content-Type': 'application/json' },\n" +
+                "        body: JSON.stringify(data)\n" +
+                "    }).then(function(res){ return res.json(); })\n" +
+                "      .then(function(result){\n" +
+                "          if(result.code === 200){\n" +
+                "              alert('✅ ' + result.msg);\n" +
+                "              closeModal();\n" +
+                "              loadConfigs();\n" +
+                "          }else{\n" +
+                "              alert('❌ ' + result.msg);\n" +
+                "          }\n" +
+                "      }).catch(function(err){\n" +
+                "          alert('网络错误: ' + err.message);\n" +
+                "      });\n" +
+                "}\n" +
+                "\n" +
+                "function toggleConfig(id, enabled){\n" +
+                "    var action = enabled === 1 ? '启用' : '禁用';\n" +
+                "    if(!confirm('确认要' + action + '该配置吗？')) return;\n" +
+                "\n" +
+                "    fetch('/api/monitor/dr-auto-fix/toggle?id=' + id + '&enabled=' + enabled + '&secret=dn17ORUwf36Znl', {\n" +
+                "        method: 'POST'\n" +
+                "    }).then(function(res){ return res.json(); })\n" +
+                "      .then(function(result){\n" +
+                "          alert(result.code === 200 ? '✅ ' + result.msg : '❌ ' + result.msg);\n" +
+                "          if(result.code === 200) loadConfigs();\n" +
+                "      });\n" +
+                "}\n" +
+                "\n" +
+                "function deleteConfig(id){\n" +
+                "    if(!confirm('⚠️ 确认要删除该配置吗？')) return;\n" +
+                "\n" +
+                "    fetch('/api/monitor/dr-auto-fix/delete?id=' + id + '&secret=dn17ORUwf36Znl', {\n" +
+                "        method: 'POST'\n" +
+                "    }).then(function(res){ return res.json(); })\n" +
+                "      .then(function(result){\n" +
+                "          alert(result.code === 200 ? '✅ ' + result.msg : '❌ ' + result.msg);\n" +
+                "          if(result.code === 200) loadConfigs();\n" +
+                "      });\n" +
+                "}\n" +
+                "\n" +
+                "// 点击弹窗外部关闭\n" +
+//                "document.addEventListener('click', function(e) {\n" +
+//                "    var modal = document.getElementById('configModal');\n" +
+//                "    if (e.target === modal) { closeModal(); }\n" +
+//                "});\n" +
+//                "\n" +
+                "loadConfigs();\n" +
                 "</script>\n" +
                 "</body>\n" +
                 "</html>";
