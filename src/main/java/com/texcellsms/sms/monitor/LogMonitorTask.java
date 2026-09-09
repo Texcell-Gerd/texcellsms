@@ -367,11 +367,28 @@ public class LogMonitorTask {
         }
     }
 
+    /**
+     * 自动扫描（每20分钟执行一次）
+     */
     @Scheduled(cron = "0 */20 * * * ?")
     public void scanQueueTimeoutTasks() {
-        try {
-            logger.info("开始扫描队列任务DR未更新");
+        logger.info("【定时任务】开始扫描队列任务DR未更新");
+        doScanQueueTimeoutTasks();
+    }
 
+    /**
+     * 手动扫描（用户点击触发）
+     */
+    public void manualScanQueueTimeoutTasks() {
+        logger.info("【手动触发】开始扫描队列任务DR未更新");
+        doScanQueueTimeoutTasks();
+    }
+
+    /**
+     * 核心扫描逻辑（自动+手动共用）
+     */
+    private void doScanQueueTimeoutTasks() {
+        try {
             // 获取已配置自动修复的客户列表
             List<String> autoFixSubAccounts = customerDrAutoFixConfigService.getEnabledSubAccounts();
             Set<String> autoFixSet = new HashSet<>(autoFixSubAccounts);
@@ -423,7 +440,6 @@ public class LogMonitorTask {
             int newAlerts = 0;
             int updatedAlerts = 0;
             int weChatAlerts = 0;
-            List<QueueMonitorLog> feeUpdateList = new ArrayList<>();
 
             for (Map<String, Object> task : allTasks.values()) {
                 String taskId = (String) task.get("taskId");

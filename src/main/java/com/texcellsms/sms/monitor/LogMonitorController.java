@@ -2514,104 +2514,12 @@ public class LogMonitorController {
         }
 
         try {
-            List<String> autoFixSubAccounts = customerDrAutoFixService.getEnabledSubAccounts();
-            Set<String> autoFixSet = new HashSet<>(autoFixSubAccounts);
-
-            List<Map<String, Object>> warningTasks = smsQueueMapper.findTimeoutTasks(30);
-            List<Map<String, Object>> criticalTasks = smsQueueMapper.findTimeoutTasks(60);
-
-            warningTasks = warningTasks.stream()
-                    .filter(task -> !autoFixSet.contains(task.get("subAccount")))
-                    .collect(Collectors.toList());
-            criticalTasks = criticalTasks.stream()
-                    .filter(task -> !autoFixSet.contains(task.get("subAccount")))
-                    .collect(Collectors.toList());
-
-            int MAX_TASKS_PER_SCAN = 50;
-            if (warningTasks.size() > MAX_TASKS_PER_SCAN) {
-                warningTasks = warningTasks.subList(0, MAX_TASKS_PER_SCAN);
-            }
-            if (criticalTasks.size() > MAX_TASKS_PER_SCAN) {
-                criticalTasks = criticalTasks.subList(0, MAX_TASKS_PER_SCAN);
-            }
-
-            Map<String, Map<String, Object>> allTasks = new LinkedHashMap<>();
-            for (Map<String, Object> task : warningTasks) {
-                allTasks.putIfAbsent((String) task.get("taskId"), task);
-            }
-            for (Map<String, Object> task : criticalTasks) {
-                allTasks.put((String) task.get("taskId"), task);
-            }
-
-            // 不再自动关闭已恢复的任务
-
-            if (allTasks.isEmpty()) {
-                result.put("code", 200);
-                result.put("msg", "扫描完成，未发现超时任务");
-                result.put("total", 0);
-                result.put("newAlerts", 0);
-                result.put("updatedAlerts", 0);
-                result.put("autoClosed", 0);
-                return result;
-            }
-
-            int newAlerts = 0;
-            int updatedAlerts = 0;
-            int weChatAlerts = 0;
-
-            for (Map<String, Object> task : allTasks.values()) {
-                String taskId = (String) task.get("taskId");
-                Integer totalCount = ((Number) task.getOrDefault("totalCount", 0)).intValue();
-                Integer detailPendingCount = ((Number) task.getOrDefault("detailPendingCount", 0)).intValue();
-
-                if (detailPendingCount == 0) {
-                    continue;
-                }
-
-                QueueMonitorLog existing = queueMonitorLogMapper.selectLatestByTaskId(taskId);
-
-                if (existing != null) {
-                    if ("PROCESSED".equals(existing.getStatus()) || "IGNORED".equals(existing.getStatus())) {
-                        continue;
-                    }
-
-                    QueueMonitorLog updatedLog = buildQueueMonitorLog(task);
-                    updatedLog.setId(existing.getId());
-                    queueMonitorLogMapper.update(updatedLog);
-                    updatedAlerts++;
-
-                    if (totalCount > 5000 && existing.getAlertSent() == 0) {
-                        sendQueueAlertToWeChat(updatedLog);
-                        queueMonitorLogMapper.updateAlertSent(taskId);
-                        weChatAlerts++;
-                    }
-                    continue;
-                }
-
-                QueueMonitorLog log = buildQueueMonitorLog(task);
-                queueMonitorLogMapper.insert(log);
-
-                if (totalCount > 5000) {
-                    sendQueueAlertToWeChat(log);
-                    queueMonitorLogMapper.updateAlertSent(taskId);
-                    weChatAlerts++;
-                }
-                newAlerts++;
-            }
-
-            logger.info("手动扫描完成：新增 {} 条，更新 {} 条，企微发送 {} 条",
-                    newAlerts, updatedAlerts, weChatAlerts);
+            logMonitorTask.manualScanQueueTimeoutTasks();
 
             result.put("code", 200);
-            result.put("msg", String.format("扫描完成：新增 %d 条告警，更新 %d 条告警，企微发送 %d 条",
-                    newAlerts, updatedAlerts, weChatAlerts));
-            result.put("total", allTasks.size());
-            result.put("newAlerts", newAlerts);
-            result.put("updatedAlerts", updatedAlerts);
-            result.put("autoClosed", 0);
-            result.put("weChatAlerts", weChatAlerts);
+            result.put("msg", "手动扫描完成");
         } catch (Exception e) {
-            logger.error("扫描超时任务失败", e);
+            logger.error("手动扫描失败", e);
             result.put("code", 500);
             result.put("msg", "扫描失败: " + e.getMessage());
         }
