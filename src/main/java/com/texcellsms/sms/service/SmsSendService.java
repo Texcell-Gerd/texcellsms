@@ -33,10 +33,10 @@ import java.util.*;
 public class SmsSendService {
 
     private static final Logger logger = LoggerFactory.getLogger(SmsSendService.class);
-    public static final String PRE_PHONE_ROOT = "D:\\ScheduleTask\\PhonePre\\";
-    public static final String REAL_PHONE_ROOT = "D:\\ScheduleTask\\Phone\\";
-    public static final String TASK_ROOT = "D:\\ScheduleTask\\Task\\";
-    private static final String CUSTOMER_NUMBER_BACKUP_ROOT = "D:\\CustomerFileNumber\\";
+    public static final String PRE_PHONE_ROOT = "/home/WEBSMPP/PhonePre/";
+    public static final String REAL_PHONE_ROOT = "/home/WEBSMPP/SchedulePhone/";
+    public static final String TASK_ROOT = "/home/WEBSMPP/ScheduleTask/";
+    private static final String CUSTOMER_NUMBER_BACKUP_ROOT = "/home/WEBSMPP/CustomerFileNumber/";
 
 
     private static final String DEFAULT_CALLER = "SMSINFO";
@@ -99,7 +99,7 @@ public class SmsSendService {
             }
 
             calleeCount = validNumbers.size();
-            File realUserDir = new File(REAL_PHONE_ROOT + subAccount + "\\");
+            File realUserDir = new File(REAL_PHONE_ROOT + subAccount + "/");
             if (!realUserDir.exists()) realUserDir.mkdirs();
             realFile = new File(realUserDir, taskId + ".txt");
 
@@ -114,7 +114,7 @@ public class SmsSendService {
                 throw new Exception("Failed to generate manual number file");
             }
         } else if (StringUtils.isNotEmpty(req.getPreTaskId())) {
-            preFile = new File(PRE_PHONE_ROOT + subAccount + "\\" + req.getPreTaskId() + ".txt");
+            preFile = new File(PRE_PHONE_ROOT + subAccount + "/" + req.getPreTaskId() + ".txt");
             if (!preFile.exists())
                 throw new Exception("Uploaded number file does not exist");
 
@@ -139,7 +139,7 @@ public class SmsSendService {
             }
 
             calleeCount = validatedNumbers.size();
-            File realDir = new File(REAL_PHONE_ROOT + subAccount + "\\");
+            File realDir = new File(REAL_PHONE_ROOT + subAccount + "/");
             if (!realDir.exists()) realDir.mkdirs();
             realFile = new File(realDir, taskId + ".txt");
 
@@ -171,7 +171,7 @@ public class SmsSendService {
         int totalCount = calleeCount * splitCount;
 
 
-        File taskUserDir = new File(TASK_ROOT + subAccount + "\\");
+        File taskUserDir = new File(TASK_ROOT + subAccount + "/");
         if (!taskUserDir.exists()) taskUserDir.mkdirs();
         File tmp = new File(taskUserDir, taskId + ".tmp");
         File dst = new File(taskUserDir, taskId + ".txt");
@@ -300,7 +300,7 @@ public class SmsSendService {
             }
 
             calleeCount = validNumbers.size();
-            File realUserDir = new File(REAL_PHONE_ROOT + subAccount + "\\");
+            File realUserDir = new File(REAL_PHONE_ROOT + subAccount + "/");
             if (!realUserDir.exists()) realUserDir.mkdirs();
             realFile = new File(realUserDir, taskId + ".txt");
 
@@ -315,7 +315,7 @@ public class SmsSendService {
                 throw new Exception("Failed to generate manual number file");
             }
         } else if (StringUtils.isNotEmpty(req.getPreTaskId())) {
-            preFile = new File(PRE_PHONE_ROOT + subAccount + "\\" + req.getPreTaskId() + ".txt");
+            preFile = new File(PRE_PHONE_ROOT + subAccount + "/" + req.getPreTaskId() + ".txt");
             if (!preFile.exists())
                 throw new Exception("Uploaded number file does not exist");
 
@@ -341,7 +341,7 @@ public class SmsSendService {
             }
 
             calleeCount = validatedNumbers.size();
-            File realDir = new File(REAL_PHONE_ROOT + subAccount + "\\");
+            File realDir = new File(REAL_PHONE_ROOT + subAccount + "/");
             if (!realDir.exists()) realDir.mkdirs();
             realFile = new File(realDir, taskId + ".txt");
 
@@ -373,7 +373,7 @@ public class SmsSendService {
         int totalCount = calleeCount * splitCount;
 
 
-        File taskUserDir = new File(TASK_ROOT + subAccount + "\\");
+        File taskUserDir = new File(TASK_ROOT + subAccount + "/");
         if (!taskUserDir.exists()) taskUserDir.mkdirs();
         File tmp = new File(taskUserDir, taskId + ".tmp");
         File dst = new File(taskUserDir, taskId + ".txt");

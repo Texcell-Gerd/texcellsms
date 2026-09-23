@@ -12,7 +12,7 @@ import javax.annotation.PostConstruct;
 @ConfigurationProperties(prefix = "ncache-db")
 public class NCacheDBProperties {
 
-    private String server = "192.168.120.250";
+    private String server = "192.168.125.250";
 
     private int port = 11781;
 
@@ -36,7 +36,7 @@ public class NCacheDBProperties {
     @Data
     public static class Connection {
 
-        private String server = "192.168.128.250";
+        private String server = "192.168.125.250";
 
         private int port = 18801;
 
