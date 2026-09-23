@@ -90,26 +90,8 @@ texcellsms:
     query-timeout: 600
 
 # 预付
-#ncache-db:
-#  server: 192.168.120.250
-#  port: 11781
-#  user-name: example
-#  password: example
-#  db: example
-#  page-coding: utf-8
-#  db-coding: gbk
-#  rate-query:
-#    server: 192.168.120.250
-#    port: 18801
-#    user-name: auth
-#    password: auth
-#    db: auth
-#    page-coding: utf-8
-#    db-coding: utf-8
-
-#ECOM
 ncache-db:
-  server: 192.168.112.250
+  server: 192.168.120.250
   port: 11781
   user-name: example
   password: example
@@ -117,13 +99,49 @@ ncache-db:
   page-coding: utf-8
   db-coding: gbk
   rate-query:
-    server: 192.168.112.250
+    server: 192.168.120.250
     port: 18801
     user-name: auth
     password: auth
     db: auth
     page-coding: utf-8
     db-coding: utf-8
+
+#ECOM
+#ncache-db:
+#  server: 192.168.112.250
+#  port: 11781
+#  user-name: example
+#  password: example
+#  db: example
+#  page-coding: utf-8
+#  db-coding: gbk
+#  rate-query:
+#    server: 192.168.112.250
+#    port: 18801
+#    user-name: auth
+#    password: auth
+#    db: auth
+#    page-coding: utf-8
+#    db-coding: utf-8
+
+#LTM
+#ncache-db:
+#  server: 192.168.125.250
+#  port: 11781
+#  user-name: example
+#  password: example
+#  db: example
+#  page-coding: utf-8
+#  db-coding: gbk
+#  rate-query:
+#    server: 192.168.125.250
+#    port: 18801
+#    user-name: auth
+#    password: auth
+#    db: auth
+#    page-coding: utf-8
+#    db-coding: utf-8
 
 
 # 测试环境
