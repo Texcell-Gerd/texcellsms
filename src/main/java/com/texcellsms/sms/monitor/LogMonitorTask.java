@@ -2,7 +2,6 @@ package com.texcellsms.sms.monitor;
 
 import com.texcellsms.sms.interceptor.SecurityMonitorInterceptor;
 import com.texcellsms.sms.mapper.eccom.SubmitRecordMapper;
-import com.texcellsms.sms.mapper.webportal.CustomerDrAutoFixConfigMapper;
 import com.texcellsms.sms.mapper.webportal.QueueMonitorLogMapper;
 import com.texcellsms.sms.mapper.webportal.SmsQueueMapper;
 import com.texcellsms.sms.model.entity.QueueMonitorLog;
@@ -22,7 +21,6 @@ import java.text.SimpleDateFormat;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -379,15 +377,23 @@ public class LogMonitorTask {
     /**
      * 手动扫描（用户点击触发）
      */
-    public void manualScanQueueTimeoutTasks() {
+    public Map<String, Object> manualScanQueueTimeoutTasks() {
         logger.info("【手动触发】开始扫描队列任务DR未更新");
-        doScanQueueTimeoutTasks();
+        return doScanQueueTimeoutTasks();
     }
 
     /**
      * 核心扫描逻辑（自动+手动共用）
+     * @return 扫描结果统计
      */
-    private void doScanQueueTimeoutTasks() {
+    public Map<String, Object> doScanQueueTimeoutTasks() {
+        Map<String, Object> result = new HashMap<>();
+        int newAlerts = 0;
+        int updatedAlerts = 0;
+        int autoClosed = 0;
+        int weChatAlerts = 0;
+        int totalTasks = 0;
+
         try {
             // 获取已配置自动修复的客户列表
             List<String> autoFixSubAccounts = customerDrAutoFixConfigService.getEnabledSubAccounts();
@@ -420,9 +426,9 @@ public class LogMonitorTask {
                 allTasks.put((String) task.get("taskId"), task);
             }
             Set<String> currentTimeoutTaskIds = allTasks.keySet();
+            totalTasks = allTasks.size();
 
             // 4. 自动关闭已恢复的任务（不再超时的任务）
-            int autoClosed = 0;
             for (String taskId : pendingTaskIds) {
                 if (!currentTimeoutTaskIds.contains(taskId)) {
                     queueMonitorLogMapper.updateStatus(taskId, "PROCESSED", "系统自动", LocalDateTime.now());
@@ -433,14 +439,15 @@ public class LogMonitorTask {
 
             if (allTasks.isEmpty()) {
                 logger.info("未发现DR未更新任务，自动关闭 {} 条告警", autoClosed);
-                return;
+                result.put("newAlerts", 0);
+                result.put("updatedAlerts", 0);
+                result.put("autoClosed", autoClosed);
+                result.put("weChatAlerts", 0);
+                result.put("total", 0);
+                return result;
             }
 
             // 5. 处理仍在超时中的任务
-            int newAlerts = 0;
-            int updatedAlerts = 0;
-            int weChatAlerts = 0;
-
             for (Map<String, Object> task : allTasks.values()) {
                 String taskId = (String) task.get("taskId");
                 Integer totalCount = ((Number) task.getOrDefault("totalCount", 0)).intValue();
@@ -494,8 +501,22 @@ public class LogMonitorTask {
 
             logger.info("扫描完成：新增 {} 条，更新 {} 条，自动关闭 {} 条，企微发送 {} 条",
                     newAlerts, updatedAlerts, autoClosed, weChatAlerts);
+
+            result.put("newAlerts", newAlerts);
+            result.put("updatedAlerts", updatedAlerts);
+            result.put("autoClosed", autoClosed);
+            result.put("weChatAlerts", weChatAlerts);
+            result.put("total", totalTasks);
+            return result;
+
         } catch (Exception e) {
             logger.error("扫描DR未更新任务失败", e);
+            result.put("newAlerts", newAlerts);
+            result.put("updatedAlerts", updatedAlerts);
+            result.put("autoClosed", autoClosed);
+            result.put("weChatAlerts", weChatAlerts);
+            result.put("total", totalTasks);
+            return result;
         }
     }
 
@@ -595,16 +616,16 @@ public class LogMonitorTask {
                             "| 失败数 | %d |\n" +
                             "| **DR未更新数** | **%d 条** |\n" +
                             "| 已过时间 | **%d 分钟** |\n\n" +
-                            ">  任务已完成但部分DR一直未更新，请留意检查处理！\n\n" +
+                            ">  任务已完成但部分DR一直未更新，请留意检查处理！\n\n",
                     levelText,
-                    log.getTaskId(),
-                    log.getSubAccount(),
-                    log.getTotalCount(),
-                    log.getSubmitSuccCount(),
-                    log.getDrSuccCount(),
-                    log.getDrFailCount(),
-                    log.getDetailPendingCount(),
-                    log.getElapsedMinutes()
+                    log.getTaskId() != null ? log.getTaskId() : "-",
+                    log.getSubAccount() != null ? log.getSubAccount() : "-",
+                    log.getTotalCount() != null ? log.getTotalCount() : 0,
+                    log.getSubmitSuccCount() != null ? log.getSubmitSuccCount() : 0,
+                    log.getDrSuccCount() != null ? log.getDrSuccCount() : 0,
+                    log.getDrFailCount() != null ? log.getDrFailCount() : 0,
+                    log.getDetailPendingCount() != null ? log.getDetailPendingCount() : 0,
+                    log.getElapsedMinutes() != null ? log.getElapsedMinutes() : 0
             );
 
             // 调用企微发送
@@ -638,24 +659,6 @@ public class LogMonitorTask {
         Matcher m = TIMESTAMP_PATTERN.matcher(rawLine);
         if (m.find()) return m.group(1);
         return DATE_FORMAT.format(new Date());
-    }
-
-    private static String extractIpFromLog(String rawLine) {
-        Matcher m = IP_PATTERN.matcher(rawLine);
-        if (m.find()) return m.group();
-        return null;
-    }
-
-    private String getLoginErrorMsg(String code) {
-        switch (code) {
-            case "402": return "账号或密码错误";
-            case "403": return "认证失败/两步验证获取失败";
-            case "405": return "参数不完整";
-            case "480": return "IP已锁定（多次失败）";
-            case "502": return "CacheDB执行失败";
-            case "603": return "账户已锁定";
-            default: return "未知登录错误";
-        }
     }
 
     private String parseAndClassifyLog(String rawLine) {
@@ -730,7 +733,7 @@ public class LogMonitorTask {
             keyInfo = "JVM内存不足，请检查内存配置或大对象泄漏";
             shortRaw = firstLine;
         } else {
-            // 其他未识别异常，不记录（避免误导）
+            // 其他未识别异常，不记录
             return null;
         }
 

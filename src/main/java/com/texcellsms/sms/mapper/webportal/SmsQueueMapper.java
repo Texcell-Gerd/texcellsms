@@ -212,14 +212,19 @@ public interface SmsQueueMapper {
      */
     @Select({
             "<script>",
-            "SELECT TaskName, TaskID, SubAccount, TaskIP, ",
-            "       DATE_FORMAT(TaskTime, '%Y-%m-%d %H:%i:%s') AS TaskTime, ",
-            "       DATE_FORMAT(ScheduleSendTime, '%Y-%m-%d %H:%i:%s') AS ScheduleSendTime, ",
-            "       TaskTimeZone, ScheduleStatus, TotalCount, CalleeCount, ",
-            "       SubmitSuccCount, DRSuccCount, DRFailCount, Short_Message, SplitCount ",
-            "FROM tbl_APIScheduleSend ",
+            "SELECT * FROM tbl_APIScheduleSend ",
             "<where>",
-            "  TaskTime >= #{threeDaysAgoTime} ",
+            "  <choose>",
+            "    <when test='startTime != null and startTime != \"\"'>",
+            "      AND TaskTime &gt;= #{startTime}",
+            "    </when>",
+            "    <otherwise>",
+            "      AND TaskTime &gt;= #{threeDaysAgoTime}",
+            "    </otherwise>",
+            "  </choose>",
+            "  <if test='endTime != null and endTime != \"\"'>",
+            "    AND TaskTime &lt;= #{endTime}",
+            "  </if>",
             "  <if test='subAccount != null and subAccount != \"\"'>",
             "    AND SubAccount LIKE CONCAT('%', #{subAccount}, '%')",
             "  </if>",
@@ -233,19 +238,20 @@ public interface SmsQueueMapper {
             "    AND ScheduleStatus = #{scheduleStatus}",
             "  </if>",
             "</where>",
-            "ORDER BY TaskTime DESC ",
+            "ORDER BY TaskTime DESC",
             "LIMIT #{offset}, #{pageSize}",
             "</script>"
     })
-    @ResultType(ScheduleTaskVO.class)
     List<ScheduleTaskVO> selectAllScheduleTaskList(
             @Param("subAccount") String subAccount,
             @Param("taskId") String taskId,
             @Param("taskIp") String taskIp,
             @Param("scheduleStatus") Integer scheduleStatus,
+            @Param("startTime") String startTime,
+            @Param("endTime") String endTime,
             @Param("threeDaysAgoTime") String threeDaysAgoTime,
-            @Param("offset") Integer offset,
-            @Param("pageSize") Integer pageSize
+            @Param("offset") int offset,
+            @Param("pageSize") int pageSize
     );
 
     /**
@@ -255,7 +261,17 @@ public interface SmsQueueMapper {
             "<script>",
             "SELECT COUNT(*) FROM tbl_APIScheduleSend ",
             "<where>",
-            "  TaskTime >= #{threeDaysAgoTime} ",
+            "  <choose>",
+            "    <when test='startTime != null and startTime != \"\"'>",
+            "      AND TaskTime &gt;= #{startTime}",
+            "    </when>",
+            "    <otherwise>",
+            "      AND TaskTime &gt;= #{threeDaysAgoTime}",
+            "    </otherwise>",
+            "  </choose>",
+            "  <if test='endTime != null and endTime != \"\"'>",
+            "    AND TaskTime &lt;= #{endTime}",
+            "  </if>",
             "  <if test='subAccount != null and subAccount != \"\"'>",
             "    AND SubAccount LIKE CONCAT('%', #{subAccount}, '%')",
             "  </if>",
@@ -276,6 +292,8 @@ public interface SmsQueueMapper {
             @Param("taskId") String taskId,
             @Param("taskIp") String taskIp,
             @Param("scheduleStatus") Integer scheduleStatus,
+            @Param("startTime") String startTime,
+            @Param("endTime") String endTime,
             @Param("threeDaysAgoTime") String threeDaysAgoTime
     );
 

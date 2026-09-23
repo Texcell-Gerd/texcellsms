@@ -196,17 +196,21 @@ public class SmsQueueService {
      */
     public Map<String, Object> getAllQueueTasksForAdmin(String subAccount, String taskId, String taskIp,
                                                         Integer scheduleStatus,
+                                                        String startTime, String endTime,
                                                         Integer pageNum, Integer pageSize) {
         DataSourceInterceptor.setCurrentDataSource(DynamicDataSourceConfig.DS_WEB_PORTAL);
 
+        // 默认时间：最近三天
         String threeDaysAgoTime = TimeRangeUtils.getThreeDaysAgoTime();
         int offset = (pageNum - 1) * pageSize;
 
         List<ScheduleTaskVO> list = smsQueueMapper.selectAllScheduleTaskList(
-                subAccount, taskId, taskIp, scheduleStatus, threeDaysAgoTime, offset, pageSize
+                subAccount, taskId, taskIp, scheduleStatus,
+                startTime, endTime, threeDaysAgoTime,
+                offset, pageSize
         );
 
-        // 统计 DR 成功/失败数量
+        // 统计 DR 成功/失败数量（逻辑不变）
         if (list != null && !list.isEmpty()) {
             List<String> taskIds = list.stream()
                     .map(ScheduleTaskVO::getTaskId)
@@ -235,7 +239,10 @@ public class SmsQueueService {
             }
         }
 
-        Long total = smsQueueMapper.countAllScheduleTaskList(subAccount, taskId, taskIp, scheduleStatus, threeDaysAgoTime);
+        Long total = smsQueueMapper.countAllScheduleTaskList(
+                subAccount, taskId, taskIp, scheduleStatus,
+                startTime, endTime, threeDaysAgoTime
+        );
 
         Map<String, Object> result = new HashMap<>();
         result.put("records", list == null ? Collections.emptyList() : list);

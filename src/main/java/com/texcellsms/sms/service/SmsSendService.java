@@ -210,10 +210,20 @@ public class SmsSendService {
             scheduleTime = parseDate(req.getScheduleTime());
         }
 
+        // TaskName 限制处理
+        final int TASK_NAME_MAX_LEN = 64;
+        String rawTaskName = req.getTaskName();
+        String taskName = StringUtils.defaultIfEmpty(rawTaskName, "Default").trim();
+
+        if (taskName.length() > TASK_NAME_MAX_LEN) {
+            logger.warn("TaskName 超长，已截断。原长={}, 值={}", taskName.length(), taskName);
+            taskName = taskName.substring(0, TASK_NAME_MAX_LEN);
+        }
+
         scheduleSendMapper.insertAPIScheduleSend(
                 taskId, scheduleTime, calleeCount, splitCount, totalCount,
                 now, TokenService.getIpAddress(r), subAccount, content,
-                StringUtils.defaultIfEmpty(req.getTaskName(), "Default"),
+                taskName,
                 0, 0, 0, 0
         );
 
@@ -402,10 +412,20 @@ public class SmsSendService {
             scheduleTime = parseDate(req.getScheduleTime());
         }
 
+        // TaskName 限制处理
+        final int TASK_NAME_MAX_LEN = 64;
+        String rawTaskName = req.getTaskName();
+        String taskName = StringUtils.defaultIfEmpty(rawTaskName, "Default").trim();
+
+        if (taskName.length() > TASK_NAME_MAX_LEN) {
+            logger.warn("TaskName 超长，已截断。原长={}, 值={}", taskName.length(), taskName);
+            taskName = taskName.substring(0, TASK_NAME_MAX_LEN);
+        }
+
         scheduleSendMapper.insertAPIScheduleSend(
                 taskId, scheduleTime, calleeCount, splitCount, totalCount,
                 now, TokenService.getIpAddress(r), subAccount, content,
-                StringUtils.defaultIfEmpty(req.getTaskName(), "Default"),
+                taskName,
                 0, 0, 0, 0
         );
 

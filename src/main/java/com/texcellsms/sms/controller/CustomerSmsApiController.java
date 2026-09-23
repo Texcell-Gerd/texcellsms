@@ -499,17 +499,23 @@ public class CustomerSmsApiController {
         }
     }
 
+    // HTTP大批量发送
     @PostMapping("/sendBatch")
     public AjaxResult sendBatchSms(
             @RequestBody BatchSmsSendRequest request,
             HttpServletRequest httpRequest) {
+
+        logger.info("========== 【V2】sendBatchSms 进入 ==========");
 
         try {
             String username = request.getUsername();
             String timestamp = request.getTimestamp();
             String sign = request.getSign();
 
+            logger.info("【V2】sendBatch username={}, timestamp={}, sign={}", username, timestamp, sign);
+
             if (StringUtils.isAnyBlank(username, timestamp, sign)) {
+                logger.warn("【V2】sendBatch 参数缺失: username={}, timestamp={}, sign={}", username, timestamp, sign);
                 return AjaxResult.error(400, "Required parameters are missing");
             }
 
@@ -517,29 +523,41 @@ public class CustomerSmsApiController {
             try {
                 reqTimestamp = Long.parseLong(timestamp);
             } catch (NumberFormatException e) {
+                logger.warn("【V2】sendBatch 时间戳格式错误: {}", timestamp);
                 return AjaxResult.error(400, "Invalid timestamp format");
             }
 
             long reqSec = (timestamp.length() == 13) ? reqTimestamp / 1000 : reqTimestamp;
             long nowSec = System.currentTimeMillis() / 1000;
+            logger.info("【V2】sendBatch 时间戳校验: reqSec={}, nowSec={}, diff={}",
+                    reqSec, nowSec, Math.abs(nowSec - reqSec));
             if (Math.abs(nowSec - reqSec) > 300) {
+                logger.warn("【V2】sendBatch 请求过期");
                 return AjaxResult.error(401, "Request expired");
             }
 
             String password = getCustomerPassword(username);
+            logger.info("【V2】sendBatch 获取密码: username={}, password=[{}]", username, password);
             if (StringUtils.isEmpty(password)) {
+                logger.warn("【V2】sendBatch 密码为空");
                 return AjaxResult.error(401, "Account does not exist or password error");
             }
 
+            // ✅ 验签
             AjaxResult check = CustomerApiSignUtil.verifySign(username, timestamp, sign, password);
-            if (check.get("Code") == null || (Integer) check.get("Code") != 0) {
-                return AjaxResult.error(401, "Authentication failed");
+            logger.info("【V2】sendBatch verifySign 返回: {}", check);
+            if (check != null) {
+                logger.warn("【V2】sendBatch 验签失败，返回: {}", check);
+                return check;
             }
+            logger.info("【V2】sendBatch 验签成功");
 
             if (StringUtils.isEmpty(request.getPreTaskId())) {
+                logger.warn("【V2】sendBatch preTaskId 为空");
                 return AjaxResult.error(400, "preTaskId cannot be empty");
             }
             if (StringUtils.isEmpty(request.getContent())) {
+                logger.warn("【V2】sendBatch content 为空");
                 return AjaxResult.error(400, "Content cannot be empty");
             }
 
@@ -547,12 +565,14 @@ public class CustomerSmsApiController {
             SmsSendResponse sendResp = smsSendService.doSendBatch(username, request, httpRequest);
             String taskId = sendResp.getTaskId();
 
+            logger.info("【V2】sendBatch 提交成功, taskId={}", taskId);
+
             Map<String, Object> data = new HashMap<>();
             data.put("MsgId", taskId);
             return AjaxResult.success("Batch send submitted", data);
 
         } catch (Exception e) {
-            e.printStackTrace();
+            logger.error("【V2】sendBatch 异常", e);
             return AjaxResult.error(500, "Send failed: " + e.getMessage());
         }
     }
@@ -566,42 +586,69 @@ public class CustomerSmsApiController {
             @RequestParam(value = "numbers", required = false) String numbers,
             @RequestParam String username,
             @RequestParam String timestamp,
-            @RequestParam String sign,
-            HttpServletRequest httpRequest
+            @RequestParam String sign
     ) {
+        logger.info("========== 【V2】uploadCalleeBatch 进入 ==========");
+
         try {
+            logger.info("【V2】uploadCalleeBatch 参数: username={}, timestamp={}, sign={}, fileEmpty={}, numbersEmpty={}",
+                    username, timestamp, sign,
+                    (file == null || file.isEmpty()),
+                    (numbers == null || numbers.isEmpty()));
+
             // 1.公共验签逻辑，复制sendBatch
             if (StringUtils.isAnyBlank(username, timestamp, sign)) {
+                logger.warn("【V2】uploadCalleeBatch 参数缺失: username={}, timestamp={}, sign={}",
+                        username, timestamp, sign);
                 return AjaxResult.error(400, "Required parameters are missing");
             }
+
             long reqTimestamp;
             try {
                 reqTimestamp = Long.parseLong(timestamp);
             } catch (NumberFormatException e) {
+                logger.warn("【V2】uploadCalleeBatch 时间戳格式错误: {}", timestamp);
                 return AjaxResult.error(400, "Invalid timestamp format");
             }
+
             long reqSec = (timestamp.length() == 13) ? reqTimestamp / 1000 : reqTimestamp;
             long nowSec = System.currentTimeMillis() / 1000;
+            logger.info("【V2】uploadCalleeBatch 时间戳校验: reqSec={}, nowSec={}, diff={}",
+                    reqSec, nowSec, Math.abs(nowSec - reqSec));
             if (Math.abs(nowSec - reqSec) > 300) {
+                logger.warn("【V2】uploadCalleeBatch 请求过期");
                 return AjaxResult.error(401, "Request expired");
             }
+
             String password = getCustomerPassword(username);
+            logger.info("【V2】uploadCalleeBatch 获取密码: username={}, password=[{}]", username, password);
             if (StringUtils.isEmpty(password)) {
+                logger.warn("【V2】uploadCalleeBatch 密码为空");
                 return AjaxResult.error(401, "Account does not exist or password error");
             }
+
+            // ✅ 验签
             AjaxResult check = CustomerApiSignUtil.verifySign(username, timestamp, sign, password);
-            if (check.get("Code") == null || (Integer) check.get("Code") != 0) {
-                return AjaxResult.error(401, "Authentication failed");
+            logger.info("【V2】uploadCalleeBatch verifySign 返回: {}", check);
+            if (check != null) {
+                logger.warn("【V2】uploadCalleeBatch 验签失败，返回: {}", check);
+                return check;
             }
+            logger.info("【V2】uploadCalleeBatch 验签成功");
 
             // 业务解析
             List<String> phoneList = new ArrayList<>();
             int totalLineCount = 0;
             if (file != null && !file.isEmpty()) {
+                logger.info("【V2】uploadCalleeBatch 开始解析文件: name={}, size={}",
+                        file.getOriginalFilename(), file.getSize());
                 SmsUploadService.ParseResult result = smsUploadService.parsePhoneBatch(file);
                 phoneList = result.getPhoneList();
                 totalLineCount = result.getTotalLineCount();
+                logger.info("【V2】uploadCalleeBatch 文件解析完成: phoneList.size={}, totalLineCount={}",
+                        phoneList.size(), totalLineCount);
             } else if (StringUtils.isNotEmpty(numbers)) {
+                logger.info("【V2】uploadCalleeBatch 使用 numbers 字段");
                 phoneList = Arrays.stream(numbers.split("[,\\n]"))
                         .map(String::trim)
                         .filter(s -> s.matches("^\\d+$") && s.length() >= 8 && s.length() <= 21)
@@ -609,12 +656,16 @@ public class CustomerSmsApiController {
                         .collect(Collectors.toList());
                 totalLineCount = phoneList.size();
             }
+
             if (phoneList.isEmpty()) {
+                logger.warn("【V2】uploadCalleeBatch 无有效号码");
                 return AjaxResult.error(400, "No valid numbers detected");
             }
 
             String preTaskId = IdGenerator.generatePreTaskId();
+            logger.info("【V2】uploadCalleeBatch 生成 preTaskId={}, 准备保存", preTaskId);
             smsUploadService.savePreTask(username, preTaskId, phoneList);
+            logger.info("【V2】uploadCalleeBatch 保存成功");
 
             Map<String, Object> data = new HashMap<>();
             data.put("PreTaskId", preTaskId);
@@ -623,9 +674,11 @@ public class CustomerSmsApiController {
             // 禁止返回完整号码列表！！
             // data.put("Callee", phoneList);
 
+            logger.info("【V2】uploadCalleeBatch 全部成功, preTaskId={}, count={}", preTaskId, phoneList.size());
             return AjaxResult.success("upload success", data);
+
         } catch (Exception e) {
-            e.printStackTrace();
+            logger.error("【V2】uploadCalleeBatch 异常", e);
             return AjaxResult.error(500, "upload failed:" + e.getMessage());
         }
     }
