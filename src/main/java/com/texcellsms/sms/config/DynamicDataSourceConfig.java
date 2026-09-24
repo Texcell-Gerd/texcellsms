@@ -1,6 +1,7 @@
 package com.texcellsms.sms.config;
 
 import com.zaxxer.hikari.HikariDataSource;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.apache.ibatis.session.LocalCacheScope;
 import org.apache.ibatis.session.SqlSessionFactory;
 import org.mybatis.spring.SqlSessionFactoryBean;
@@ -10,6 +11,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.datasource.lookup.AbstractRoutingDataSource;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.transaction.PlatformTransactionManager;
 
 import javax.sql.DataSource;
 import java.util.HashMap;
@@ -77,6 +80,19 @@ public class DynamicDataSourceConfig {
         ds.setValidationTimeout(30000);
         ds.setConnectionTestQuery("SELECT 1");
         return ds;
+    }
+
+    @Bean(name = "eccomTransactionManager")
+    @Primary
+    public PlatformTransactionManager eccomTransactionManager(
+            @Qualifier("eccomDataSource") DataSource eccomDataSource) {
+        return new DataSourceTransactionManager(eccomDataSource);
+    }
+
+    @Bean(name = "webPortalTransactionManager")
+    public PlatformTransactionManager webPortalTransactionManager(
+            @Qualifier("webPortalDataSource") DataSource webPortalDataSource) {
+        return new DataSourceTransactionManager(webPortalDataSource);
     }
 
     @Bean(name = "routingDataSource")
