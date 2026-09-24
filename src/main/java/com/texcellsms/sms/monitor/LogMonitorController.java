@@ -2857,7 +2857,7 @@ public class LogMonitorController {
                 "<head>\n" +
                 "<meta charset='UTF-8'>\n" +
                 "<meta name='viewport' content='width=device-width, initial-scale=1.0, user-scalable=no'>\n" +
-                "<title>Texcell 预付 WEB 监控系统登录</title>\n" +
+                "<title>Texcell LTM WEB 监控系统登录</title>\n" +
                 "<link rel='icon' type='image/svg+xml' href=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%231677ff'/%3E%3Ctext x='50' y='72' font-size='60' font-weight='bold' text-anchor='middle' fill='white' font-family='Arial'%3ET%3C/text%3E%3C/svg%3E\">\n" +
                 "<link href='https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap' rel='stylesheet'>\n" +
                 "<style>\n" +
@@ -2920,7 +2920,7 @@ public class LogMonitorController {
                 "<div class='login-card'>\n" +
                 "<div class='logo-area'>\n" +
                 "<div class='logo-icon'><svg width='34' height='34' viewBox='0 0 100 100' fill='none'><path d='M50 8 L86 29 V71 L50 92 L14 71 V29 Z' stroke='white' stroke-width='7' stroke-linejoin='round'/><text x='50' y='67' font-size='42' font-weight='bold' text-anchor='middle' fill='white' font-family='Arial'>T</text></svg></div>\n" +
-                "<h2>预付 WEB 监控系统</h2>\n" +
+                "<h2>LTM WEB 监控系统</h2>\n" +
                 "<div class='login-sub'>Texcell SMS 服务监控平台</div>\n" +
                 "</div>\n" +
                 "<div class='input-group'>\n" +
@@ -2968,7 +2968,7 @@ public class LogMonitorController {
                 "<head>\n" +
                 "<meta charset=\"UTF-8\">\n" +
                 "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, user-scalable=no\">\n" +
-                "<title>Texcell 预付 WEB 监控首页</title>\n" +
+                "<title>Texcell LTM WEB 监控首页</title>\n" +
                 "<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%231677ff'/%3E%3Ctext x='50' y='72' font-size='60' font-weight='bold' text-anchor='middle' fill='white' font-family='Arial'%3ET%3C/text%3E%3C/svg%3E\">\n" +
                 "<script src=\"https://cdn.jsdelivr.net/npm/chart.js\"></script>\n" +
                 "<link href=\"https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap\" rel=\"stylesheet\">\n" +
@@ -3048,7 +3048,7 @@ public class LogMonitorController {
                 "<div class=\"logo-icon\">\n" +
                 "<svg viewBox=\"0 0 24 24\"><path d=\"M3 3v18h18\"/><path d=\"M18.7 8l-5.1 5.2-2.8-2.7L7 14.3\"/></svg>\n" +
                 "</div>\n" +
-                "<div class=\"logo-text\">预付 WEB 监控管理系统</div>\n" +
+                "<div class=\"logo-text\">LTM WEB 监控管理系统</div>\n" +
                 "<div class=\"logo-sub\">v3.0</div>\n" +
                 "</div>\n" +
                 "<div class=\"menu\">\n" +
@@ -3150,7 +3150,7 @@ public class LogMonitorController {
                 "<head>\n" +
                 "<meta charset=\"UTF-8\">\n" +
                 "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, user-scalable=no\">\n" +
-                "<title>Texcell 预付 WEB 服务监控</title>\n" +
+                "<title>Texcell LTM WEB 服务监控</title>\n" +
                 "<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%231677ff'/%3E%3Ctext x='50' y='72' font-size='60' font-weight='bold' text-anchor='middle' fill='white' font-family='Arial'%3ET%3C/text%3E%3C/svg%3E\">\n" +
                 "<link href=\"https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap\" rel=\"stylesheet\">\n" +
                 "<style>\n" +
@@ -3246,7 +3246,7 @@ public class LogMonitorController {
                 "<div class=\"logo-icon\">\n" +
                 "<svg viewBox=\"0 0 24 24\"><path d=\"M3 3v18h18\"/><path d=\"M18.7 8l-5.1 5.2-2.8-2.7L7 14.3\"/></svg>\n" +
                 "</div>\n" +
-                "<div class=\"logo-text\">预付 WEB 监控管理系统</div>\n" +
+                "<div class=\"logo-text\">LTM WEB 监控管理系统</div>\n" +
                 "<div class=\"logo-sub\">v3.0</div>\n" +
                 "</div>\n" +
                 "<div class=\"menu\">\n" +
@@ -3341,7 +3341,7 @@ public class LogMonitorController {
                 "<head>\n" +
                 "<meta charset=\"UTF-8\">\n" +
                 "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, user-scalable=no\">\n" +
-                "<title>Texcell 预付 WEB 登录审计</title>\n" +
+                "<title>Texcell LTM WEB 登录审计</title>\n" +
                 "<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%231677ff'/%3E%3Ctext x='50' y='72' font-size='60' font-weight='bold' text-anchor='middle' fill='white' font-family='Arial'%3ET%3C/text%3E%3C/svg%3E\">\n" +
                 "<link href=\"https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap\" rel=\"stylesheet\">\n" +
                 "<style>\n" +
@@ -3432,7 +3432,7 @@ public class LogMonitorController {
                 "<div class=\"logo-icon\">\n" +
                 "<svg viewBox=\"0 0 24 24\"><path d=\"M3 3v18h18\"/><path d=\"M18.7 8l-5.1 5.2-2.8-2.7L7 14.3\"/></svg>\n" +
                 "</div>\n" +
-                "<div class=\"logo-text\">预付 WEB 监控管理系统</div>\n" +
+                "<div class=\"logo-text\">LTM WEB 监控管理系统</div>\n" +
                 "<div class=\"logo-sub\">v3.0</div>\n" +
                 "</div>\n" +
                 "<div class=\"menu\">\n" +
@@ -3636,7 +3636,7 @@ public class LogMonitorController {
                 "<head>\n" +
                 "<meta charset=\"UTF-8\">\n" +
                 "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, user-scalable=no\">\n" +
-                "<title>Texcell 预付 WEB 号码备份</title>\n" +
+                "<title>Texcell LTM WEB 号码备份</title>\n" +
                 "<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%231677ff'/%3E%3Ctext x='50' y='72' font-size='60' font-weight='bold' text-anchor='middle' fill='white' font-family='Arial'%3ET%3C/text%3E%3C/svg%3E\">\n" +
                 "<link href=\"https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap\" rel=\"stylesheet\">\n" +
                 "<style>\n" +
@@ -3726,7 +3726,7 @@ public class LogMonitorController {
                 "<div class=\"logo-icon\">\n" +
                 "<svg viewBox=\"0 0 24 24\"><path d=\"M3 3v18h18\"/><path d=\"M18.7 8l-5.1 5.2-2.8-2.7L7 14.3\"/></svg>\n" +
                 "</div>\n" +
-                "<div class=\"logo-text\">预付 WEB 监控管理系统</div>\n" +
+                "<div class=\"logo-text\">LTM WEB 监控管理系统</div>\n" +
                 "<div class=\"logo-sub\">v3.0</div>\n" +
                 "</div>\n" +
                 "<div class=\"menu\">\n" +
@@ -3913,7 +3913,7 @@ public class LogMonitorController {
                 "<head>\n" +
                 "<meta charset=\"UTF-8\">\n" +
                 "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, user-scalable=no\">\n" +
-                "<title>Texcell 预付 WEB API客户管理</title>\n" +
+                "<title>Texcell LTM WEB API客户管理</title>\n" +
                 "<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%231677ff'/%3E%3Ctext x='50' y='72' font-size='60' font-weight='bold' text-anchor='middle' fill='white' font-family='Arial'%3ET%3C/text%3E%3C/svg%3E\">\n" +
                 "<link href=\"https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap\" rel=\"stylesheet\">\n" +
                 "<style>\n" +
@@ -4031,7 +4031,7 @@ public class LogMonitorController {
                 "<div class=\"logo-icon\">\n" +
                 "<svg viewBox=\"0 0 24 24\"><path d=\"M3 3v18h18\"/><path d=\"M18.7 8l-5.1 5.2-2.8-2.7L7 14.3\"/></svg>\n" +
                 "</div>\n" +
-                "<div class=\"logo-text\">预付 WEB 监控管理系统</div>\n" +
+                "<div class=\"logo-text\">LTM WEB 监控管理系统</div>\n" +
                 "<div class=\"logo-sub\">v3.0</div>\n" +
                 "</div>\n" +
                 "<div class=\"menu\">\n" +
@@ -4155,7 +4155,7 @@ public class LogMonitorController {
                 "<head>\n" +
                 "<meta charset=\"UTF-8\">\n" +
                 "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, user-scalable=no\">\n" +
-                "<title>Texcell 预付 WEB 登录账户管理</title>\n" +
+                "<title>Texcell LTM WEB 登录账户管理</title>\n" +
                 "<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%231677ff'/%3E%3Ctext x='50' y='72' font-size='60' font-weight='bold' text-anchor='middle' fill='white' font-family='Arial'%3ET%3C/text%3E%3C/svg%3E\">\n" +
                 "<link href=\"https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap\" rel=\"stylesheet\">\n" +
                 "<style>\n" +
@@ -4268,7 +4268,7 @@ public class LogMonitorController {
                 "<div class=\"logo-icon\">\n" +
                 "<svg viewBox=\"0 0 24 24\"><path d=\"M3 3v18h18\"/><path d=\"M18.7 8l-5.1 5.2-2.8-2.7L7 14.3\"/></svg>\n" +
                 "</div>\n" +
-                "<div class=\"logo-text\">预付 WEB 监控管理系统</div>\n" +
+                "<div class=\"logo-text\">LTM WEB 监控管理系统</div>\n" +
                 "<div class=\"logo-sub\">v3.0</div>\n" +
                 "</div>\n" +
                 "<div class=\"menu\">\n" +
@@ -4629,7 +4629,7 @@ public class LogMonitorController {
                 "<head>\n" +
                 "<meta charset=\"UTF-8\">\n" +
                 "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, user-scalable=no\">\n" +
-                "<title>Texcell 预付 WEB 运维管理</title>\n" +
+                "<title>Texcell LTM WEB 运维管理</title>\n" +
                 "<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%231677ff'/%3E%3Ctext x='50' y='72' font-size='60' font-weight='bold' text-anchor='middle' fill='white' font-family='Arial'%3ET%3C/text%3E%3C/svg%3E\">\n" +
                 "<link href=\"https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap\" rel=\"stylesheet\">\n" +
                 "<script src=\"https://cdn.jsdelivr.net/npm/chart.js\"></script>\n" +
@@ -4759,7 +4759,7 @@ public class LogMonitorController {
                 "<div class=\"logo-icon\">\n" +
                 "<svg viewBox=\"0 0 24 24\"><path d=\"M3 3v18h18\"/><path d=\"M18.7 8l-5.1 5.2-2.8-2.7L7 14.3\"/></svg>\n" +
                 "</div>\n" +
-                "<div class=\"logo-text\">预付 WEB 监控管理系统</div>\n" +
+                "<div class=\"logo-text\">LTM WEB 监控管理系统</div>\n" +
                 "<div class=\"logo-sub\">v3.0</div>\n" +
                 "</div>\n" +
                 "<div class=\"menu\">\n" +
@@ -5544,7 +5544,7 @@ public class LogMonitorController {
                 "<head>\n" +
                 "<meta charset=\"UTF-8\">\n" +
                 "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, user-scalable=no\">\n" +
-                "<title>Texcell 预付 WEB 发送队列管理</title>\n" +
+                "<title>Texcell LTM WEB 发送队列管理</title>\n" +
                 "<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%231677ff'/%3E%3Ctext x='50' y='72' font-size='60' font-weight='bold' text-anchor='middle' fill='white' font-family='Arial'%3ET%3C/text%3E%3C/svg%3E\">\n" +
                 "<link href=\"https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap\" rel=\"stylesheet\">\n" +
                 "<script src=\"https://cdn.jsdelivr.net/npm/chart.js\"></script>\n" +
@@ -5684,7 +5684,7 @@ public class LogMonitorController {
                 "<div class=\"logo-icon\">\n" +
                 "<svg viewBox=\"0 0 24 24\"><path d=\"M3 3v18h18\"/><path d=\"M18.7 8l-5.1 5.2-2.8-2.7L7 14.3\"/></svg>\n" +
                 "</div>\n" +
-                "<div class=\"logo-text\">预付 WEB 监控管理系统</div>\n" +
+                "<div class=\"logo-text\">LTM WEB 监控管理系统</div>\n" +
                 "<div class=\"logo-sub\">v3.0</div>\n" +
                 "</div>\n" +
                 "<div class=\"menu\">\n" +
@@ -5995,7 +5995,7 @@ public class LogMonitorController {
                 "<head>\n" +
                 "<meta charset=\"UTF-8\">\n" +
                 "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, user-scalable=no\">\n" +
-                "<title>Texcell 预付 WEB 队列DR监控</title>\n" +
+                "<title>Texcell LTM WEB 队列DR监控</title>\n" +
                 "<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%231677ff'/%3E%3Ctext x='50' y='72' font-size='60' font-weight='bold' text-anchor='middle' fill='white' font-family='Arial'%3ET%3C/text%3E%3C/svg%3E\">\n" +
                 "<link href=\"https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap\" rel=\"stylesheet\">\n" +
                 "<style>\n" +
@@ -6142,7 +6142,7 @@ public class LogMonitorController {
                 "<div class=\"logo-icon\">\n" +
                 "<svg viewBox=\"0 0 24 24\"><path d=\"M3 3v18h18\"/><path d=\"M18.7 8l-5.1 5.2-2.8-2.7L7 14.3\"/></svg>\n" +
                 "</div>\n" +
-                "<div class=\"logo-text\">预付 WEB 监控管理系统</div>\n" +
+                "<div class=\"logo-text\">LTM WEB 监控管理系统</div>\n" +
                 "<div class=\"logo-sub\">v3.0</div>\n" +
                 "</div>\n" +
                 "<div class=\"menu\">\n" +
@@ -6786,7 +6786,7 @@ public class LogMonitorController {
                 "<head>\n" +
                 "<meta charset=\"UTF-8\">\n" +
                 "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, user-scalable=no\">\n" +
-                "<title>Texcell 预付 WEB 定时任务配置</title>\n" +
+                "<title>Texcell LTM WEB 定时任务配置</title>\n" +
                 "<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%231677ff'/%3E%3Ctext x='50' y='72' font-size='60' font-weight='bold' text-anchor='middle' fill='white' font-family='Arial'%3ET%3C/text%3E%3C/svg%3E\">\n" +
                 "<link href=\"https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap\" rel=\"stylesheet\">\n" +
                 "<style>\n" +
@@ -6904,7 +6904,7 @@ public class LogMonitorController {
                 "<div class=\"logo-icon\">\n" +
                 "<svg viewBox=\"0 0 24 24\"><path d=\"M3 3v18h18\"/><path d=\"M18.7 8l-5.1 5.2-2.8-2.7L7 14.3\"/></svg>\n" +
                 "</div>\n" +
-                "<div class=\"logo-text\">预付 WEB 监控管理系统</div>\n" +
+                "<div class=\"logo-text\">LTM WEB 监控管理系统</div>\n" +
                 "<div class=\"logo-sub\">v3.0</div>\n" +
                 "</div>\n" +
                 "<div class=\"menu\">\n" +
