@@ -59,13 +59,31 @@ public class SmsSendService {
     @Transactional(rollbackFor = Exception.class)
     public SmsSendResponse doSend(String subAccount, SmsSendRequest req, HttpServletRequest r) throws Exception {
 
+        // ========== 【日志 1】入口参数 ==========
+        logger.info("[doSend-入口] 账号={}, preTaskId={}, numbers数量={}, caller={}, scheduleTime={}, taskName={}",
+                subAccount, req.getPreTaskId(),
+                req.getNumbers() == null ? 0 : req.getNumbers().size(),
+                req.getCaller(), req.getScheduleTime(), req.getTaskName());
+
         String originalContent = req.getContent();
+
+        // ========== 【日志 2】原始内容 + HEX ==========
+        logger.info("[doSend-原始内容] 账号={}, 原文=[{}], 长度={}, HEX={}",
+                subAccount, originalContent,
+                originalContent == null ? 0 : originalContent.length(),
+                bytesToHex(originalContent));
+
         String filteredContent = filterEmoji(originalContent);
 
         // 检查过滤后是否为空
         if (StringUtils.isEmpty(filteredContent)) {
+            logger.warn("[doSend-过滤后为空] 账号={}, 原始内容=[{}]", subAccount, originalContent);
             throw new Exception("短信内容不能为空（表情符号已被过滤）");
         }
+
+        // ========== 【日志 3】过滤后内容 ==========
+        logger.info("[doSend-过滤后内容] 账号={}, 内容=[{}], 长度={}",
+                subAccount, filteredContent, filteredContent.length());
 
         // 使用过滤后的内容
         req.setContent(filteredContent);
@@ -113,6 +131,11 @@ public class SmsSendService {
             if (!realFile.exists() || realFile.length() == 0) {
                 throw new Exception("Failed to generate manual number file");
             }
+
+            // ========== 【日志 4】手动号码分支 ==========
+            logger.info("[doSend-手动号码分支] 账号={}, taskId={}, 有效号码数={}, 文件={}",
+                    subAccount, taskId, calleeCount, realFile.getAbsolutePath());
+
         } else if (StringUtils.isNotEmpty(req.getPreTaskId())) {
             preFile = new File(PRE_PHONE_ROOT + subAccount + "/" + req.getPreTaskId() + ".txt");
             if (!preFile.exists())
@@ -150,6 +173,10 @@ public class SmsSendService {
                     if (i < validatedNumbers.size() - 1) bw.newLine();
                 }
             }
+
+            // ========== 【日志 5】preTask 分支 ==========
+            logger.info("[doSend-preTask分支] 账号={}, taskId={}, preTaskId={}, 有效号码数={}, 文件={}",
+                    subAccount, taskId, req.getPreTaskId(), calleeCount, realFile.getAbsolutePath());
         }
 
         // ✅ 检查号码数量（两个分支之后统一检查）
@@ -169,6 +196,10 @@ public class SmsSendService {
         // 使用正确的分片数计算方法
         int splitCount = SmsContentUtil.calcSplitCountCorrect(content);
         int totalCount = calleeCount * splitCount;
+
+        // ========== 【日志 6】DCS 与分片计算（最关键）==========
+        logger.info("[doSend-编码计算] 账号={}, taskId={}, DCS={} (0=GSM7,8=UCS2), splitCount={}, calleeCount={}, totalCount={}, content=[{}]",
+                subAccount, taskId, dcs, splitCount, calleeCount, totalCount, content);
 
 
         File taskUserDir = new File(TASK_ROOT + subAccount + "/");
@@ -194,6 +225,10 @@ public class SmsSendService {
         ObjectMapper mapper = new ObjectMapper();
         mapper.enable(SerializationFeature.INDENT_OUTPUT);
         String finalJson = mapper.writeValueAsString(map);
+
+        // ========== 【日志 7】最终 JSON ==========
+        logger.info("[doSend-最终JSON] 账号={}, taskId={}, JSON长度={}\n{}",
+                subAccount, taskId, finalJson.length(), finalJson);
 
         try (FileWriter fw = new FileWriter(tmp)) {
             fw.write(finalJson); // 同步写入
@@ -251,8 +286,13 @@ public class SmsSendService {
                     content
             );
             // 输出到日志，供监控扫描
-            org.slf4j.LoggerFactory.getLogger(this.getClass()).warn(monitorLog);
+            logger.warn(monitorLog);
         }
+
+        // ========== 【日志 8】返回结果 ==========
+        logger.info("[doSend-完成] 账号={}, taskId={}, dcs={}, splitCount={}, calleeCount={}",
+                subAccount, taskId, dcs, splitCount, calleeCount);
+
         return resp;
     }
 
@@ -503,18 +543,9 @@ public class SmsSendService {
     }
 
     private List<String> splitContent(String content, int splitCount) throws Exception {
-        List<String> list = new ArrayList<>();
         int dcs = SmsContentUtil.calculateDCS(content);
-
-
-        if (splitCount == 1) {
-            // ✅ 不分片，直接返回原内容
-            list.add(content);
-            return list;
-        }
-
         if (dcs == 8) {
-            // UCS-2: 按字符数切分
+            List<String> list = new ArrayList<>();
             int per = SmsContentUtil.getSplitPerSms(dcs); // 67
             int idx = 0;
             for (int i = 0; i < splitCount; i++) {
@@ -522,12 +553,10 @@ public class SmsSendService {
                 list.add(content.substring(idx, end));
                 idx = end;
             }
+            return list;
         } else {
-            // GSM7: 按编码后的字节长度切分（只有超过160字节才需要）
-            list = splitGsm7ContentByBytes(content, splitCount);
+            return SmsContentUtil.splitGsm7Content(content, splitCount);   // ← 用工具类，别再自己切
         }
-
-        return list;
     }
 
     private int countLine(File file) throws Exception {
@@ -544,37 +573,12 @@ public class SmsSendService {
         return sb.toString();
     }
 
-    private List<String> splitGsm7ContentByBytes(String content, int expectedParts) {
-        List<String> parts = new ArrayList<>();
-        int maxBytesPerPart = 153; // 长短信每段最大字节数
-
-        int start = 0;
-        while (start < content.length() && parts.size() < expectedParts) {
-            int currentBytes = 0;
-            int end = start;
-
-            // 找到合适的切分点
-            while (end < content.length()) {
-                char c = content.charAt(end);
-                int charBytes = SmsContentUtil.isExtendedGsmChar(c) ? 2 : 1;
-
-                if (currentBytes + charBytes > maxBytesPerPart) {
-                    break;
-                }
-                currentBytes += charBytes;
-                end++;
-            }
-
-            if (end == start) {
-                end = start + 1;
-            }
-
-            parts.add(content.substring(start, end));
-            start = end;
-
-        }
-
-        return parts;
+    /**
+     * 字符串转 HEX，用于日志排查乱码（UTF-8 编码后转十六进制）
+     */
+    private String bytesToHex(String str) {
+        if (str == null) return "null";
+        return bytesToHex(str.getBytes(java.nio.charset.StandardCharsets.UTF_8));
     }
 
     /**
