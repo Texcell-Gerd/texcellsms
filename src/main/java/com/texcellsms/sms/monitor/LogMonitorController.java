@@ -5,9 +5,7 @@ import CacheDB.NCacheDBLink;
 import com.texcellsms.sms.interceptor.SecurityMonitorInterceptor;
 import com.texcellsms.sms.mapper.webportal.*;
 import com.texcellsms.sms.model.entity.*;
-import com.texcellsms.sms.service.CustomerDrAutoFixService;
-import com.texcellsms.sms.service.IpRateLimitConfigService;
-import com.texcellsms.sms.service.SmsQueueService;
+import com.texcellsms.sms.service.*;
 import com.texcellsms.sms.util.ApiClientConfig;
 import com.texcellsms.sms.util.IpLocationUtil;
 import com.texcellsms.sms.util.WeChatRobotUtil;
@@ -81,6 +79,12 @@ public class LogMonitorController {
 
     @Autowired
     private CustomerDrAutoFixService customerDrAutoFixService;
+
+    @Autowired
+    private FeatureService featureService;
+
+    @Autowired
+    private SubTaskService subTaskService;
 
 
     private String getRealIp(HttpServletRequest request) {
@@ -420,6 +424,21 @@ public class LogMonitorController {
             return "<script>location.href='/monitor/login';</script>";
         }
         return generateDrAutoFixHtml();
+    }
+
+    /**
+     * 管理端页面路由
+     */
+    @GetMapping("/monitor/subtask-management")
+    public String subtaskManagementPage(HttpServletRequest request) {
+        HttpSession session = request.getSession();
+        String clientIp = getRealIp(request);
+        String loginUsername = getCurrentUsername(session);
+
+        if (!isIpAllowed(clientIp, loginUsername)) {
+            return "<h1 style='color:red;text-align:center;margin-top:100px;'>❌ 仅允许内网访问<br/>您的IP：" + clientIp + "</h1>";
+        }
+        return generateSubTaskManagementHtml();
     }
 
     @GetMapping("/api/monitor/logs")
@@ -2805,6 +2824,248 @@ public class LogMonitorController {
         return result;
     }
 
+    /* ============ 客户端功能模块管理 ============ */
+
+    @GetMapping("/monitor/feature-management")
+    public String featureManagementPage(HttpServletRequest request) {
+        HttpSession session = request.getSession();
+        String clientIp = getRealIp(request);
+        String loginUsername = getCurrentUsername(session);
+
+        if (!isIpAllowed(clientIp, loginUsername)) {
+            return "<h1 style='color:red;text-align:center;margin-top:100px;'>❌ 仅允许内网访问<br/>您的IP：" + clientIp + "</h1>";
+        }
+        return generateFeatureManagementHtml();
+    }
+
+    @GetMapping("/api/monitor/feature/modules")
+    public Map<String, Object> listFeatureModules(@RequestParam String secret, HttpServletRequest request) {
+        Map<String, Object> result = new HashMap<>();
+        if (!MONITOR_SECRET.equals(secret)) { result.put("code", 401); result.put("msg", "无权限"); return result; }
+        if (!isIpAllowed(getRealIp(request), getCurrentUsername(request.getSession()))) {
+            result.put("code", 403); result.put("msg", "仅允许内网访问"); return result;
+        }
+        try {
+            result.put("code", 200);
+            result.put("data", featureService.listAllModules());
+        } catch (Exception e) {
+            logger.error("获取模块列表失败", e);
+            result.put("code", 500); result.put("msg", "查询失败: " + e.getMessage());
+        }
+        return result;
+    }
+
+    @PostMapping("/api/monitor/feature/module/save")
+    public Map<String, Object> saveFeatureModule(@RequestBody FeatureModule module,
+                                                 @RequestParam String secret,
+                                                 HttpServletRequest request) {
+        Map<String, Object> result = new HashMap<>();
+        if (!MONITOR_SECRET.equals(secret)) { result.put("code", 401); result.put("msg", "无权限"); return result; }
+        if (!isIpAllowed(getRealIp(request), getCurrentUsername(request.getSession()))) {
+            result.put("code", 403); result.put("msg", "仅允许内网访问"); return result;
+        }
+        try {
+            featureService.saveModule(module);
+            result.put("code", 200); result.put("msg", "保存成功");
+        } catch (Exception e) {
+            logger.error("保存模块失败", e);
+            result.put("code", 500); result.put("msg", "保存失败: " + e.getMessage());
+        }
+        return result;
+    }
+
+    @PostMapping("/api/monitor/feature/module/toggle")
+    public Map<String, Object> toggleFeatureModule(@RequestParam Long id,
+                                                   @RequestParam Integer enabled,
+                                                   @RequestParam String secret,
+                                                   HttpServletRequest request) {
+        Map<String, Object> result = new HashMap<>();
+        if (!MONITOR_SECRET.equals(secret)) { result.put("code", 401); return result; }
+        if (!isIpAllowed(getRealIp(request), getCurrentUsername(request.getSession()))) {
+            result.put("code", 403); return result;
+        }
+        try {
+            featureService.toggleModule(id, enabled);
+            result.put("code", 200); result.put("msg", enabled == 1 ? "启用成功" : "禁用成功");
+        } catch (Exception e) {
+            logger.error("切换模块状态失败", e);
+            result.put("code", 500); result.put("msg", e.getMessage());
+        }
+        return result;
+    }
+
+    @PostMapping("/api/monitor/feature/module/delete")
+    public Map<String, Object> deleteFeatureModule(@RequestParam Long id,
+                                                   @RequestParam String secret,
+                                                   HttpServletRequest request) {
+        Map<String, Object> result = new HashMap<>();
+        if (!MONITOR_SECRET.equals(secret)) { result.put("code", 401); return result; }
+        if (!isIpAllowed(getRealIp(request), getCurrentUsername(request.getSession()))) {
+            result.put("code", 403); return result;
+        }
+        try {
+            // 先删授权，再删模块（避免脏数据）
+            java.util.List<CustomerFeatureAuth> authList = featureService.listAuthByModule(
+                    featureService.listAllModules().stream()
+                            .filter(m -> m.getId().equals(id))
+                            .findFirst().map(FeatureModule::getModuleCode).orElse(null));
+            if (authList != null) {
+                for (CustomerFeatureAuth a : authList) {
+                    featureService.removeAuth(a.getSubAccount(), a.getModuleCode());
+                }
+            }
+            // 直接调用 mapper 删除
+            featureService.deleteModule(id);
+            result.put("code", 200); result.put("msg", "删除成功");
+        } catch (Exception e) {
+            logger.error("删除模块失败", e);
+            result.put("code", 500); result.put("msg", e.getMessage());
+        }
+        return result;
+    }
+
+    @GetMapping("/api/monitor/feature/module/customers")
+    public Map<String, Object> listModuleCustomers(@RequestParam String secret,
+                                                   @RequestParam String moduleCode,
+                                                   HttpServletRequest request) {
+        Map<String, Object> result = new HashMap<>();
+        if (!MONITOR_SECRET.equals(secret)) { result.put("code", 401); return result; }
+        if (!isIpAllowed(getRealIp(request), getCurrentUsername(request.getSession()))) {
+            result.put("code", 403); return result;
+        }
+        try {
+            result.put("code", 200);
+            result.put("data", featureService.listAuthByModule(moduleCode));
+        } catch (Exception e) {
+            result.put("code", 500); result.put("msg", e.getMessage());
+        }
+        return result;
+    }
+
+    @PostMapping("/api/monitor/feature/auth/save")
+    public Map<String, Object> saveFeatureAuth(@RequestParam String subAccount,
+                                               @RequestParam String moduleCode,
+                                               @RequestParam Integer enabled,
+                                               @RequestParam String secret,
+                                               HttpServletRequest request) {
+        Map<String, Object> result = new HashMap<>();
+        if (!MONITOR_SECRET.equals(secret)) { result.put("code", 401); return result; }
+        if (!isIpAllowed(getRealIp(request), getCurrentUsername(request.getSession()))) {
+            result.put("code", 403); return result;
+        }
+        try {
+            featureService.saveAuth(subAccount, moduleCode, enabled);
+            result.put("code", 200); result.put("msg", "操作成功");
+        } catch (Exception e) {
+            logger.error("授权失败", e);
+            result.put("code", 500); result.put("msg", e.getMessage());
+        }
+        return result;
+    }
+
+    @PostMapping("/api/monitor/feature/auth/delete")
+    public Map<String, Object> deleteFeatureAuth(@RequestParam String subAccount,
+                                                 @RequestParam String moduleCode,
+                                                 @RequestParam String secret,
+                                                 HttpServletRequest request) {
+        Map<String, Object> result = new HashMap<>();
+        if (!MONITOR_SECRET.equals(secret)) { result.put("code", 401); return result; }
+        if (!isIpAllowed(getRealIp(request), getCurrentUsername(request.getSession()))) {
+            result.put("code", 403); return result;
+        }
+        try {
+            featureService.removeAuth(subAccount, moduleCode);
+            result.put("code", 200); result.put("msg", "删除成功");
+        } catch (Exception e) {
+            logger.error("删除授权失败", e);
+            result.put("code", 500); result.put("msg", e.getMessage());
+        }
+        return result;
+    }
+
+    /**
+     * 管理端：获取所有子任务列表
+     */
+    @GetMapping("/api/monitor/subtask/list")
+    public Map<String, Object> listSubTasks(
+            @RequestParam(required = false) String subAccount,
+            @RequestParam(required = false) String taskId,
+            @RequestParam(defaultValue = "100") int limit,
+            @RequestParam(required = false) String secret,
+            HttpServletRequest request) {
+
+        Map<String, Object> result = new HashMap<>();
+        HttpSession session = request.getSession();
+        String clientIp = getRealIp(request);
+        String loginUsername = getCurrentUsername(session);
+
+        if (!isIpAllowed(clientIp, loginUsername)) {
+            result.put("code", 403);
+            result.put("msg", "仅允许内网访问");
+            return result;
+        }
+        if (!MONITOR_SECRET.equals(secret)) {
+            result.put("code", 401);
+            result.put("msg", "无权限访问");
+            return result;
+        }
+
+        try {
+            // subAccount 如果传空，底层存储过程会查全部
+            List<Map<String, String>> list = subTaskService.queryAllSubTasks(subAccount, taskId, limit);
+            result.put("code", 200);
+            result.put("data", list);
+        } catch (Exception e) {
+            logger.error("查询子任务列表失败", e);
+            result.put("code", 500);
+            result.put("msg", "查询失败: " + e.getMessage());
+        }
+        return result;
+    }
+
+    /**
+     * 管理端：操作子任务（暂停/恢复/取消）
+     */
+    @PostMapping("/api/monitor/subtask/operate")
+    public Map<String, Object> operateSubTask(
+            @RequestParam String action,
+            @RequestParam String taskId,
+            @RequestParam(defaultValue = "0") int subIndex,
+            @RequestParam String secret,
+            HttpServletRequest request) {
+
+        Map<String, Object> result = new HashMap<>();
+        HttpSession session = request.getSession();
+        String clientIp = getRealIp(request);
+        String loginUsername = getCurrentUsername(session);
+
+        if (!isIpAllowed(clientIp, loginUsername)) {
+            result.put("code", 403);
+            result.put("msg", "仅允许内网访问");
+            return result;
+        }
+        if (!MONITOR_SECRET.equals(secret)) {
+            result.put("code", 401);
+            result.put("msg", "无权限访问");
+            return result;
+        }
+
+        try {
+            // 管理端操作，备注带上操作人信息
+            String remark = "管理端(" + loginUsername + ")操作";
+            int affected = subTaskService.operateSubTask(action, taskId, subIndex, remark);
+
+            result.put("code", 200);
+            result.put("msg", "操作成功，影响了 " + affected + " 个子任务");
+        } catch (Exception e) {
+            logger.error("操作子任务失败", e);
+            result.put("code", 500);
+            result.put("msg", "操作失败: " + e.getMessage());
+        }
+        return result;
+    }
+
+
     private String formatCsvValue(Object value) {
         if (value == null) return "";
         String str = value.toString();
@@ -2920,7 +3181,7 @@ public class LogMonitorController {
                 "<div class='login-card'>\n" +
                 "<div class='logo-area'>\n" +
                 "<div class='logo-icon'><svg width='34' height='34' viewBox='0 0 100 100' fill='none'><path d='M50 8 L86 29 V71 L50 92 L14 71 V29 Z' stroke='white' stroke-width='7' stroke-linejoin='round'/><text x='50' y='67' font-size='42' font-weight='bold' text-anchor='middle' fill='white' font-family='Arial'>T</text></svg></div>\n" +
-                "<h2>LTM WEB 监控系统</h2>\n" +
+                "<h2>Texcell LTM 监控系统</h2>\n" +
                 "<div class='login-sub'>Texcell SMS 服务监控平台</div>\n" +
                 "</div>\n" +
                 "<div class='input-group'>\n" +
@@ -2989,7 +3250,7 @@ public class LogMonitorController {
                 "*{margin:0;padding:0;box-sizing:border-box;}\n" +
                 "body{background:var(--bg-page);font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;}\n" +
                 ".navbar{background:var(--bg-card);box-shadow:var(--shadow-sm);border-bottom:1px solid var(--border-color);position:sticky;top:0;z-index:100;}\n" +
-                ".nav-container{max-width:2000px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:70px;}\n" +
+                ".nav-container{max-width:2100px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:70px;}\n" +
                 ".logo{display:flex;align-items:center;gap:12px;}\n" +
                 ".logo-icon{width:40px;height:40px;background:linear-gradient(135deg,var(--primary-color) 0%,var(--primary-hover) 100%);border-radius:12px;display:flex;align-items:center;justify-content:center;}\n" +
                 ".logo-icon svg{width:22px;height:22px;stroke:#fff;stroke-width:2;fill:none;}\n" +
@@ -3004,7 +3265,7 @@ public class LogMonitorController {
                 ".user-role{background:rgba(22,119,255,0.1);padding:4px 12px;border-radius:20px;font-size:12px;color:var(--primary-color);}\n" +
                 ".logout-btn{background:#f1f5f9;border:1px solid var(--border-color);color:var(--text-secondary);padding:8px 20px;border-radius:40px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;}\n" +
                 ".logout-btn:hover{background:#e8ecf1;transform:translateY(-1px);}\n" +
-                ".page-wrap{max-width:2000px;margin:0 auto;padding:32px;}\n" +
+                ".page-wrap{max-width:2100px;margin:0 auto;padding:32px;}\n" +
                 ".welcome-card{background:var(--bg-card);border-radius:16px;padding:36px 40px;margin-bottom:32px;color:var(--text-primary);position:relative;overflow:hidden;border:1px solid var(--border-color);box-shadow:var(--shadow-sm);}\n" +
                 ".welcome-card h1{font-size:28px;font-weight:700;margin-bottom:8px;}\n" +
                 ".welcome-card p{font-size:14px;color:var(--text-secondary);margin-bottom:16px;}\n" +
@@ -3048,7 +3309,7 @@ public class LogMonitorController {
                 "<div class=\"logo-icon\">\n" +
                 "<svg viewBox=\"0 0 24 24\"><path d=\"M3 3v18h18\"/><path d=\"M18.7 8l-5.1 5.2-2.8-2.7L7 14.3\"/></svg>\n" +
                 "</div>\n" +
-                "<div class=\"logo-text\">LTM WEB 监控管理系统</div>\n" +
+                "<div class=\"logo-text\">Texcell LTM 监控管理系统</div>\n" +
                 "<div class=\"logo-sub\">v3.0</div>\n" +
                 "</div>\n" +
                 "<div class=\"menu\">\n" +
@@ -3062,6 +3323,8 @@ public class LogMonitorController {
                 "<a href=\"/monitor/queue-management\">发送队列管理</a>" +
                 "<a href=\"/monitor/queue-monitor\">队列DR监控</a>\n" +
                 "<a href=\"/monitor/dr-auto-fix\">定时任务配置</a>\n" +
+                "<a href=\"/monitor/feature-management\">功能模块管理</a>\n" +
+                "<a href=\"/monitor/subtask-management\">子任务队列</a>\n" +
                 "</div>\n" +
                 "<div class=\"user-info\">\n" +
                 "<span class=\"user-name\" id=\"currentUsername\">加载中...</span>\n" +
@@ -3173,7 +3436,7 @@ public class LogMonitorController {
                 "*{margin:0;padding:0;box-sizing:border-box;}\n" +
                 "body{background:var(--bg-page);font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;}\n" +
                 ".navbar{background:var(--bg-card);box-shadow:var(--shadow-sm);border-bottom:1px solid var(--border-color);position:sticky;top:0;z-index:100;}\n" +
-                ".nav-container{max-width:2000px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:70px;}\n" +
+                ".nav-container{max-width:2100px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:70px;}\n" +
                 ".logo{display:flex;align-items:center;gap:12px;}\n" +
                 ".logo-icon{width:40px;height:40px;background:linear-gradient(135deg,var(--primary-color) 0%,var(--primary-hover) 100%);border-radius:12px;display:flex;align-items:center;justify-content:center;}\n" +
                 ".logo-icon svg{width:22px;height:22px;stroke:#fff;stroke-width:2;fill:none;}\n" +
@@ -3188,7 +3451,7 @@ public class LogMonitorController {
                 ".user-role{background:rgba(22,119,255,0.1);padding:4px 12px;border-radius:20px;font-size:12px;color:var(--primary-color);}\n" +
                 ".logout-btn{background:#f1f5f9;border:1px solid var(--border-color);color:var(--text-secondary);padding:8px 20px;border-radius:40px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;}\n" +
                 ".logout-btn:hover{background:#e8ecf1;transform:translateY(-1px);}\n" +
-                ".page-wrap{max-width:2000px;margin:0 auto;padding:32px;}\n" +
+                ".page-wrap{max-width:2100px;margin:0 auto;padding:32px;}\n" +
                 ".status-header{background:var(--bg-card);border-radius:16px;border:1px solid var(--border-color);box-shadow:var(--shadow-sm);padding:24px 32px;margin-bottom:32px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px;}\n" +
                 ".status-info{display:flex;gap:32px;align-items:center;flex-wrap:wrap;}\n" +
                 ".status-indicator{display:flex;align-items:center;gap:10px;}\n" +
@@ -3246,7 +3509,7 @@ public class LogMonitorController {
                 "<div class=\"logo-icon\">\n" +
                 "<svg viewBox=\"0 0 24 24\"><path d=\"M3 3v18h18\"/><path d=\"M18.7 8l-5.1 5.2-2.8-2.7L7 14.3\"/></svg>\n" +
                 "</div>\n" +
-                "<div class=\"logo-text\">LTM WEB 监控管理系统</div>\n" +
+                "<div class=\"logo-text\">Texcell LTM 监控管理系统</div>\n" +
                 "<div class=\"logo-sub\">v3.0</div>\n" +
                 "</div>\n" +
                 "<div class=\"menu\">\n" +
@@ -3260,6 +3523,8 @@ public class LogMonitorController {
                 "<a href=\"/monitor/queue-management\">发送队列管理</a>\n" +
                 "<a href=\"/monitor/queue-monitor\">队列DR监控</a>\n" +
                 "<a href=\"/monitor/dr-auto-fix\">定时任务配置</a>\n" +
+                "<a href=\"/monitor/feature-management\">功能模块管理</a>\n" +
+                "<a href=\"/monitor/subtask-management\">子任务队列</a>\n" +
                 "</div>\n" +
                 "<div class=\"user-info\">\n" +
                 "<span class=\"user-name\" id=\"currentUsername\">加载中...</span>\n" +
@@ -3363,7 +3628,7 @@ public class LogMonitorController {
                 "*{margin:0;padding:0;box-sizing:border-box;}\n" +
                 "body{background:var(--bg-page);font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;min-height:100vh;}\n" +
                 ".navbar{background:var(--bg-card);box-shadow:var(--shadow-sm);border-bottom:1px solid var(--border-color);position:sticky;top:0;z-index:100;}\n" +
-                ".nav-container{max-width:2000px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:70px;}\n" +
+                ".nav-container{max-width:2100px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:70px;}\n" +
                 ".logo{display:flex;align-items:center;gap:12px;}\n" +
                 ".logo-icon{width:40px;height:40px;background:linear-gradient(135deg,var(--primary-color) 0%,var(--primary-hover) 100%);border-radius:12px;display:flex;align-items:center;justify-content:center;}\n" +
                 ".logo-icon svg{width:22px;height:22px;stroke:#fff;stroke-width:2;fill:none;}\n" +
@@ -3378,7 +3643,7 @@ public class LogMonitorController {
                 ".user-role{background:rgba(22,119,255,0.1);padding:4px 12px;border-radius:20px;font-size:12px;color:var(--primary-color);}\n" +
                 ".logout-btn{background:#f1f5f9;border:1px solid var(--border-color);color:var(--text-secondary);padding:8px 20px;border-radius:40px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;}\n" +
                 ".logout-btn:hover{background:#e8ecf1;transform:translateY(-1px);}\n" +
-                ".page-wrap{max-width:2000px;margin:0 auto;padding:32px;}\n" +
+                ".page-wrap{max-width:2100px;margin:0 auto;padding:32px;}\n" +
                 ".stats-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:20px;margin-bottom:32px;}\n" +
                 ".stat-card{background:var(--bg-card);border-radius:12px;padding:24px 20px;border:1px solid var(--border-color);box-shadow:var(--shadow-sm);transition:all 0.3s;}\n" +
                 ".stat-card:hover{transform:translateY(-2px);box-shadow:var(--shadow-hover);border-color:var(--primary-color);}\n" +
@@ -3432,7 +3697,7 @@ public class LogMonitorController {
                 "<div class=\"logo-icon\">\n" +
                 "<svg viewBox=\"0 0 24 24\"><path d=\"M3 3v18h18\"/><path d=\"M18.7 8l-5.1 5.2-2.8-2.7L7 14.3\"/></svg>\n" +
                 "</div>\n" +
-                "<div class=\"logo-text\">LTM WEB 监控管理系统</div>\n" +
+                "<div class=\"logo-text\">Texcell LTM 监控管理系统</div>\n" +
                 "<div class=\"logo-sub\">v3.0</div>\n" +
                 "</div>\n" +
                 "<div class=\"menu\">\n" +
@@ -3446,6 +3711,8 @@ public class LogMonitorController {
                 "<a href=\"/monitor/queue-management\">发送队列管理</a>\n" +
                 "<a href=\"/monitor/queue-monitor\">队列DR监控</a>\n" +
                 "<a href=\"/monitor/dr-auto-fix\">定时任务配置</a>\n" +
+                "<a href=\"/monitor/feature-management\">功能模块管理</a>\n" +
+                "<a href=\"/monitor/subtask-management\">子任务队列</a>\n" +
                 "</div>\n" +
                 "<div class=\"user-info\">\n" +
                 "<span class=\"user-name\" id=\"currentUsername\">加载中...</span>\n" +
@@ -3657,7 +3924,7 @@ public class LogMonitorController {
                 "*{margin:0;padding:0;box-sizing:border-box;}\n" +
                 "body{background:var(--bg-page);font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;min-height:100vh;}\n" +
                 ".navbar{background:var(--bg-card);box-shadow:var(--shadow-sm);border-bottom:1px solid var(--border-color);position:sticky;top:0;z-index:100;}\n" +
-                ".nav-container{max-width:2000px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:70px;}\n" +
+                ".nav-container{max-width:2100px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:70px;}\n" +
                 ".logo{display:flex;align-items:center;gap:12px;}\n" +
                 ".logo-icon{width:40px;height:40px;background:linear-gradient(135deg,var(--primary-color) 0%,var(--primary-hover) 100%);border-radius:12px;display:flex;align-items:center;justify-content:center;}\n" +
                 ".logo-icon svg{width:22px;height:22px;stroke:#fff;stroke-width:2;fill:none;}\n" +
@@ -3672,7 +3939,7 @@ public class LogMonitorController {
                 ".user-role{background:rgba(22,119,255,0.1);padding:4px 12px;border-radius:20px;font-size:12px;color:var(--primary-color);}\n" +
                 ".logout-btn{background:#f1f5f9;border:1px solid var(--border-color);color:var(--text-secondary);padding:8px 20px;border-radius:40px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;}\n" +
                 ".logout-btn:hover{background:#e8ecf1;transform:translateY(-1px);}\n" +
-                ".page-wrap{max-width:2000px;margin:0 auto;padding:32px;}\n" +
+                ".page-wrap{max-width:2100px;margin:0 auto;padding:32px;}\n" +
                 ".stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:20px;margin-bottom:32px;}\n" +
                 ".stat-card{background:var(--bg-card);border-radius:12px;padding:24px 20px;border:1px solid var(--border-color);box-shadow:var(--shadow-sm);transition:all 0.3s;display:flex;align-items:center;gap:16px;}\n" +
                 ".stat-card:hover{transform:translateY(-2px);box-shadow:var(--shadow-hover);border-color:var(--primary-color);}\n" +
@@ -3726,7 +3993,7 @@ public class LogMonitorController {
                 "<div class=\"logo-icon\">\n" +
                 "<svg viewBox=\"0 0 24 24\"><path d=\"M3 3v18h18\"/><path d=\"M18.7 8l-5.1 5.2-2.8-2.7L7 14.3\"/></svg>\n" +
                 "</div>\n" +
-                "<div class=\"logo-text\">LTM WEB 监控管理系统</div>\n" +
+                "<div class=\"logo-text\">Texcell LTM 监控管理系统</div>\n" +
                 "<div class=\"logo-sub\">v3.0</div>\n" +
                 "</div>\n" +
                 "<div class=\"menu\">\n" +
@@ -3740,6 +4007,8 @@ public class LogMonitorController {
                 "<a href=\"/monitor/queue-management\">发送队列管理</a>\n" +
                 "<a href=\"/monitor/queue-monitor\">队列DR监控</a>\n" +
                 "<a href=\"/monitor/dr-auto-fix\">定时任务配置</a>\n" +
+                "<a href=\"/monitor/feature-management\">功能模块管理</a>\n" +
+                "<a href=\"/monitor/subtask-management\">子任务队列</a>\n" +
                 "</div>\n" +
                 "<div class=\"user-info\">\n" +
                 "<span class=\"user-name\" id=\"currentUsername\">加载中...</span>\n" +
@@ -3935,7 +4204,7 @@ public class LogMonitorController {
                 "*{margin:0;padding:0;box-sizing:border-box;}\n" +
                 "body{background:var(--bg-page);font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;min-height:100vh;}\n" +
                 ".navbar{background:var(--bg-card);box-shadow:var(--shadow-sm);border-bottom:1px solid var(--border-color);position:sticky;top:0;z-index:100;}\n" +
-                ".nav-container{max-width:2000px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:70px;}\n" +
+                ".nav-container{max-width:2100px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:70px;}\n" +
                 ".logo{display:flex;align-items:center;gap:12px;}\n" +
                 ".logo-icon{width:40px;height:40px;background:linear-gradient(135deg,var(--primary-color) 0%,var(--primary-hover) 100%);border-radius:12px;display:flex;align-items:center;justify-content:center;}\n" +
                 ".logo-icon svg{width:22px;height:22px;stroke:#fff;stroke-width:2;fill:none;}\n" +
@@ -3950,7 +4219,7 @@ public class LogMonitorController {
                 ".user-role{background:rgba(22,119,255,0.1);padding:4px 12px;border-radius:20px;font-size:12px;color:var(--primary-color);}\n" +
                 ".logout-btn{background:#f1f5f9;border:1px solid var(--border-color);color:var(--text-secondary);padding:8px 20px;border-radius:40px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;}\n" +
                 ".logout-btn:hover{background:#e8ecf1;transform:translateY(-1px);}\n" +
-                ".page-wrap{max-width:2000px;margin:0 auto;padding:32px;}\n" +
+                ".page-wrap{max-width:2100px;margin:0 auto;padding:32px;}\n" +
                 ".stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:20px;margin-bottom:32px;}\n" +
                 ".stat-card{background:var(--bg-card);border-radius:12px;padding:24px 20px;border:1px solid var(--border-color);box-shadow:var(--shadow-sm);transition:all 0.3s;display:flex;align-items:center;gap:16px;}\n" +
                 ".stat-card:hover{transform:translateY(-2px);box-shadow:var(--shadow-hover);border-color:var(--primary-color);}\n" +
@@ -4031,7 +4300,7 @@ public class LogMonitorController {
                 "<div class=\"logo-icon\">\n" +
                 "<svg viewBox=\"0 0 24 24\"><path d=\"M3 3v18h18\"/><path d=\"M18.7 8l-5.1 5.2-2.8-2.7L7 14.3\"/></svg>\n" +
                 "</div>\n" +
-                "<div class=\"logo-text\">LTM WEB 监控管理系统</div>\n" +
+                "<div class=\"logo-text\">Texcell LTM 监控管理系统</div>\n" +
                 "<div class=\"logo-sub\">v3.0</div>\n" +
                 "</div>\n" +
                 "<div class=\"menu\">\n" +
@@ -4045,6 +4314,8 @@ public class LogMonitorController {
                 "<a href=\"/monitor/queue-management\">发送队列管理</a>\n" +
                 "<a href=\"/monitor/queue-monitor\">队列DR监控</a>\n" +
                 "<a href=\"/monitor/dr-auto-fix\">定时任务配置</a>\n" +
+                "<a href=\"/monitor/feature-management\">功能模块管理</a>\n" +
+                "<a href=\"/monitor/subtask-management\">子任务队列</a>\n" +
                 "</div>\n" +
                 "<div class=\"user-info\">\n" +
                 "<span class=\"user-name\" id=\"currentUsername\">加载中...</span>\n" +
@@ -4178,7 +4449,7 @@ public class LogMonitorController {
                 "*{margin:0;padding:0;box-sizing:border-box;}\n" +
                 "body{background:var(--bg-page);font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;min-height:100vh;}\n" +
                 ".navbar{background:var(--bg-card);box-shadow:var(--shadow-sm);border-bottom:1px solid var(--border-color);position:sticky;top:0;z-index:100;}\n" +
-                ".nav-container{max-width:2000px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:70px;}\n" +
+                ".nav-container{max-width:2100px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:70px;}\n" +
                 ".logo{display:flex;align-items:center;gap:12px;}\n" +
                 ".logo-icon{width:40px;height:40px;background:linear-gradient(135deg,var(--primary-color) 0%,var(--primary-hover) 100%);border-radius:12px;display:flex;align-items:center;justify-content:center;}\n" +
                 ".logo-icon svg{width:22px;height:22px;stroke:#fff;stroke-width:2;fill:none;}\n" +
@@ -4193,7 +4464,7 @@ public class LogMonitorController {
                 ".user-role{background:rgba(22,119,255,0.1);padding:4px 12px;border-radius:20px;font-size:12px;color:var(--primary-color);}\n" +
                 ".logout-btn{background:#f1f5f9;border:1px solid var(--border-color);color:var(--text-secondary);padding:8px 20px;border-radius:40px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;}\n" +
                 ".logout-btn:hover{background:#e8ecf1;transform:translateY(-1px);}\n" +
-                ".page-wrap{max-width:2000px;margin:0 auto;padding:32px;}\n" +
+                ".page-wrap{max-width:2100px;margin:0 auto;padding:32px;}\n" +
                 ".search-card{background:var(--bg-card);border-radius:12px;padding:24px;margin-bottom:32px;border:1px solid var(--border-color);box-shadow:var(--shadow-sm);}\n" +
                 ".search-row{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end;}\n" +
                 ".search-group{display:flex;flex-direction:column;gap:6px;}\n" +
@@ -4268,7 +4539,7 @@ public class LogMonitorController {
                 "<div class=\"logo-icon\">\n" +
                 "<svg viewBox=\"0 0 24 24\"><path d=\"M3 3v18h18\"/><path d=\"M18.7 8l-5.1 5.2-2.8-2.7L7 14.3\"/></svg>\n" +
                 "</div>\n" +
-                "<div class=\"logo-text\">LTM WEB 监控管理系统</div>\n" +
+                "<div class=\"logo-text\">Texcell LTM 监控管理系统</div>\n" +
                 "<div class=\"logo-sub\">v3.0</div>\n" +
                 "</div>\n" +
                 "<div class=\"menu\">\n" +
@@ -4282,6 +4553,8 @@ public class LogMonitorController {
                 "<a href=\"/monitor/queue-management\">发送队列管理</a>\n" +
                 "<a href=\"/monitor/queue-monitor\">队列DR监控</a>\n" +
                 "<a href=\"/monitor/dr-auto-fix\">定时任务配置</a>\n" +
+                "<a href=\"/monitor/feature-management\">功能模块管理</a>\n" +
+                "<a href=\"/monitor/subtask-management\">子任务队列</a>\n" +
                 "</div>\n" +
                 "<div class=\"user-info\">\n" +
                 "<span class=\"user-name\" id=\"currentUsername\">加载中...</span>\n" +
@@ -4653,7 +4926,7 @@ public class LogMonitorController {
                 "*{margin:0;padding:0;box-sizing:border-box;}\n" +
                 "body{background:var(--bg-page);font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;min-height:100vh;}\n" +
                 ".navbar{background:var(--bg-card);box-shadow:var(--shadow-sm);border-bottom:1px solid var(--border-color);position:sticky;top:0;z-index:100;}\n" +
-                ".nav-container{max-width:2000px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:70px;}\n" +
+                ".nav-container{max-width:2100px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:70px;}\n" +
                 ".logo{display:flex;align-items:center;gap:12px;}\n" +
                 ".logo-icon{width:40px;height:40px;background:linear-gradient(135deg,var(--primary-color) 0%,var(--primary-hover) 100%);border-radius:12px;display:flex;align-items:center;justify-content:center;}\n" +
                 ".logo-icon svg{width:22px;height:22px;stroke:#fff;stroke-width:2;fill:none;}\n" +
@@ -4668,7 +4941,7 @@ public class LogMonitorController {
                 ".user-role{background:rgba(22,119,255,0.1);padding:4px 12px;border-radius:20px;font-size:12px;color:var(--primary-color);}\n" +
                 ".logout-btn{background:#f1f5f9;border:1px solid var(--border-color);color:var(--text-secondary);padding:8px 20px;border-radius:40px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;}\n" +
                 ".logout-btn:hover{background:#e8ecf1;transform:translateY(-1px);}\n" +
-                ".page-wrap{max-width:2000px;margin:0 auto;padding:32px;}\n" +
+                ".page-wrap{max-width:2100px;margin:0 auto;padding:32px;}\n" +
                 ".section-title{font-size:18px;font-weight:700;color:var(--text-primary);margin-bottom:20px;display:flex;align-items:center;gap:8px;}\n" +
                 ".section-title::before{content:'';width:4px;height:20px;background:linear-gradient(135deg,var(--primary-color) 0%,var(--primary-hover) 100%);border-radius:4px;}\n" +
                 ".cards-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:24px;margin-bottom:32px;}\n" +
@@ -4759,7 +5032,7 @@ public class LogMonitorController {
                 "<div class=\"logo-icon\">\n" +
                 "<svg viewBox=\"0 0 24 24\"><path d=\"M3 3v18h18\"/><path d=\"M18.7 8l-5.1 5.2-2.8-2.7L7 14.3\"/></svg>\n" +
                 "</div>\n" +
-                "<div class=\"logo-text\">LTM WEB 监控管理系统</div>\n" +
+                "<div class=\"logo-text\">Texcell LTM 监控管理系统</div>\n" +
                 "<div class=\"logo-sub\">v3.0</div>\n" +
                 "</div>\n" +
                 "<div class=\"menu\">\n" +
@@ -4773,6 +5046,8 @@ public class LogMonitorController {
                 "<a href=\"/monitor/queue-management\">发送队列管理</a>\n" +
                 "<a href=\"/monitor/queue-monitor\">队列DR监控</a>\n" +
                 "<a href=\"/monitor/dr-auto-fix\">定时任务配置</a>\n" +
+                "<a href=\"/monitor/feature-management\">功能模块管理</a>\n" +
+                "<a href=\"/monitor/subtask-management\">子任务队列</a>\n" +
                 "</div>\n" +
                 "<div class=\"user-info\">\n" +
                 "<span class=\"user-name\" id=\"currentUsername\">加载中...</span>\n" +
@@ -5573,7 +5848,7 @@ public class LogMonitorController {
                 ".quick-btn:hover{border-color:var(--primary-color);color:var(--primary-color);transform:translateY(-1px);}\n" +
                 ".quick-btn.active{background:var(--primary-color);color:#fff;border-color:var(--primary-color);}\n" +
                 ".navbar{background:var(--bg-card);box-shadow:var(--shadow-sm);border-bottom:1px solid var(--border-color);position:sticky;top:0;z-index:100;}\n" +
-                ".nav-container{max-width:2000px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:70px;}\n" +
+                ".nav-container{max-width:2100px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:70px;}\n" +
                 ".logo{display:flex;align-items:center;gap:12px;}\n" +
                 ".logo-icon{width:40px;height:40px;background:linear-gradient(135deg,var(--primary-color) 0%,var(--primary-hover) 100%);border-radius:12px;display:flex;align-items:center;justify-content:center;}\n" +
                 ".logo-icon svg{width:22px;height:22px;stroke:#fff;stroke-width:2;fill:none;}\n" +
@@ -5588,7 +5863,7 @@ public class LogMonitorController {
                 ".user-role{background:rgba(22,119,255,0.1);padding:4px 12px;border-radius:20px;font-size:12px;color:var(--primary-color);}\n" +
                 ".logout-btn{background:#f1f5f9;border:1px solid var(--border-color);color:var(--text-secondary);padding:8px 20px;border-radius:40px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;}\n" +
                 ".logout-btn:hover{background:#e8ecf1;transform:translateY(-1px);}\n" +
-                ".page-wrap{max-width:2000px;margin:0 auto;padding:32px;}\n" +
+                ".page-wrap{max-width:2100px;margin:0 auto;padding:32px;}\n" +
                 ".rank-card{background:var(--bg-card);border-radius:12px;padding:24px;margin-bottom:32px;border:1px solid var(--border-color);box-shadow:var(--shadow-sm);transition:all 0.3s;}\n" +
                 ".rank-card:hover{box-shadow:var(--shadow-hover);}\n" +
                 ".rank-title{font-size:16px;font-weight:600;color:var(--text-primary);margin-bottom:20px;display:flex;align-items:center;gap:8px;}\n" +
@@ -5684,7 +5959,7 @@ public class LogMonitorController {
                 "<div class=\"logo-icon\">\n" +
                 "<svg viewBox=\"0 0 24 24\"><path d=\"M3 3v18h18\"/><path d=\"M18.7 8l-5.1 5.2-2.8-2.7L7 14.3\"/></svg>\n" +
                 "</div>\n" +
-                "<div class=\"logo-text\">LTM WEB 监控管理系统</div>\n" +
+                "<div class=\"logo-text\">Texcell LTM 监控管理系统</div>\n" +
                 "<div class=\"logo-sub\">v3.0</div>\n" +
                 "</div>\n" +
                 "<div class=\"menu\">\n" +
@@ -5698,6 +5973,8 @@ public class LogMonitorController {
                 "<a href=\"/monitor/queue-management\" class=\"active\">发送队列管理</a>\n" +
                 "<a href=\"/monitor/queue-monitor\">队列DR监控</a>\n" +
                 "<a href=\"/monitor/dr-auto-fix\">定时任务配置</a>\n" +
+                "<a href=\"/monitor/feature-management\">功能模块管理</a>\n" +
+                "<a href=\"/monitor/subtask-management\">子任务队列</a>\n" +
                 "</div>\n" +
                 "<div class=\"user-info\">\n" +
                 "<span class=\"user-name\" id=\"currentUsername\">加载中...</span>\n" +
@@ -6018,7 +6295,7 @@ public class LogMonitorController {
                 "*{margin:0;padding:0;box-sizing:border-box;}\n" +
                 "body{background:var(--bg-page);font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;}\n" +
                 ".navbar{background:var(--bg-card);box-shadow:var(--shadow-sm);border-bottom:1px solid var(--border-color);position:sticky;top:0;z-index:100;}\n" +
-                ".nav-container{max-width:2000px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:70px;}\n" +
+                ".nav-container{max-width:2100px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:70px;}\n" +
                 ".logo{display:flex;align-items:center;gap:12px;}\n" +
                 ".logo-icon{width:40px;height:40px;background:linear-gradient(135deg,var(--primary-color) 0%,var(--primary-hover) 100%);border-radius:12px;display:flex;align-items:center;justify-content:center;}\n" +
                 ".logo-icon svg{width:22px;height:22px;stroke:#fff;stroke-width:2;fill:none;}\n" +
@@ -6033,7 +6310,7 @@ public class LogMonitorController {
                 ".user-role{background:rgba(22,119,255,0.1);padding:4px 12px;border-radius:20px;font-size:12px;color:var(--primary-color);}\n" +
                 ".logout-btn{background:#f1f5f9;border:1px solid var(--border-color);color:var(--text-secondary);padding:8px 20px;border-radius:40px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;}\n" +
                 ".logout-btn:hover{background:#e8ecf1;transform:translateY(-1px);}\n" +
-                ".page-wrap{max-width:2000px;margin:0 auto;padding:32px;}\n" +
+                ".page-wrap{max-width:2100px;margin:0 auto;padding:32px;}\n" +
                 ".page-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:28px;flex-wrap:wrap;gap:16px;}\n" +
                 ".page-title{font-size:22px;font-weight:700;color:var(--text-primary);display:flex;align-items:center;gap:12px;}\n" +
                 ".page-title svg{width:24px;height:24px;stroke:var(--primary-color);stroke-width:2;fill:none;}\n" +
@@ -6142,7 +6419,7 @@ public class LogMonitorController {
                 "<div class=\"logo-icon\">\n" +
                 "<svg viewBox=\"0 0 24 24\"><path d=\"M3 3v18h18\"/><path d=\"M18.7 8l-5.1 5.2-2.8-2.7L7 14.3\"/></svg>\n" +
                 "</div>\n" +
-                "<div class=\"logo-text\">LTM WEB 监控管理系统</div>\n" +
+                "<div class=\"logo-text\">Texcell LTM 监控管理系统</div>\n" +
                 "<div class=\"logo-sub\">v3.0</div>\n" +
                 "</div>\n" +
                 "<div class=\"menu\">\n" +
@@ -6156,6 +6433,8 @@ public class LogMonitorController {
                 "<a href=\"/monitor/queue-management\">发送队列管理</a>\n" +
                 "<a href=\"/monitor/queue-monitor\" class=\"active\">队列DR监控</a>\n" +
                 "<a href=\"/monitor/dr-auto-fix\">定时任务配置</a>\n" +
+                "<a href=\"/monitor/feature-management\">功能模块管理</a>\n" +
+                "<a href=\"/monitor/subtask-management\">子任务队列</a>\n" +
                 "</div>\n" +
                 "<div class=\"user-info\">\n" +
                 "<span class=\"user-name\" id=\"currentUsername\">加载中...</span>\n" +
@@ -6809,7 +7088,7 @@ public class LogMonitorController {
                 "*{margin:0;padding:0;box-sizing:border-box;}\n" +
                 "body{background:var(--bg-page);font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;}\n" +
                 ".navbar{background:var(--bg-card);box-shadow:var(--shadow-sm);border-bottom:1px solid var(--border-color);position:sticky;top:0;z-index:100;}\n" +
-                ".nav-container{max-width:2000px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:70px;}\n" +
+                ".nav-container{max-width:2100px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:70px;}\n" +
                 ".logo{display:flex;align-items:center;gap:12px;}\n" +
                 ".logo-icon{width:40px;height:40px;background:linear-gradient(135deg,var(--primary-color) 0%,var(--primary-hover) 100%);border-radius:12px;display:flex;align-items:center;justify-content:center;}\n" +
                 ".logo-icon svg{width:22px;height:22px;stroke:#fff;stroke-width:2;fill:none;}\n" +
@@ -6824,7 +7103,7 @@ public class LogMonitorController {
                 ".user-role{background:rgba(22,119,255,0.1);padding:4px 12px;border-radius:20px;font-size:12px;color:var(--primary-color);}\n" +
                 ".logout-btn{background:#f1f5f9;border:1px solid var(--border-color);color:var(--text-secondary);padding:8px 20px;border-radius:40px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;}\n" +
                 ".logout-btn:hover{background:#e8ecf1;transform:translateY(-1px);}\n" +
-                ".page-wrap{max-width:2000px;margin:0 auto;padding:32px;}\n" +
+                ".page-wrap{max-width:2100px;margin:0 auto;padding:32px;}\n" +
                 ".page-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:28px;flex-wrap:wrap;gap:16px;}\n" +
                 ".page-title{font-size:22px;font-weight:700;color:var(--text-primary);display:flex;align-items:center;gap:12px;}\n" +
                 ".page-title svg{width:24px;height:24px;stroke:var(--primary-color);stroke-width:2;fill:none;}\n" +
@@ -6904,7 +7183,7 @@ public class LogMonitorController {
                 "<div class=\"logo-icon\">\n" +
                 "<svg viewBox=\"0 0 24 24\"><path d=\"M3 3v18h18\"/><path d=\"M18.7 8l-5.1 5.2-2.8-2.7L7 14.3\"/></svg>\n" +
                 "</div>\n" +
-                "<div class=\"logo-text\">LTM WEB 监控管理系统</div>\n" +
+                "<div class=\"logo-text\">Texcell LTM 监控管理系统</div>\n" +
                 "<div class=\"logo-sub\">v3.0</div>\n" +
                 "</div>\n" +
                 "<div class=\"menu\">\n" +
@@ -6918,6 +7197,8 @@ public class LogMonitorController {
                 "<a href=\"/monitor/queue-management\">发送队列管理</a>\n" +
                 "<a href=\"/monitor/queue-monitor\">队列DR监控</a>\n" +
                 "<a href=\"/monitor/dr-auto-fix\" class=\"active\">定时任务配置</a>\n" +
+                "<a href=\"/monitor/feature-management\">功能模块管理</a>\n" +
+                "<a href=\"/monitor/subtask-management\">子任务队列</a>\n" +
                 "</div>\n" +
                 "<div class=\"user-info\">\n" +
                 "<span class=\"user-name\" id=\"currentUsername\">加载中...</span>\n" +
@@ -7216,6 +7497,676 @@ public class LogMonitorController {
                 "}\n" +
                 "\n" +
                 "loadConfigs();\n" +
+                "</script>\n" +
+                "</body>\n" +
+                "</html>";
+    }
+
+    private String generateFeatureManagementHtml() {
+        return "<!DOCTYPE html>\n" +
+                "<html lang=\"zh-CN\">\n" +
+                "<head>\n" +
+                "<meta charset=\"UTF-8\">\n" +
+                "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, user-scalable=no\">\n" +
+                "<title>Texcell LTM WEB 客户端功能模块管理</title>\n" +
+                "<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%231677ff'/%3E%3Ctext x='50' y='72' font-size='60' font-weight='bold' text-anchor='middle' fill='white' font-family='Arial'%3ET%3C/text%3E%3C/svg%3E\">\n" +
+                "<link href=\"https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap\" rel=\"stylesheet\">\n" +
+                "<style>\n" +
+                ":root {\n" +
+                "  --primary-color:#1677ff;\n" +
+                "  --primary-hover:#3c8dff;\n" +
+                "  --text-primary:#1e293b;\n" +
+                "  --text-secondary:#475569;\n" +
+                "  --text-muted:#8a97a8;\n" +
+                "  --input-border:#d9e2ec;\n" +
+                "  --bg-page:#f5f7fa;\n" +
+                "  --bg-card:#ffffff;\n" +
+                "  --border-color:#e8ecf1;\n" +
+                "  --shadow-sm:0 1px 3px rgba(0,0,0,0.06);\n" +
+                "  --shadow-hover:0 4px 12px rgba(22,119,255,0.1);\n" +
+                "  --success-color:#52c41a;\n" +
+                "  --danger-color:#ff4d4f;\n" +
+                "  --warn-color:#faad14;\n" +
+                "}\n" +
+                "*{margin:0;padding:0;box-sizing:border-box;}\n" +
+                "body{background:var(--bg-page);font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;}\n" +
+                ".navbar{background:var(--bg-card);box-shadow:var(--shadow-sm);border-bottom:1px solid var(--border-color);position:sticky;top:0;z-index:100;}\n" +
+                ".nav-container{max-width:2100px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:70px;}\n" +
+                ".logo{display:flex;align-items:center;gap:12px;}\n" +
+                ".logo-icon{width:40px;height:40px;background:linear-gradient(135deg,var(--primary-color) 0%,var(--primary-hover) 100%);border-radius:12px;display:flex;align-items:center;justify-content:center;}\n" +
+                ".logo-icon svg{width:22px;height:22px;stroke:#fff;stroke-width:2;fill:none;}\n" +
+                ".logo-text{font-size:18px;font-weight:700;color:var(--text-primary);letter-spacing:1px;}\n" +
+                ".logo-sub{font-size:11px;color:var(--text-muted);margin-left:8px;}\n" +
+                ".menu{display:flex;gap:12px;}\n" +
+                ".menu a{color:var(--text-secondary);text-decoration:none;padding:8px 20px;border-radius:40px;transition:all 0.3s;font-weight:500;font-size:14px;}\n" +
+                ".menu a:hover{background:#f1f5f9;color:var(--text-primary);}\n" +
+                ".menu a.active{background:#e8f0fe;color:var(--primary-color);}\n" +
+                ".user-info{display:flex;align-items:center;gap:20px;}\n" +
+                ".user-name{color:var(--text-secondary);font-size:14px;}\n" +
+                ".user-role{background:rgba(22,119,255,0.1);padding:4px 12px;border-radius:20px;font-size:12px;color:var(--primary-color);}\n" +
+                ".logout-btn{background:#f1f5f9;border:1px solid var(--border-color);color:var(--text-secondary);padding:8px 20px;border-radius:40px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;}\n" +
+                ".logout-btn:hover{background:#e8ecf1;transform:translateY(-1px);}\n" +
+                ".page-wrap{max-width:2100px;margin:0 auto;padding:32px;}\n" +
+                ".page-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:28px;flex-wrap:wrap;gap:16px;}\n" +
+                ".page-title{font-size:22px;font-weight:700;color:var(--text-primary);display:flex;align-items:center;gap:12px;}\n" +
+                ".page-title svg{width:24px;height:24px;stroke:var(--primary-color);stroke-width:2;fill:none;}\n" +
+                ".search-card{background:var(--bg-card);border-radius:12px;padding:24px;margin-bottom:32px;border:1px solid var(--border-color);box-shadow:var(--shadow-sm);}\n" +
+                ".search-row{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end;}\n" +
+                ".search-group{display:flex;flex-direction:column;gap:6px;}\n" +
+                ".search-group label{font-size:12px;color:var(--text-secondary);font-weight:500;display:flex;align-items:center;gap:6px;}\n" +
+                ".search-group label svg{width:14px;height:14px;stroke:var(--text-muted);stroke-width:2;fill:none;}\n" +
+                ".search-group input,.search-group select{padding:10px 12px;border:1px solid var(--input-border);border-radius:10px;font-size:13px;min-width:170px;background:var(--bg-card);color:var(--text-primary);font-family:inherit;}\n" +
+                ".search-group input:focus,.search-group select:focus{outline:none;border-color:var(--primary-color);box-shadow:0 0 0 3px rgba(22,119,255,0.12);}\n" +
+                ".search-actions{display:flex;gap:10px;margin-left:auto;align-items:center;flex-wrap:wrap;}\n" +
+                ".search-btn{background:var(--primary-color);color:white;border:none;padding:10px 22px;border-radius:10px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;display:inline-flex;align-items:center;gap:6px;}\n" +
+                ".search-btn:hover{background:var(--primary-hover);box-shadow:0 8px 20px -6px rgba(22,119,255,0.45);}\n" +
+                ".search-btn svg{width:15px;height:15px;stroke:currentColor;stroke-width:2;fill:none;}\n" +
+                ".add-btn{background:var(--success-color);color:white;border:none;padding:10px 22px;border-radius:10px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;display:inline-flex;align-items:center;gap:6px;}\n" +
+                ".add-btn:hover{background:#389e0d;box-shadow:0 8px 20px -6px rgba(82,196,26,0.45);}\n" +
+                ".add-btn svg{width:15px;height:15px;stroke:currentColor;stroke-width:2;fill:none;}\n" +
+                ".log-card{background:var(--bg-card);border-radius:12px;overflow:hidden;border:1px solid var(--border-color);box-shadow:var(--shadow-sm);}\n" +
+                ".table-wrapper{overflow-x:auto;}\n" +
+                ".log-table{width:100%;border-collapse:collapse;min-width:900px;}\n" +
+                ".log-table th{background:#f8fafc;padding:14px 16px;text-align:left;font-size:13px;font-weight:600;color:var(--text-secondary);border-bottom:1px solid var(--border-color);white-space:nowrap;}\n" +
+                ".log-table td{padding:14px 16px;font-size:13px;color:var(--text-primary);border-bottom:1px solid var(--border-color);vertical-align:middle;}\n" +
+                ".log-table tr:hover td{background:#f8fafc;}\n" +
+                ".status-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:500;}\n" +
+                ".status-dot{width:6px;height:6px;border-radius:50%;background:currentColor;}\n" +
+                ".status-enabled{background:rgba(82,196,26,0.1);color:var(--success-color);}\n" +
+                ".status-disabled{background:rgba(255,77,79,0.1);color:var(--danger-color);}\n" +
+                ".action-btn{padding:6px 14px;border-radius:40px;cursor:pointer;font-size:12px;transition:all 0.3s;border:none;font-weight:500;display:inline-flex;align-items:center;gap:4px;}\n" +
+                ".action-btn svg{width:13px;height:13px;stroke:currentColor;stroke-width:2;fill:none;}\n" +
+                ".action-btn.edit-btn{background:#e8f0fe;color:var(--primary-color);}\n" +
+                ".action-btn.edit-btn:hover{background:var(--primary-color);color:white;transform:translateY(-1px);}\n" +
+                ".action-btn.auth-btn{background:rgba(250,173,20,0.15);color:var(--warn-color);margin-left:6px;}\n" +
+                ".action-btn.auth-btn:hover{background:var(--warn-color);color:white;transform:translateY(-1px);}\n" +
+                ".action-btn.toggle-btn{background:rgba(82,196,26,0.1);color:var(--success-color);margin-left:6px;}\n" +
+                ".action-btn.toggle-btn:hover{background:var(--success-color);color:white;transform:translateY(-1px);}\n" +
+                ".action-btn.delete-btn{background:rgba(255,77,79,0.1);color:var(--danger-color);margin-left:6px;}\n" +
+                ".action-btn.delete-btn:hover{background:var(--danger-color);color:white;transform:translateY(-1px);}\n" +
+                ".empty{text-align:center;padding:48px;color:var(--text-muted);}\n" +
+                ".footer{text-align:center;padding:32px 0;color:var(--text-muted);font-size:12px;border-top:1px solid var(--border-color);margin-top:32px;}\n" +
+                ".modal{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(15,32,64,0.45);z-index:10000;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);}\n" +
+                ".modal-content{background:var(--bg-card);border-radius:16px;width:600px;max-width:90%;max-height:90vh;overflow-y:auto;padding:28px;box-shadow:0 24px 60px -12px rgba(15,45,105,0.25);border:1px solid var(--border-color);}\n" +
+                ".modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;padding-bottom:16px;border-bottom:1px solid var(--border-color);}\n" +
+                ".modal-header h3{color:var(--text-primary);margin:0;font-size:17px;font-weight:600;display:flex;align-items:center;gap:8px;}\n" +
+                ".modal-header h3 svg{width:18px;height:18px;stroke:var(--primary-color);stroke-width:2;fill:none;}\n" +
+                ".modal-close{background:none;border:none;font-size:28px;cursor:pointer;color:var(--text-muted);line-height:1;}\n" +
+                ".modal-close:hover{color:var(--text-primary);}\n" +
+                ".modal-body{color:var(--text-secondary);font-size:14px;}\n" +
+                ".modal-buttons{display:flex;gap:12px;justify-content:flex-end;margin-top:24px;padding-top:16px;border-top:1px solid var(--border-color);}\n" +
+                ".modal-buttons .confirm-btn{background:var(--primary-color);color:white;border:none;padding:10px 26px;border-radius:10px;cursor:pointer;font-weight:500;font-size:14px;}\n" +
+                ".modal-buttons .confirm-btn:hover{background:var(--primary-hover);}\n" +
+                ".modal-buttons .cancel-btn{background:#f1f5f9;border:1px solid var(--border-color);padding:10px 26px;border-radius:10px;cursor:pointer;color:var(--text-secondary);font-weight:500;font-size:14px;}\n" +
+                ".modal-buttons .cancel-btn:hover{background:#e8ecf1;}\n" +
+                ".form-group{margin-bottom:18px;}\n" +
+                ".form-group label{display:block;font-size:13px;font-weight:500;color:var(--text-secondary);margin-bottom:7px;}\n" +
+                ".form-group label .required{color:var(--danger-color);}\n" +
+                ".form-group input,.form-group select,.form-group textarea{width:100%;padding:11px 14px;border:1px solid var(--input-border);border-radius:10px;font-size:14px;background:var(--bg-card);color:var(--text-primary);font-family:inherit;}\n" +
+                ".form-group input:focus,.form-group select:focus,.form-group textarea:focus{outline:none;border-color:var(--primary-color);box-shadow:0 0 0 3px rgba(22,119,255,0.12);}\n" +
+                ".form-group input[readonly]{background:#f1f5f9;color:var(--text-muted);cursor:not-allowed;}\n" +
+                ".form-group .help-text{font-size:11px;color:var(--text-muted);margin-top:6px;}\n" +
+                ".form-row{display:grid;grid-template-columns:1fr 1fr;gap:16px;}\n" +
+                "@media(max-width:768px){.form-row{grid-template-columns:1fr;}.search-actions{margin-left:0;flex-wrap:wrap;}.nav-container{padding:0 20px;}.menu a{padding:6px 14px;font-size:12px;}.page-wrap{padding:20px;}}\n" +
+                "</style>\n" +
+                "</head>\n" +
+                "<body>\n" +
+                "<div class=\"navbar\">\n" +
+                "<div class=\"nav-container\">\n" +
+                "<div class=\"logo\">\n" +
+                "<div class=\"logo-icon\"><svg viewBox=\"0 0 24 24\"><path d=\"M3 3v18h18\"/><path d=\"M18.7 8l-5.1 5.2-2.8-2.7L7 14.3\"/></svg></div>\n" +
+                "<div class=\"logo-text\">Texcell LTM 监控管理系统</div>\n" +
+                "<div class=\"logo-sub\">v3.0</div>\n" +
+                "</div>\n" +
+                "<div class=\"menu\">\n" +
+                "<a href=\"/monitor/index\">首页</a>\n" +
+                "<a href=\"/monitor/dashboard\">服务监控</a>\n" +
+                "<a href=\"/monitor/login-audit\">登录审计</a>\n" +
+                "<a href=\"/monitor/number-files\">号码备份</a>\n" +
+                "<a href=\"/monitor/customer-management\">API客户管理</a>\n" +
+                "<a href=\"/monitor/user-management\">登录账户管理</a>\n" +
+                "<a href=\"/monitor/ops-management\">运维管理</a>\n" +
+                "<a href=\"/monitor/queue-management\">发送队列管理</a>\n" +
+                "<a href=\"/monitor/queue-monitor\">队列DR监控</a>\n" +
+                "<a href=\"/monitor/dr-auto-fix\">定时任务配置</a>\n" +
+                "<a href=\"/monitor/feature-management\" class=\"active\">功能模块管理</a>\n" +
+                "<a href=\"/monitor/subtask-management\">子任务队列</a>\n" +
+                "</div>\n" +
+                "<div class=\"user-info\">\n" +
+                "<span class=\"user-name\" id=\"currentUsername\">加载中...</span>\n" +
+                "<span class=\"user-role\" id=\"currentUserRole\">加载中...</span>\n" +
+                "<button class=\"logout-btn\" onclick=\"logout()\">退出</button>\n" +
+                "</div>\n" +
+                "</div>\n" +
+                "</div>\n" +
+                "<div class=\"page-wrap\">\n" +
+                "<div class=\"page-header\">\n" +
+                "<div class=\"page-title\">\n" +
+                "<svg viewBox=\"0 0 24 24\"><rect x=\"3\" y=\"3\" width=\"7\" height=\"7\"/><rect x=\"14\" y=\"3\" width=\"7\" height=\"7\"/><rect x=\"14\" y=\"14\" width=\"7\" height=\"7\"/><rect x=\"3\" y=\"14\" width=\"7\" height=\"7\"/></svg>\n" +
+                "客户端功能模块管理\n" +
+                "</div>\n" +
+                "</div>\n" +
+                "<div class=\"search-card\">\n" +
+                "<div class=\"search-row\">\n" +
+                "<div class=\"search-actions\" style=\"margin-left:0;\">\n" +
+                "<button class=\"add-btn\" onclick=\"openModuleModal()\"><svg viewBox=\"0 0 24 24\"><line x1=\"12\" y1=\"5\" x2=\"12\" y2=\"19\"/><line x1=\"5\" y1=\"12\" x2=\"19\" y2=\"12\"/></svg>新增模块</button>\n" +
+                "<button class=\"search-btn\" onclick=\"loadModules()\"><svg viewBox=\"0 0 24 24\"><polyline points=\"23 4 23 10 17 10\"/><polyline points=\"1 20 1 14 7 14\"/><path d=\"M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15\"/></svg>刷新</button>\n" +
+                "</div>\n" +
+                "</div>\n" +
+                "</div>\n" +
+                "<div class=\"log-card\">\n" +
+                "<div class=\"table-wrapper\">\n" +
+                "<table class=\"log-table\">\n" +
+                "<thead>\n" +
+                "<tr>\n" +
+                "<th>ID</th>\n" +
+                "<th>模块编码</th>\n" +
+                "<th>模块名称</th>\n" +
+                "<th>类型</th>\n" +
+                "<th>全局开关</th>\n" +
+                "<th>排序</th>\n" +
+                "<th>备注</th>\n" +
+                "<th>操作</th>\n" +
+                "</tr>\n" +
+                "</thead>\n" +
+                "<tbody id=\"moduleBody\"><tr><td colspan=\"8\" class=\"empty\">加载中...</td></tr></tbody>\n" +
+                "</table>\n" +
+                "</div>\n" +
+                "</div>\n" +
+                "<div class=\"footer\">客户端功能模块管理 | 新增后需为客户授权 | 支持全局启用/禁用</div>\n" +
+                "</div>\n" +
+                "<!-- 新增/编辑模块弹窗 -->\n" +
+                "<div id=\"moduleModal\" class=\"modal\" style=\"display:none;\">\n" +
+                "<div class=\"modal-content\">\n" +
+                "<div class=\"modal-header\">\n" +
+                "<h3 id=\"moduleModalTitle\"><svg viewBox=\"0 0 24 24\"><line x1=\"12\" y1=\"5\" x2=\"12\" y2=\"19\"/><line x1=\"5\" y1=\"12\" x2=\"19\" y2=\"12\"/></svg>新增模块</h3>\n" +
+                "<button class=\"modal-close\" onclick=\"closeModuleModal()\">&times;</button>\n" +
+                "</div>\n" +
+                "<div class=\"modal-body\">\n" +
+                "<input type=\"hidden\" id=\"m_id\" value=\"\">\n" +
+                "<div class=\"form-group\">\n" +
+                "<label>模块编码 <span class=\"required\">*</span></label>\n" +
+                "<input type=\"text\" id=\"m_code\" placeholder=\"如 batch_send_content，唯一不可重复\">\n" +
+                "<div class=\"help-text\">前端用它控制 Tab 显示；一旦保存不可修改</div>\n" +
+                "</div>\n" +
+                "<div class=\"form-group\">\n" +
+                "<label>模块名称 <span class=\"required\">*</span></label>\n" +
+                "<input type=\"text\" id=\"m_name\" placeholder=\"如 批量发送\">\n" +
+                "</div>\n" +
+                "<div class=\"form-row\">\n" +
+                "<div class=\"form-group\">\n" +
+                "<label>类型</label>\n" +
+                "<select id=\"m_type\">\n" +
+                "<option value=\"TAB\">TAB - 页签</option>\n" +
+                "<option value=\"PAGE\">PAGE - 独立页</option>\n" +
+                "</select>\n" +
+                "</div>\n" +
+                "<div class=\"form-group\">\n" +
+                "<label>排序</label>\n" +
+                "<input type=\"number\" id=\"m_sort\" value=\"0\" min=\"0\" max=\"9999\">\n" +
+                "<div class=\"help-text\">数字越小越靠前</div>\n" +
+                "</div>\n" +
+                "</div>\n" +
+                "<div class=\"form-group\">\n" +
+                "<label>备注</label>\n" +
+                "<textarea id=\"m_remark\" rows=\"2\" placeholder=\"备注说明\"></textarea>\n" +
+                "</div>\n" +
+                "</div>\n" +
+                "<div class=\"modal-buttons\">\n" +
+                "<button class=\"confirm-btn\" onclick=\"saveModule()\">保存</button>\n" +
+                "<button class=\"cancel-btn\" onclick=\"closeModuleModal()\">取消</button>\n" +
+                "</div>\n" +
+                "</div>\n" +
+                "</div>\n" +
+                "<!-- 授权管理弹窗 -->\n" +
+                "<div id=\"authModal\" class=\"modal\" style=\"display:none;\">\n" +
+                "<div class=\"modal-content\" style=\"width:720px;\">\n" +
+                "<div class=\"modal-header\">\n" +
+                "<h3 id=\"authModalTitle\"><svg viewBox=\"0 0 24 24\"><path d=\"M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2\"/><circle cx=\"9\" cy=\"7\" r=\"4\"/><path d=\"M23 21v-2a4 4 0 0 0-3-3.87\"/><path d=\"M16 3.13a4 4 0 0 1 0 7.75\"/></svg>客户授权管理</h3>\n" +
+                "<button class=\"modal-close\" onclick=\"closeAuthModal()\">&times;</button>\n" +
+                "</div>\n" +
+                "<div class=\"modal-body\">\n" +
+                "<input type=\"hidden\" id=\"auth_module_code\" value=\"\">\n" +
+                "<div style=\"display:flex;gap:10px;margin-bottom:16px;\">\n" +
+                "<input type=\"text\" id=\"auth_sub_account\" placeholder=\"输入客户账号，如 CTU841E\" style=\"flex:1;padding:11px 14px;border:1px solid var(--input-border);border-radius:10px;font-size:14px;\">\n" +
+                "<button class=\"search-btn\" onclick=\"addAuth()\">授权</button>\n" +
+                "</div>\n" +
+                "<div id=\"authListWrap\" style=\"border:1px solid var(--border-color);border-radius:10px;max-height:400px;overflow-y:auto;\">\n" +
+                "<table class=\"log-table\" style=\"min-width:auto;\">\n" +
+                "<thead><tr><th>客户账号</th><th>状态</th><th>操作</th></tr></thead>\n" +
+                "<tbody id=\"authBody\"><tr><td colspan=\"3\" class=\"empty\">加载中...</td></tr></tbody>\n" +
+                "</table>\n" +
+                "</div>\n" +
+                "</div>\n" +
+                "<div class=\"modal-buttons\">\n" +
+                "<button class=\"cancel-btn\" onclick=\"closeAuthModal()\">关闭</button>\n" +
+                "</div>\n" +
+                "</div>\n" +
+                "</div>\n" +
+                "<script>\n" +
+                "var SECRET = 'dn17ORUwf36Znl';\n" +
+                "\n" +
+                "function logout(){fetch('/monitor/logout').then(function(){location.href='/monitor/login';});}\n" +
+                "function getCurrentUserInfo(){fetch('/api/monitor/current-user?secret='+SECRET).then(function(r){return r.json();}).then(function(d){if(d.code===200){document.getElementById('currentUsername').innerText=d.data.username;document.getElementById('currentUserRole').innerText=d.data.role==='ADMIN'?'管理员':'NOC';}});}\n" +
+                "getCurrentUserInfo();\n" +
+                "\n" +
+                "function escapeHtml(s){if(!s)return'';return String(s).replace(/[&<>]/g,function(m){if(m==='&')return'&amp;';if(m==='<')return'&lt;';if(m==='>')return'&gt;';return m;});}\n" +
+                "\n" +
+                "function loadModules(){\n" +
+                "    fetch('/api/monitor/feature/modules?secret='+SECRET)\n" +
+                "        .then(function(r){return r.json();})\n" +
+                "        .then(function(d){\n" +
+                "            var tbody = document.getElementById('moduleBody');\n" +
+                "            if(d.code!==200){tbody.innerHTML='<tr><td colspan=\"8\" class=\"empty\">加载失败:'+(d.msg||'错误')+'</td></tr>';return;}\n" +
+                "            var list = d.data || [];\n" +
+                "            if(!list.length){tbody.innerHTML='<tr><td colspan=\"8\" class=\"empty\">暂无模块</td></tr>';return;}\n" +
+                "            var html = '';\n" +
+                "            for(var i=0;i<list.length;i++){\n" +
+                "                var m = list[i];\n" +
+                "                var st = m.enabled === 1 ? '<span class=\"status-badge status-enabled\"><span class=\"status-dot\"></span>启用</span>' : '<span class=\"status-badge status-disabled\"><span class=\"status-dot\"></span>禁用</span>';\n" +
+                "                html += '<tr>';\n" +
+                "                html += '<td>'+m.id+'</td>';\n" +
+                "                html += '<td><code style=\"background:#f1f5f9;padding:3px 10px;border-radius:6px;font-size:12px;\">'+escapeHtml(m.moduleCode)+'</code></td>';\n" +
+                "                html += '<td><strong>'+escapeHtml(m.moduleName)+'</strong></td>';\n" +
+                "                html += '<td>'+escapeHtml(m.moduleType||'TAB')+'</td>';\n" +
+                "                html += '<td>'+st+'</td>';\n" +
+                "                html += '<td>'+(m.sortOrder||0)+'</td>';\n" +
+                "                html += '<td>'+(escapeHtml(m.remark)||'-')+'</td>';\n" +
+                "                html += '<td style=\"white-space:nowrap;\">';\n" +
+                "                html += '<button class=\"action-btn edit-btn\" onclick=\"editModule('+m.id+')\">编辑</button>';\n" +
+                "                html += '<button class=\"action-btn toggle-btn\" onclick=\"toggleModule('+m.id+','+(m.enabled===1?0:1)+')\">'+(m.enabled===1?'禁用':'启用')+'</button>';\n" +
+                "                html += '<button class=\"action-btn auth-btn\" onclick=\"openAuthModal(\\''+escapeHtml(m.moduleCode)+'\\',\\''+escapeHtml(m.moduleName)+'\\')\">授权</button>';\n" +
+                "                html += '<button class=\"action-btn delete-btn\" onclick=\"deleteModule('+m.id+')\">删除</button>';\n" +
+                "                html += '</td></tr>';\n" +
+                "            }\n" +
+                "            tbody.innerHTML = html;\n" +
+                "        }).catch(function(){document.getElementById('moduleBody').innerHTML='<tr><td colspan=\"8\" class=\"empty\">网络错误</td></tr>';});\n" +
+                "}\n" +
+                "\n" +
+                "var moduleCache = {};\n" +
+                "function editModule(id){\n" +
+                "    fetch('/api/monitor/feature/modules?secret='+SECRET).then(function(r){return r.json();}).then(function(d){\n" +
+                "        if(d.code!==200) return;\n" +
+                "        var m = (d.data||[]).filter(function(x){return x.id===id;})[0];\n" +
+                "        if(!m) return;\n" +
+                "        document.getElementById('moduleModalTitle').innerText = '编辑模块 - ' + m.moduleCode;\n" +
+                "        document.getElementById('m_id').value = m.id;\n" +
+                "        document.getElementById('m_code').value = m.moduleCode;\n" +
+                "        document.getElementById('m_code').readOnly = true;\n" +
+                "        document.getElementById('m_name').value = m.moduleName;\n" +
+                "        document.getElementById('m_type').value = m.moduleType || 'TAB';\n" +
+                "        document.getElementById('m_sort').value = m.sortOrder || 0;\n" +
+                "        document.getElementById('m_remark').value = m.remark || '';\n" +
+                "        document.getElementById('moduleModal').style.display = 'flex';\n" +
+                "    });\n" +
+                "}\n" +
+                "\n" +
+                "function openModuleModal(){\n" +
+                "    document.getElementById('moduleModalTitle').innerText = '新增模块';\n" +
+                "    document.getElementById('m_id').value = '';\n" +
+                "    document.getElementById('m_code').value = '';\n" +
+                "    document.getElementById('m_code').readOnly = false;\n" +
+                "    document.getElementById('m_name').value = '';\n" +
+                "    document.getElementById('m_type').value = 'TAB';\n" +
+                "    document.getElementById('m_sort').value = 0;\n" +
+                "    document.getElementById('m_remark').value = '';\n" +
+                "    document.getElementById('moduleModal').style.display = 'flex';\n" +
+                "}\n" +
+                "function closeModuleModal(){document.getElementById('moduleModal').style.display='none';}\n" +
+                "\n" +
+                "function saveModule(){\n" +
+                "    var id = document.getElementById('m_id').value;\n" +
+                "    var code = document.getElementById('m_code').value.trim();\n" +
+                "    var name = document.getElementById('m_name').value.trim();\n" +
+                "    if(!code){alert('请输入模块编码');return;}\n" +
+                "    if(!name){alert('请输入模块名称');return;}\n" +
+                "    var data = {\n" +
+                "        id: id ? parseInt(id) : null,\n" +
+                "        moduleCode: code,\n" +
+                "        moduleName: name,\n" +
+                "        moduleType: document.getElementById('m_type').value,\n" +
+                "        enabled: 1,\n" +
+                "        sortOrder: parseInt(document.getElementById('m_sort').value) || 0,\n" +
+                "        remark: document.getElementById('m_remark').value\n" +
+                "    };\n" +
+                "    fetch('/api/monitor/feature/module/save?secret='+SECRET, {\n" +
+                "        method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data)\n" +
+                "    }).then(function(r){return r.json();}).then(function(d){\n" +
+                "        if(d.code===200){alert('保存成功');closeModuleModal();loadModules();}\n" +
+                "        else alert('保存失败: '+(d.msg||''));\n" +
+                "    });\n" +
+                "}\n" +
+                "\n" +
+                "function toggleModule(id, enabled){\n" +
+                "    if(!confirm('确认要'+(enabled?'启用':'禁用')+'该模块吗？')) return;\n" +
+                "    fetch('/api/monitor/feature/module/toggle?secret='+SECRET+'&id='+id+'&enabled='+enabled, {method:'POST'})\n" +
+                "        .then(function(r){return r.json();})\n" +
+                "        .then(function(d){alert(d.code===200?'操作成功':'操作失败');if(d.code===200) loadModules();});\n" +
+                "}\n" +
+                "\n" +
+                "function deleteModule(id){\n" +
+                "    if(!confirm('确认要删除该模块吗？删除后客户将不可见')) return;\n" +
+                "    fetch('/api/monitor/feature/module/delete?secret='+SECRET+'&id='+id, {method:'POST'})\n" +
+                "        .then(function(r){return r.json();})\n" +
+                "        .then(function(d){alert(d.code===200?'删除成功':'删除失败');if(d.code===200) loadModules();});\n" +
+                "}\n" +
+                "\n" +
+                "var currentAuthCode = '';\n" +
+                "function openAuthModal(moduleCode, moduleName){\n" +
+                "    currentAuthCode = moduleCode;\n" +
+                "    document.getElementById('authModalTitle').innerHTML = '<svg viewBox=\"0 0 24 24\"><path d=\"M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2\"/><circle cx=\"9\" cy=\"7\" r=\"4\"/></svg> 客户授权 - ' + moduleName + ' (' + moduleCode + ')';\n" +
+                "    document.getElementById('auth_module_code').value = moduleCode;\n" +
+                "    document.getElementById('auth_sub_account').value = '';\n" +
+                "    document.getElementById('authModal').style.display = 'flex';\n" +
+                "    loadAuthList();\n" +
+                "}\n" +
+                "function closeAuthModal(){document.getElementById('authModal').style.display='none';}\n" +
+                "\n" +
+                "function loadAuthList(){\n" +
+                "    var tbody = document.getElementById('authBody');\n" +
+                "    tbody.innerHTML = '<tr><td colspan=\"3\" class=\"empty\">加载中...</td></tr>';\n" +
+                "    fetch('/api/monitor/feature/module/customers?secret='+SECRET+'&moduleCode='+encodeURIComponent(currentAuthCode))\n" +
+                "        .then(function(r){return r.json();})\n" +
+                "        .then(function(d){\n" +
+                "            if(d.code!==200){tbody.innerHTML='<tr><td colspan=\"3\" class=\"empty\">加载失败</td></tr>';return;}\n" +
+                "            var list = d.data || [];\n" +
+                "            if(!list.length){tbody.innerHTML='<tr><td colspan=\"3\" class=\"empty\">暂无授权客户</td></tr>';return;}\n" +
+                "            var html = '';\n" +
+                "            for(var i=0;i<list.length;i++){\n" +
+                "                var a = list[i];\n" +
+                "                var st = a.enabled===1?'<span class=\"status-badge status-enabled\"><span class=\"status-dot\"></span>启用</span>':'<span class=\"status-badge status-disabled\"><span class=\"status-dot\"></span>禁用</span>';\n" +
+                "                html += '<tr><td><strong>'+escapeHtml(a.subAccount)+'</strong></td><td>'+st+'</td><td>';\n" +
+                "                html += '<button class=\"action-btn toggle-btn\" onclick=\"toggleAuth(\\''+escapeHtml(a.subAccount)+'\\','+(a.enabled===1?0:1)+')\">'+(a.enabled===1?'禁用':'启用')+'</button>';\n" +
+                "                html += '<button class=\"action-btn delete-btn\" onclick=\"deleteAuth(\\''+escapeHtml(a.subAccount)+'\\')\">移除</button>';\n" +
+                "                html += '</td></tr>';\n" +
+                "            }\n" +
+                "            tbody.innerHTML = html;\n" +
+                "        });\n" +
+                "}\n" +
+                "\n" +
+                "function addAuth(){\n" +
+                "    var acc = document.getElementById('auth_sub_account').value.trim();\n" +
+                "    if(!acc){alert('请输入客户账号');return;}\n" +
+                "    fetch('/api/monitor/feature/auth/save?secret='+SECRET+'&subAccount='+encodeURIComponent(acc)+'&moduleCode='+encodeURIComponent(currentAuthCode)+'&enabled=1', {method:'POST'})\n" +
+                "        .then(function(r){return r.json();})\n" +
+                "        .then(function(d){\n" +
+                "            if(d.code===200){document.getElementById('auth_sub_account').value='';loadAuthList();}\n" +
+                "            else alert('授权失败: '+(d.msg||''));\n" +
+                "        });\n" +
+                "}\n" +
+                "\n" +
+                "function toggleAuth(acc, enabled){\n" +
+                "    fetch('/api/monitor/feature/auth/save?secret='+SECRET+'&subAccount='+encodeURIComponent(acc)+'&moduleCode='+encodeURIComponent(currentAuthCode)+'&enabled='+enabled, {method:'POST'})\n" +
+                "        .then(function(r){return r.json();})\n" +
+                "        .then(function(d){if(d.code===200) loadAuthList();else alert('操作失败');});\n" +
+                "}\n" +
+                "\n" +
+                "function deleteAuth(acc){\n" +
+                "    if(!confirm('确认要移除客户 '+acc+' 的授权吗？')) return;\n" +
+                "    fetch('/api/monitor/feature/auth/delete?secret='+SECRET+'&subAccount='+encodeURIComponent(acc)+'&moduleCode='+encodeURIComponent(currentAuthCode), {method:'POST'})\n" +
+                "        .then(function(r){return r.json();})\n" +
+                "        .then(function(d){if(d.code===200) loadAuthList();else alert('移除失败');});\n" +
+                "}\n" +
+                "\n" +
+                "loadModules();\n" +
+                "</script>\n" +
+                "</body>\n" +
+                "</html>";
+    }
+
+    private String generateSubTaskManagementHtml() {
+        return "<!DOCTYPE html>\n" +
+                "<html lang=\"zh-CN\">\n" +
+                "<head>\n" +
+                "<meta charset=\"UTF-8\">\n" +
+                "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, user-scalable=no\">\n" +
+                "<title>Texcell LTM WEB 发送子任务管理</title>\n" +
+                "<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%231677ff'/%3E%3Ctext x='50' y='72' font-size='60' font-weight='bold' text-anchor='middle' fill='white' font-family='Arial'%3ET%3C/text%3E%3C/svg%3E\">\n" +
+                "<link href=\"https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap\" rel=\"stylesheet\">\n" +
+                "<style>\n" +
+                ":root {\n" +
+                "  --primary-color:#1677ff; --primary-hover:#3c8dff; --text-primary:#1e293b; --text-secondary:#475569; --text-muted:#8a97a8; --input-border:#d9e2ec;\n" +
+                "  --bg-page:#f5f7fa; --bg-card:#ffffff; --border-color:#e8ecf1; --shadow-sm:0 1px 3px rgba(0,0,0,0.06); --shadow-hover:0 4px 12px rgba(22,119,255,0.1);\n" +
+                "  --success-color:#52c41a; --danger-color:#ff4d4f; --warn-color:#faad14;\n" +
+                "}\n" +
+                "*{margin:0;padding:0;box-sizing:border-box;}\n" +
+                "body{background:var(--bg-page);font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;}\n" +
+                ".navbar{background:var(--bg-card);box-shadow:var(--shadow-sm);border-bottom:1px solid var(--border-color);position:sticky;top:0;z-index:100;}\n" +
+                ".nav-container{max-width:2100px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:70px;}\n" +
+                ".logo{display:flex;align-items:center;gap:12px;}\n" +
+                ".logo-icon{width:40px;height:40px;background:linear-gradient(135deg,var(--primary-color) 0%,var(--primary-hover) 100%);border-radius:12px;display:flex;align-items:center;justify-content:center;}\n" +
+                ".logo-icon svg{width:22px;height:22px;stroke:#fff;stroke-width:2;fill:none;}\n" +
+                ".logo-text{font-size:18px;font-weight:700;color:var(--text-primary);letter-spacing:1px;}\n" +
+                ".logo-sub{font-size:11px;color:var(--text-muted);margin-left:8px;}\n" +
+                ".menu{display:flex;gap:12px;}\n" +
+                ".menu a{color:var(--text-secondary);text-decoration:none;padding:8px 20px;border-radius:40px;transition:all 0.3s;font-weight:500;font-size:14px;}\n" +
+                ".menu a:hover{background:#f1f5f9;color:var(--text-primary);}\n" +
+                ".menu a.active{background:#e8f0fe;color:var(--primary-color);box-shadow:none;}\n" +
+                ".user-info{display:flex;align-items:center;gap:20px;}\n" +
+                ".user-name{color:var(--text-secondary);font-size:14px;}\n" +
+                ".user-role{background:rgba(22,119,255,0.1);padding:4px 12px;border-radius:20px;font-size:12px;color:var(--primary-color);}\n" +
+                ".logout-btn{background:#f1f5f9;border:1px solid var(--border-color);color:var(--text-secondary);padding:8px 20px;border-radius:40px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;}\n" +
+                ".logout-btn:hover{background:#e8ecf1;transform:translateY(-1px);}\n" +
+                ".page-wrap{max-width:2100px;margin:0 auto;padding:32px;}\n" +
+                ".page-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:28px;flex-wrap:wrap;gap:16px;}\n" +
+                ".page-title{font-size:22px;font-weight:700;color:var(--text-primary);display:flex;align-items:center;gap:12px;}\n" +
+                ".page-title svg{width:24px;height:24px;stroke:var(--primary-color);stroke-width:2;fill:none;}\n" +
+                ".search-card{background:var(--bg-card);border-radius:12px;padding:24px;margin-bottom:32px;border:1px solid var(--border-color);box-shadow:var(--shadow-sm);}\n" +
+                ".search-row{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end;}\n" +
+                ".search-group{display:flex;flex-direction:column;gap:6px;}\n" +
+                ".search-group label{font-size:12px;color:var(--text-secondary);font-weight:500;display:flex;align-items:center;gap:6px;}\n" +
+                ".search-group label svg{width:14px;height:14px;stroke:var(--text-muted);stroke-width:2;fill:none;}\n" +
+                ".search-group input,.search-group select{padding:10px 12px;border:1px solid var(--input-border);border-radius:10px;font-size:13px;min-width:170px;background:var(--bg-card);color:var(--text-primary);font-family:inherit;transition:all 0.3s;}\n" +
+                ".search-group input:focus,.search-group select:focus{outline:none;border-color:var(--primary-color);box-shadow:0 0 0 3px rgba(22,119,255,0.12);}\n" +
+                ".search-actions{display:flex;gap:10px;margin-left:auto;align-items:center;flex-wrap:wrap;}\n" +
+                ".search-btn{background:var(--primary-color);color:white;border:none;padding:10px 22px;border-radius:10px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;display:inline-flex;align-items:center;gap:6px;}\n" +
+                ".search-btn:hover{background:var(--primary-hover);box-shadow:0 8px 20px -6px rgba(22,119,255,0.45);}\n" +
+                ".search-btn svg{width:15px;height:15px;stroke:currentColor;stroke-width:2;fill:none;}\n" +
+                ".reset-btn{background:#f1f5f9;border:1px solid var(--border-color);padding:10px 22px;border-radius:10px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;color:var(--text-secondary);display:inline-flex;align-items:center;gap:6px;}\n" +
+                ".reset-btn:hover{background:#e8ecf1;transform:translateY(-1px);}\n" +
+                ".reset-btn svg{width:15px;height:15px;stroke:currentColor;stroke-width:2;fill:none;}\n" +
+                ".log-card{background:var(--bg-card);border-radius:12px;overflow:hidden;border:1px solid var(--border-color);box-shadow:var(--shadow-sm);}\n" +
+                ".table-wrapper{overflow-x:auto;}\n" +
+                ".log-table{width:100%;border-collapse:collapse;min-width:1000px;}\n" +
+                ".log-table th{background:#f8fafc;padding:14px 16px;text-align:left;font-size:13px;font-weight:600;color:var(--text-secondary);border-bottom:1px solid var(--border-color);white-space:nowrap;}\n" +
+                ".log-table td{padding:14px 16px;font-size:13px;color:var(--text-primary);border-bottom:1px solid var(--border-color);vertical-align:middle;}\n" +
+                ".log-table tr:hover td{background:#f8fafc;}\n" +
+                ".status-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:500;}\n" +
+                ".status-dot{width:6px;height:6px;border-radius:50%;background:currentColor;}\n" +
+                ".status-pending{background:rgba(250,173,20,0.15);color:var(--warn-color);}\n" +
+                ".status-processed{background:rgba(22,119,255,0.15);color:var(--primary-color);}\n" +
+                ".status-paused{background:rgba(148,163,184,0.15);color:#94a3b8;}\n" +
+                ".status-canceled{background:rgba(255,77,79,0.1);color:var(--danger-color);}\n" +
+                ".action-btn{padding:6px 14px;border-radius:40px;cursor:pointer;font-size:12px;transition:all 0.3s;border:none;font-weight:500;display:inline-flex;align-items:center;gap:4px;}\n" +
+                ".action-btn svg{width:13px;height:13px;stroke:currentColor;stroke-width:2;fill:none;}\n" +
+                ".action-btn.pause-btn{background:rgba(250,173,20,0.15);color:var(--warn-color);margin-right:6px;}\n" +
+                ".action-btn.pause-btn:hover{background:var(--warn-color);color:white;transform:translateY(-1px);}\n" +
+                ".action-btn.resume-btn{background:rgba(82,196,26,0.1);color:var(--success-color);margin-right:6px;}\n" +
+                ".action-btn.resume-btn:hover{background:var(--success-color);color:white;transform:translateY(-1px);}\n" +
+                ".action-btn.cancel-btn{background:rgba(255,77,79,0.1);color:var(--danger-color);}\n" +
+                ".action-btn.cancel-btn:hover{background:var(--danger-color);color:white;transform:translateY(-1px);}\n" +
+                ".footer{text-align:center;padding:32px 0;color:var(--text-muted);font-size:12px;border-top:1px solid var(--border-color);margin-top:32px;}\n" +
+                ".empty{text-align:center;padding:48px;color:var(--text-muted);}\n" +
+                "@media(max-width:768px){.nav-container{padding:0 20px;}.menu a{padding:6px 14px;font-size:12px;}.search-group input,.search-group select{min-width:100%;width:100%;}.search-actions{flex-wrap:wrap;}.page-wrap{padding:20px;}}\n" +
+                "</style>\n" +
+                "</head>\n" +
+                "<body>\n" +
+                "<div class=\"navbar\">\n" +
+                "<div class=\"nav-container\">\n" +
+                "<div class=\"logo\">\n" +
+                "<div class=\"logo-icon\">\n" +
+                "<svg viewBox=\"0 0 24 24\"><path d=\"M3 3v18h18\"/><path d=\"M18.7 8l-5.1 5.2-2.8-2.7L7 14.3\"/></svg>\n" +
+                "</div>\n" +
+                "<div class=\"logo-text\">Texcell LTM 监控管理系统</div>\n" +
+                "<div class=\"logo-sub\">v3.0</div>\n" +
+                "</div>\n" +
+                "<div class=\"menu\">\n" +
+                "<a href=\"/monitor/index\">首页</a>\n" +
+                "<a href=\"/monitor/dashboard\">服务监控</a>\n" +
+                "<a href=\"/monitor/login-audit\">登录审计</a>\n" +
+                "<a href=\"/monitor/number-files\">号码备份</a>\n" +
+                "<a href=\"/monitor/customer-management\">API客户管理</a>\n" +
+                "<a href=\"/monitor/user-management\">登录账户管理</a>\n" +
+                "<a href=\"/monitor/ops-management\">运维管理</a>\n" +
+                "<a href=\"/monitor/queue-management\">发送队列管理</a>\n" +
+                "<a href=\"/monitor/queue-monitor\">队列DR监控</a>\n" +
+                "<a href=\"/monitor/dr-auto-fix\">定时任务配置</a>\n" +
+                "<a href=\"/monitor/feature-management\">功能模块管理</a>\n" +
+                "<a href=\"/monitor/subtask-management\" class=\"active\">子任务队列</a>\n" +
+                "</div>\n" +
+                "<div class=\"user-info\">\n" +
+                "<span class=\"user-name\" id=\"currentUsername\">加载中...</span>\n" +
+                "<span class=\"user-role\" id=\"currentUserRole\">加载中...</span>\n" +
+                "<button class=\"logout-btn\" onclick=\"logout()\">退出</button>\n" +
+                "</div>\n" +
+                "</div>\n" +
+                "</div>\n" +
+                "<div class=\"page-wrap\">\n" +
+                "<div class=\"page-header\">\n" +
+                "<div class=\"page-title\">\n" +
+                "<svg viewBox=\"0 0 24 24\"><path d=\"M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z\"/><polyline points=\"22,6 12,13 2,6\"/></svg>\n" +
+                "发送子任务管理\n" +
+                "</div>\n" +
+                "</div>\n" +
+                "<div class=\"search-card\">\n" +
+                "<div class=\"search-row\">\n" +
+                "<div class=\"search-group\"><label><svg viewBox=\"0 0 24 24\"><path d=\"M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2\"/><circle cx=\"12\" cy=\"7\" r=\"4\"/></svg>客户账号</label><input type=\"text\" id=\"searchSubAccount\" placeholder=\"支持模糊查询\"></div>\n" +
+                "<div class=\"search-group\"><label><svg viewBox=\"0 0 24 24\"><rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"2\"/><path d=\"M9 9h6v6H9z\"/></svg>父任务ID</label><input type=\"text\" id=\"searchTaskId\" placeholder=\"精确查询\"></div>\n" +
+                "<div class=\"search-actions\">\n" +
+                "<button class=\"search-btn\" onclick=\"searchTasks()\"><svg viewBox=\"0 0 24 24\"><circle cx=\"11\" cy=\"11\" r=\"8\"/><line x1=\"21\" y1=\"21\" x2=\"16.65\" y2=\"16.65\"/></svg>查询</button>\n" +
+                "<button class=\"reset-btn\" onclick=\"resetSearch()\"><svg viewBox=\"0 0 24 24\"><polyline points=\"23 4 23 10 17 10\"/><polyline points=\"1 20 1 14 7 14\"/><path d=\"M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15\"/></svg>重置</button>\n" +
+                "</div>\n" +
+                "</div>\n" +
+                "</div>\n" +
+                "<div class=\"log-card\">\n" +
+                "<div class=\"table-wrapper\">\n" +
+                "<table class=\"log-table\">\n" +
+                "<thead>\n" +
+                "<tr>\n" +
+                "<th>父任务ID</th>\n" +
+                "<th>客户账号</th>\n" +
+                "<th>子任务序号</th>\n" +
+                "<th>号码数</th>\n" +
+                "<th>计划发送时间</th>\n" +
+                "<th>状态</th>\n" +
+                "<th>备注</th>\n" +
+                "<th>操作</th>\n" +
+                "</tr>\n" +
+                "</thead>\n" +
+                "<tbody id=\"logBody\"><tr><td colspan=\"8\" class=\"empty\">加载中...</td></tr></tbody>\n" +
+                "</table>\n" +
+                "</div>\n" +
+                "</div>\n" +
+                "<div class=\"footer\">发送子任务管理 | 最多展示 500 条记录 | 请使用任务 ID 精确查询</div>\n" +
+                "</div>\n" +
+                "<script>\n" +
+                "var SECRET = 'dn17ORUwf36Znl';\n" +
+                "\n" +
+                "function logout(){ fetch('/monitor/logout').then(function(){ location.href = '/monitor/login'; }); }\n" +
+                "function getCurrentUserInfo() {\n" +
+                "    fetch('/api/monitor/current-user?secret='+SECRET)\n" +
+                "        .then(function(res) { return res.json(); })\n" +
+                "        .then(function(data) {\n" +
+                "            if (data.code === 200) {\n" +
+                "                document.getElementById('currentUsername').innerText = data.data.username;\n" +
+                "                var roleSpan = document.getElementById('currentUserRole');\n" +
+                "                roleSpan.innerText = data.data.role === 'ADMIN' ? '管理员' : 'NOC';\n" +
+                "            }\n" +
+                "        });\n" +
+                "}\n" +
+                "getCurrentUserInfo();\n" +
+                "\n" +
+                "function escapeHtml(s){if(!s)return'';return String(s).replace(/[&<>]/g,function(m){if(m==='&')return'&amp;';if(m==='<')return'&lt;';if(m==='>')return'&gt;';return m;});}\n" +
+                "\n" +
+                "function searchTasks(){ loadLogs(); }\n" +
+                "function resetSearch(){\n" +
+                "    document.getElementById('searchSubAccount').value = '';\n" +
+                "    document.getElementById('searchTaskId').value = '';\n" +
+                "    loadLogs();\n" +
+                "}\n" +
+                "\n" +
+                "function loadLogs(){\n" +
+                "    var subAccount = document.getElementById('searchSubAccount').value;\n" +
+                "    var taskId = document.getElementById('searchTaskId').value;\n" +
+                "    var url = '/api/monitor/subtask/list?secret=' + SECRET + '&limit=500';\n" +
+                "    if(subAccount) url += '&subAccount=' + encodeURIComponent(subAccount);\n" +
+                "    if(taskId) url += '&taskId=' + encodeURIComponent(taskId);\n" +
+                "    \n" +
+                "    document.getElementById('logBody').innerHTML = '<tr><td colspan=\"8\" class=\"empty\">加载中...</td></tr>';\n" +
+                "    \n" +
+                "    fetch(url).then(function(res){ return res.json(); })\n" +
+                "        .then(function(data){\n" +
+                "            if(data.code === 200){\n" +
+                "                renderTable(data.data || []);\n" +
+                "            }else{\n" +
+                "                document.getElementById('logBody').innerHTML = '<tr><td colspan=\"8\" class=\"empty\">加载失败: ' + (data.msg || '错误') + '</td></tr>';\n" +
+                "            }\n" +
+                "        }).catch(function(){\n" +
+                "            document.getElementById('logBody').innerHTML = '<tr><td colspan=\"8\" class=\"empty\">加载失败: 网络错误</td></tr>';\n" +
+                "        });\n" +
+                "}\n" +
+                "\n" +
+                "function renderTable(list){\n" +
+                "    var tbody = document.getElementById('logBody');\n" +
+                "    if(!list || !list.length){\n" +
+                "        tbody.innerHTML = '<tr><td colspan=\"8\" class=\"empty\">暂无记录</td></tr>';\n" +
+                "        return;\n" +
+                "    }\n" +
+                "    var html = '';\n" +
+                "    for(var i = 0; i < list.length; i++){\n" +
+                "        var item = list[i];\n" +
+                "        \n" +
+                "        // 注意：这里的字段名要对应底层存储过程返回的 Map Key\n" +
+                "        var status = parseInt(item.SubStatus);\n" +
+                "        var statusHtml = '';\n" +
+                "        if(status === 0) statusHtml = '<span class=\"status-badge status-pending\"><span class=\"status-dot\"></span>待发送</span>';\n" +
+                "        else if(status === 1) statusHtml = '<span class=\"status-badge status-processed\"><span class=\"status-dot\"></span>发送中</span>';\n" +
+                "        else if(status === 2) statusHtml = '<span class=\"status-badge status-paused\"><span class=\"status-dot\"></span>暂停</span>';\n" +
+                "        else if(status === 3) statusHtml = '<span class=\"status-badge status-canceled\"><span class=\"status-dot\"></span>取消</span>';\n" +
+                "        \n" +
+                "        var actionHtml = '-';\n" +
+                "        if(status === 0){\n" +
+                "            actionHtml = '<button class=\"action-btn pause-btn\" onclick=\"operate(\\''+item.APITaskId+'\\','+item.SubIndex+',\\'pause\\')\"><svg viewBox=\"0 0 24 24\"><rect x=\"6\" y=\"4\" width=\"4\" height=\"16\"/><rect x=\"14\" y=\"4\" width=\"4\" height=\"16\"/></svg>暂停</button>' +\n" +
+                "                         '<button class=\"action-btn cancel-btn\" onclick=\"operate(\\''+item.APITaskId+'\\','+item.SubIndex+',\\'cancel\\')\"><svg viewBox=\"0 0 24 24\"><circle cx=\"12\" cy=\"12\" r=\"10\"/><line x1=\"15\" y1=\"9\" x2=\"9\" y2=\"15\"/><line x1=\"9\" y1=\"9\" x2=\"15\" y2=\"15\"/></svg>取消</button>';\n" +
+                "        } else if(status === 2){\n" +
+                "            actionHtml = '<button class=\"action-btn resume-btn\" onclick=\"operate(\\''+item.APITaskId+'\\','+item.SubIndex+',\\'resume\\')\"><svg viewBox=\"0 0 24 24\"><polygon points=\"5 3 19 12 5 21 5 3\"/></svg>恢复</button>' +\n" +
+                "                         '<button class=\"action-btn cancel-btn\" onclick=\"operate(\\''+item.APITaskId+'\\','+item.SubIndex+',\\'cancel\\')\"><svg viewBox=\"0 0 24 24\"><circle cx=\"12\" cy=\"12\" r=\"10\"/><line x1=\"15\" y1=\"9\" x2=\"9\" y2=\"15\"/><line x1=\"9\" y1=\"9\" x2=\"15\" y2=\"15\"/></svg>取消</button>';\n" +
+                "        }\n" +
+                "\n" +
+                "        html += '<tr>';\n" +
+                "        html += '<td style=\"font-family:monospace;font-size:12px;color:#475569;\">' + escapeHtml(item.APITaskId) + '</td>';\n" +
+                "        html += '<td>' + escapeHtml(item.SubAccount) + '</td>';\n" +
+                "        html += '<td>' + (item.SubIndex || '0') + ' / ' + (item.SubTotal || '0') + '</td>';\n" +
+                "        html += '<td>' + (item.CalleeCount || '0') + '</td>';\n" +
+                "        html += '<td>' + (item.PlanSendTime || '-') + '</td>';\n" +
+                "        html += '<td>' + statusHtml + '</td>';\n" +
+                "        html += '<td>' + (item.Remark || '-') + '</td>';\n" +
+                "        html += '<td style=\"white-space:nowrap;\">' + actionHtml + '</td>';\n" +
+                "        html += '</tr>';\n" +
+                "    }\n" +
+                "    tbody.innerHTML = html;\n" +
+                "}\n" +
+                "\n" +
+                "function operate(taskId, subIndex, action){\n" +
+                "    var names = { pause: '暂停', resume: '恢复', cancel: '取消' };\n" +
+                "    if(!confirm('确定要' + names[action] + '该子任务吗？')) return;\n" +
+                "    \n" +
+                "    var url = '/api/monitor/subtask/operate?secret=' + SECRET + '&action=' + action + '&taskId=' + encodeURIComponent(taskId) + '&subIndex=' + subIndex;\n" +
+                "    fetch(url, { method: 'POST' })\n" +
+                "        .then(function(res){ return res.json(); })\n" +
+                "        .then(function(data){\n" +
+                "            if(data.code === 200){\n" +
+                "                alert(data.msg);\n" +
+                "                loadLogs();\n" +
+                "            }else{\n" +
+                "                alert('操作失败: ' + (data.msg || ''));\n" +
+                "            }\n" +
+                "        }).catch(function(){\n" +
+                "            alert('网络请求失败');\n" +
+                "        });\n" +
+                "}\n" +
+                "\n" +
+                "loadLogs();\n" +
                 "</script>\n" +
                 "</body>\n" +
                 "</html>";

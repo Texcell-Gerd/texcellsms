@@ -2,11 +2,15 @@ package com.texcellsms.sms.controller;
 
 import com.texcellsms.sms.model.DTO.SmsSendRequest;
 import com.texcellsms.sms.model.DTO.SmsSendResponse;
+import com.texcellsms.sms.model.entity.BatchContentSendRequest;
+import com.texcellsms.sms.service.FeatureService;
 import com.texcellsms.sms.service.SmsSendService;
 import com.texcellsms.sms.service.TokenService;
 import com.texcellsms.sms.util.AjaxResult;
 import com.texcellsms.sms.util.SmsContentUtil;
 import com.texcellsms.sms.util.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.util.CollectionUtils;
 import org.springframework.web.bind.annotation.*;
@@ -18,8 +22,13 @@ import java.util.*;
 @RequestMapping("/api/eccom/sms")
 public class SmsSendController {
 
+    private static final Logger logger = LoggerFactory.getLogger(SmsSendController.class);
+
     @Autowired
     private SmsSendService smsSendService;
+
+    @Autowired
+    private FeatureService featureService;
 
     /**
      * 发送短信接口
@@ -51,5 +60,26 @@ public class SmsSendController {
         result.put("PKTotal", response.getPkTotal());
         result.put("SplitCount", response.getSplitCount());
         return AjaxResult.success(result);
+    }
+
+    @PostMapping("/sendBatchContent")
+    public AjaxResult sendBatchContent(@RequestBody BatchContentSendRequest req, HttpServletRequest r) {
+        String subAccount = TokenService.getUsername();
+        if (StringUtils.isEmpty(subAccount)) {
+            return AjaxResult.error("Not logged in");
+        }
+
+        // 【权限校验】确保客户有 batch_send_content 模块授权
+        if (!featureService.hasAuth(subAccount, "batch_send_content")) {
+            return AjaxResult.error("您没有权限使用批量发送功能，请联系管理员开通");
+        }
+
+        try {
+            List<SmsSendResponse> results = smsSendService.doSendBatchContent(subAccount, req, r);
+            return AjaxResult.success(results);
+        } catch (Exception e) {
+            logger.error("批量发送失败", e);
+            return AjaxResult.error(e.getMessage());
+        }
     }
 }

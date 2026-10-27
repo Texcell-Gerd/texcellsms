@@ -9,6 +9,7 @@ import com.texcellsms.sms.model.DTO.BatchSmsSendRequest;
 import com.texcellsms.sms.model.DTO.SmsSendRequest;
 import com.texcellsms.sms.model.DTO.SmsSendResponse;
 import com.texcellsms.sms.model.entity.CustomerNumberFile;
+import com.texcellsms.sms.model.entity.BatchContentSendRequest;
 import com.texcellsms.sms.util.IdGenerator;
 import com.texcellsms.sms.util.SmsContentUtil;
 import com.texcellsms.sms.util.StringUtils;
@@ -33,10 +34,10 @@ import java.util.*;
 public class SmsSendService {
 
     private static final Logger logger = LoggerFactory.getLogger(SmsSendService.class);
-    public static final String PRE_PHONE_ROOT = "/home/WEBSMPP/PhonePre/";
-    public static final String REAL_PHONE_ROOT = "/home/WEBSMPP/SchedulePhone/";
-    public static final String TASK_ROOT = "/home/WEBSMPP/ScheduleTask/";
-    private static final String CUSTOMER_NUMBER_BACKUP_ROOT = "/home/WEBSMPP/CustomerFileNumber/";
+    public static final String PRE_PHONE_ROOT = "/home/ScheduleTask/PhonePre/";
+    public static final String REAL_PHONE_ROOT = "/home/ScheduleTask/Phone/";
+    public static final String TASK_ROOT = "/home/ScheduleTask/Task/";
+    private static final String CUSTOMER_NUMBER_BACKUP_ROOT = "/home/ScheduleTask/CustomerFileNumber/";
 
 
     private static final String DEFAULT_CALLER = "SMSINFO";
@@ -64,6 +65,10 @@ public class SmsSendService {
                 subAccount, req.getPreTaskId(),
                 req.getNumbers() == null ? 0 : req.getNumbers().size(),
                 req.getCaller(), req.getScheduleTime(), req.getTaskName());
+
+        // 【新增】打印切片参数
+        logger.info("[doSend-切片参数] 账号={}, SplitFlag={}, SplitCount={}, SplitSleepSecond={}",
+                subAccount, req.getSplitFlag(), req.getSplitCount(), req.getSplitSleepSecond());
 
         String originalContent = req.getContent();
 
@@ -222,11 +227,21 @@ public class SmsSendService {
         map.put("PKTotal", String.valueOf(splitCount));
         map.put("Msg", msgList);
 
+        // ====== 新增：将切片参数写入最终发送的 JSON 中 ======
+        // 如果前端没传，给个默认兜底值，防止下游报错
+        String splitFlag = StringUtils.isEmpty(req.getSplitFlag()) ? "0" : req.getSplitFlag();
+        Integer splitNum = req.getSplitCount() == null ? 5000 : req.getSplitCount();
+        Integer splitSleep = req.getSplitSleepSecond() == null ? 600 : req.getSplitSleepSecond();
+
+        map.put("SplitFlag", splitFlag);
+        map.put("SplitCount", String.valueOf(splitNum));
+        map.put("SplitSleepSecond", String.valueOf(splitSleep));
+
+        // ========== 【日志 7】最终 JSON ==========
         ObjectMapper mapper = new ObjectMapper();
         mapper.enable(SerializationFeature.INDENT_OUTPUT);
         String finalJson = mapper.writeValueAsString(map);
 
-        // ========== 【日志 7】最终 JSON ==========
         logger.info("[doSend-最终JSON] 账号={}, taskId={}, JSON长度={}\n{}",
                 subAccount, taskId, finalJson.length(), finalJson);
 
@@ -496,6 +511,57 @@ public class SmsSendService {
             org.slf4j.LoggerFactory.getLogger(this.getClass()).warn(monitorLog);
         }
         return resp;
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public List<SmsSendResponse> doSendBatchContent(
+            String subAccount, BatchContentSendRequest req, HttpServletRequest r) throws Exception {
+
+        if (req.getNumbers() == null || req.getContents() == null
+                || req.getNumbers().size() != req.getContents().size()) {
+            throw new Exception("号码与内容数量不一致");
+        }
+        if (req.getNumbers().isEmpty()) {
+            throw new Exception("号码列表不能为空");
+        }
+
+        List<SmsSendResponse> results = new ArrayList<>();
+        int size = req.getNumbers().size();
+
+        for (int i = 0; i < size; i++) {
+            String number = req.getNumbers().get(i);
+            String content = req.getContents().get(i);
+
+            if (StringUtils.isEmpty(content)) {
+                SmsSendResponse fail = new SmsSendResponse();
+                fail.setError("号码 " + number + " 内容为空，跳过");
+                results.add(fail);
+                continue;
+            }
+
+            // 构造单条发送请求，复用 doSend
+            SmsSendRequest single = new SmsSendRequest();
+            single.setNumbers(Collections.singletonList(number));
+            single.setContent(content);
+            single.setCaller(req.getCaller());
+            single.setScheduleTime(req.getScheduleTime());
+            // 每条单独任务名，便于在队列中识别
+            String baseName = StringUtils.defaultIfEmpty(req.getTaskName(), "BatchTask");
+            String suffix = "-" + (i + 1);
+            String tn = baseName + suffix;
+            if (tn.length() > 64) tn = tn.substring(0, 64);
+            single.setTaskName(tn);
+
+            try {
+                results.add(doSend(subAccount, single, r));
+            } catch (Exception e) {
+                logger.warn("批量发送第 {} 条失败，号码={}，原因={}", i + 1, number, e.getMessage());
+                SmsSendResponse fail = new SmsSendResponse();
+                fail.setError("号码 " + number + " 发送失败：" + e.getMessage());
+                results.add(fail);
+            }
+        }
+        return results;
     }
 
     private Date parseDate(String dateStr) throws ParseException {

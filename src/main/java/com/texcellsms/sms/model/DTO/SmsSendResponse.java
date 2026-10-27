@@ -9,4 +9,5 @@ public class SmsSendResponse {
     private int smLength;
     private int pkTotal;
     private int splitCount;
+    private String error;
 }
