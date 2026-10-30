@@ -10,6 +10,7 @@ import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.lookup.AbstractRoutingDataSource;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -179,6 +180,15 @@ public class DynamicDataSourceConfig {
     @Bean(name = "webPortalSqlSessionTemplate")
     public SqlSessionTemplate webPortalSqlSessionTemplate() throws Exception {
         return new SqlSessionTemplate(webPortalSqlSessionFactory());
+    }
+
+    /**
+     * 为 WEBPortal 数据源专门创建一个 JdbcTemplate
+     * 用于执行存储过程等纯 SQL 操作
+     */
+    @Bean(name = "webPortalJdbcTemplate")
+    public JdbcTemplate webPortalJdbcTemplate(@Qualifier("webPortalDataSource") DataSource dataSource) {
+        return new JdbcTemplate(dataSource);
     }
 
     @Bean

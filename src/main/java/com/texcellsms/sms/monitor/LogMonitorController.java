@@ -3011,8 +3011,10 @@ public class LogMonitorController {
         }
 
         try {
-            // subAccount 如果传空，底层存储过程会查全部
-            List<Map<String, String>> list = subTaskService.queryAllSubTasks(subAccount, taskId, limit);
+            // 1. 修改了泛型 String 为 Object
+            // 2. 调用的方法改成了 querySubTasks (参数顺序: taskId, subAccount, limit)
+            // 如果 subAccount 传空或 null，底层的 IFNULL 逻辑会自动查出所有用户的记录
+            List<Map<String, Object>> list = subTaskService.querySubTasks(taskId, subAccount, limit);
             result.put("code", 200);
             result.put("data", list);
         } catch (Exception e) {
@@ -3051,12 +3053,25 @@ public class LogMonitorController {
         }
 
         try {
-            // 管理端操作，备注带上操作人信息
-            String remark = "管理端(" + loginUsername + ")操作";
+            // 1. 获取当前服务器时间
+            String nowTime = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new java.util.Date());
+
+            // 2. 翻译动作
+            String actionName = "pause".equals(action) ? "暂停" : ("resume".equals(action) ? "恢复" : "取消/删除");
+
+            // 3. 拼接备注：管理员 于 YYYY-MM-DD HH:mm:ss 操作了 XXX
+            String remark = String.format("管理员 于 %s 操作了 %s", nowTime, actionName);
+
+            // 4. 调用 Service
             int affected = subTaskService.operateSubTask(action, taskId, subIndex, remark);
 
-            result.put("code", 200);
-            result.put("msg", "操作成功，影响了 " + affected + " 个子任务");
+            if (affected > 0) {
+                result.put("code", 200);
+                result.put("msg", "操作成功，影响了 " + affected + " 个子任务");
+            } else {
+                result.put("code", 200);
+                result.put("msg", "操作未生效，任务可能不处于该状态");
+            }
         } catch (Exception e) {
             logger.error("操作子任务失败", e);
             result.put("code", 500);
