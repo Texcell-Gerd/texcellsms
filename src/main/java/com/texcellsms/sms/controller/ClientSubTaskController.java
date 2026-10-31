@@ -18,19 +18,42 @@ public class ClientSubTaskController {
     private SubTaskService subTaskService;
 
     /**
-     * 客户端：查询自己的子任务列表
+     * 客户端：查询自己的子任务列表（聚合分组）
      */
     @GetMapping("/list")
     public AjaxResult list(@RequestParam(required = false) String taskId,
-                           @RequestParam(defaultValue = "100") int limit) {
+                           @RequestParam(defaultValue = "1") int pageNum,
+                           @RequestParam(defaultValue = "10") int pageSize) {
         String subAccount = TokenService.getUsername();
         if (StringUtils.isEmpty(subAccount)) {
-            return AjaxResult.error("登录已过期，请重新登录");
+            return AjaxResult.error("Login session expired");
         }
 
-        // Service 里的参数顺序是 (taskId, subAccount, limit)
-        List<Map<String, Object>> list = subTaskService.querySubTasks(taskId, subAccount, limit);
-        return AjaxResult.success(list);
+        Map<String, Object> data = subTaskService.queryGroupedTasks(subAccount, taskId, pageNum, pageSize);
+        return AjaxResult.success(data);
+    }
+
+    /**
+     * 客户端：查询某个父任务ID下的所有子任务明细（抽屉展示）
+     */
+    @GetMapping("/detail")
+    public AjaxResult detail(@RequestParam String taskId,
+                             @RequestParam(defaultValue = "5000") int limit) {
+        String subAccount = TokenService.getUsername();
+        if (StringUtils.isEmpty(subAccount)) {
+            return AjaxResult.error("Login session expired, please log in again");
+        }
+        if (StringUtils.isEmpty(taskId)) {
+            return AjaxResult.error("Missing parent task ID");
+        }
+
+        try {
+            List<Map<String, Object>> list =
+                    subTaskService.querySubTasks(taskId, subAccount, limit);
+            return AjaxResult.success(list);
+        } catch (Exception e) {
+            return AjaxResult.error("Query failed: " + e.getMessage());
+        }
     }
 
     /**
@@ -42,26 +65,24 @@ public class ClientSubTaskController {
                               @RequestParam(defaultValue = "0") int subIndex) {
         String subAccount = TokenService.getUsername();
         if (StringUtils.isEmpty(subAccount)) {
-            return AjaxResult.error("登录已过期，请重新登录");
+            return AjaxResult.error("Login session expired, please log in again");
         }
 
-        // 1. 安全校验：检查这个 taskId 是否属于当前用户
-        // 使用 querySubTasks 来校验，参数为 (taskId, subAccount, 1) 只查1条
+        // 1. 安全校验：这个 taskId 是否属于当前用户
         List<Map<String, Object>> check = subTaskService.querySubTasks(taskId, subAccount, 1);
         if (check == null || check.isEmpty()) {
-            return AjaxResult.error("无权限操作该任务，或任务不存在");
+            return AjaxResult.error("No permission to operate this task, or the task does not exist");
         }
 
         try {
-            // 2. 执行操作，参数为 (action, taskId, subIndex, remark)
-            int affected = subTaskService.operateSubTask(action, taskId, subIndex, "客户端操作: " + subAccount);
+            int affected = subTaskService.operateSubTask(action, taskId, subIndex, "Client operation by: " + subAccount);
             if (affected > 0) {
-                return AjaxResult.success("操作成功，影响了 " + affected + " 个子任务");
+                return AjaxResult.success("Operation succeeded, " + affected + " subtask(s) affected");
             } else {
-                return AjaxResult.error("操作未生效，任务可能不处于该状态");
+                return AjaxResult.error("Operation did not take effect, the task may not be in the required status");
             }
         } catch (Exception e) {
-            return AjaxResult.error("操作失败: " + e.getMessage());
+            return AjaxResult.error("Operation failed: " + e.getMessage());
         }
     }
 }

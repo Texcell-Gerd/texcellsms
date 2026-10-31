@@ -2990,8 +2990,9 @@ public class LogMonitorController {
     public Map<String, Object> listSubTasks(
             @RequestParam(required = false) String subAccount,
             @RequestParam(required = false) String taskId,
-            @RequestParam(defaultValue = "100") int limit,
-            @RequestParam(required = false) String secret,
+            @RequestParam(defaultValue = "1") int pageNum,
+            @RequestParam(defaultValue = "10") int pageSize,
+            @RequestParam String secret,
             HttpServletRequest request) {
 
         Map<String, Object> result = new HashMap<>();
@@ -3011,16 +3012,37 @@ public class LogMonitorController {
         }
 
         try {
-            // 1. 修改了泛型 String 为 Object
-            // 2. 调用的方法改成了 querySubTasks (参数顺序: taskId, subAccount, limit)
-            // 如果 subAccount 传空或 null，底层的 IFNULL 逻辑会自动查出所有用户的记录
-            List<Map<String, Object>> list = subTaskService.querySubTasks(taskId, subAccount, limit);
+            Map<String, Object> data = subTaskService.queryGroupedTasks(subAccount, taskId, pageNum, pageSize);
             result.put("code", 200);
-            result.put("data", list);
+            result.put("data", data);
         } catch (Exception e) {
             logger.error("查询子任务列表失败", e);
             result.put("code", 500);
             result.put("msg", "查询失败: " + e.getMessage());
+        }
+        return result;
+    }
+
+    @GetMapping("/api/monitor/subtask/detail")
+    public Map<String, Object> subTaskDetail(
+            @RequestParam String taskId,
+            @RequestParam(required = false) String subAccount,
+            @RequestParam(defaultValue = "500") int limit,
+            @RequestParam String secret,
+            HttpServletRequest request) {
+        Map<String, Object> result = new HashMap<>();
+        String clientIp = getRealIp(request);
+        String loginUsername = getCurrentUsername(request.getSession());
+        if (!isIpAllowed(clientIp, loginUsername)) { result.put("code",403); result.put("msg","仅允许内网访问"); return result; }
+        if (!MONITOR_SECRET.equals(secret)) { result.put("code",401); result.put("msg","无权限访问"); return result; }
+        try {
+            List<Map<String, Object>> list = subTaskService.querySubTasks(taskId, subAccount, limit);
+            result.put("code", 200);
+            result.put("data", list);
+            result.put("total", list.size());
+        } catch (Exception e) {
+            logger.error("查询子任务明细失败", e);
+            result.put("code", 500); result.put("msg", "查询失败: " + e.getMessage());
         }
         return result;
     }
@@ -7937,81 +7959,91 @@ public class LogMonitorController {
                 "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, user-scalable=no\">\n" +
                 "<title>Texcell LTM WEB 发送子任务管理</title>\n" +
                 "<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%231677ff'/%3E%3Ctext x='50' y='72' font-size='60' font-weight='bold' text-anchor='middle' fill='white' font-family='Arial'%3ET%3C/text%3E%3C/svg%3E\">\n" +
-                "<link href=\"https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap\" rel=\"stylesheet\">\n" +
+                "<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap\" rel=\"stylesheet\">\n" +
                 "<style>\n" +
-                ":root {\n" +
-                "  --primary-color:#1677ff; --primary-hover:#3c8dff; --text-primary:#1e293b; --text-secondary:#475569; --text-muted:#8a97a8; --input-border:#d9e2ec;\n" +
-                "  --bg-page:#f5f7fa; --bg-card:#ffffff; --border-color:#e8ecf1; --shadow-sm:0 1px 3px rgba(0,0,0,0.06); --shadow-hover:0 4px 12px rgba(22,119,255,0.1);\n" +
-                "  --success-color:#52c41a; --danger-color:#ff4d4f; --warn-color:#faad14;\n" +
-                "}\n" +
+                ":root{--primary-color:#1677ff;--primary-hover:#3c8dff;--text-primary:#1e293b;--text-secondary:#475569;--text-muted:#8a97a8;--input-border:#d9e2ec;--bg-page:#f5f7fa;--bg-card:#ffffff;--border-color:#e8ecf1;--shadow-sm:0 1px 3px rgba(0,0,0,0.06);--success-color:#52c41a;--danger-color:#ff4d4f;--warn-color:#faad14;}\n" +
                 "*{margin:0;padding:0;box-sizing:border-box;}\n" +
-                "body{background:var(--bg-page);font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;}\n" +
+                "body{background:var(--bg-page);font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:14px;}\n" +
                 ".navbar{background:var(--bg-card);box-shadow:var(--shadow-sm);border-bottom:1px solid var(--border-color);position:sticky;top:0;z-index:100;}\n" +
-                ".nav-container{max-width:2100px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:70px;}\n" +
-                ".logo{display:flex;align-items:center;gap:12px;}\n" +
+                ".nav-container{max-width:2100px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:70px;gap:16px;}\n" +
+                ".logo{display:flex;align-items:center;gap:12px;flex-shrink:0;}\n" +
                 ".logo-icon{width:40px;height:40px;background:linear-gradient(135deg,var(--primary-color) 0%,var(--primary-hover) 100%);border-radius:12px;display:flex;align-items:center;justify-content:center;}\n" +
                 ".logo-icon svg{width:22px;height:22px;stroke:#fff;stroke-width:2;fill:none;}\n" +
                 ".logo-text{font-size:18px;font-weight:700;color:var(--text-primary);letter-spacing:1px;}\n" +
                 ".logo-sub{font-size:11px;color:var(--text-muted);margin-left:8px;}\n" +
-                ".menu{display:flex;gap:12px;}\n" +
-                ".menu a{color:var(--text-secondary);text-decoration:none;padding:8px 20px;border-radius:40px;transition:all 0.3s;font-weight:500;font-size:14px;}\n" +
+                ".menu{display:flex;gap:8px;flex-wrap:wrap;flex:1;justify-content:center;}\n" +
+                ".menu a{color:var(--text-secondary);text-decoration:none;padding:6px 14px;border-radius:40px;transition:all 0.3s;font-weight:500;font-size:13px;}\n" +
                 ".menu a:hover{background:#f1f5f9;color:var(--text-primary);}\n" +
-                ".menu a.active{background:#e8f0fe;color:var(--primary-color);box-shadow:none;}\n" +
-                ".user-info{display:flex;align-items:center;gap:20px;}\n" +
+                ".menu a.active{background:#e8f0fe;color:var(--primary-color);}\n" +
+                ".user-info{display:flex;align-items:center;gap:14px;flex-shrink:0;}\n" +
                 ".user-name{color:var(--text-secondary);font-size:14px;}\n" +
                 ".user-role{background:rgba(22,119,255,0.1);padding:4px 12px;border-radius:20px;font-size:12px;color:var(--primary-color);}\n" +
-                ".logout-btn{background:#f1f5f9;border:1px solid var(--border-color);color:var(--text-secondary);padding:8px 20px;border-radius:40px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;}\n" +
+                ".logout-btn{background:#f1f5f9;border:1px solid var(--border-color);color:var(--text-secondary);padding:8px 18px;border-radius:40px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;}\n" +
                 ".logout-btn:hover{background:#e8ecf1;transform:translateY(-1px);}\n" +
                 ".page-wrap{max-width:2100px;margin:0 auto;padding:32px;}\n" +
                 ".page-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:28px;flex-wrap:wrap;gap:16px;}\n" +
                 ".page-title{font-size:22px;font-weight:700;color:var(--text-primary);display:flex;align-items:center;gap:12px;}\n" +
                 ".page-title svg{width:24px;height:24px;stroke:var(--primary-color);stroke-width:2;fill:none;}\n" +
-                ".search-card{background:var(--bg-card);border-radius:12px;padding:24px;margin-bottom:32px;border:1px solid var(--border-color);box-shadow:var(--shadow-sm);}\n" +
+                ".search-card{background:var(--bg-card);border-radius:12px;padding:24px;margin-bottom:24px;border:1px solid var(--border-color);box-shadow:var(--shadow-sm);}\n" +
                 ".search-row{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end;}\n" +
                 ".search-group{display:flex;flex-direction:column;gap:6px;}\n" +
-                ".search-group label{font-size:12px;color:var(--text-secondary);font-weight:500;display:flex;align-items:center;gap:6px;}\n" +
+                ".search-group label{font-size:13px;color:var(--text-secondary);font-weight:500;display:flex;align-items:center;gap:6px;}\n" +
                 ".search-group label svg{width:14px;height:14px;stroke:var(--text-muted);stroke-width:2;fill:none;}\n" +
-                ".search-group input,.search-group select{padding:10px 12px;border:1px solid var(--input-border);border-radius:10px;font-size:13px;min-width:170px;background:var(--bg-card);color:var(--text-primary);font-family:inherit;transition:all 0.3s;}\n" +
-                ".search-group input:focus,.search-group select:focus{outline:none;border-color:var(--primary-color);box-shadow:0 0 0 3px rgba(22,119,255,0.12);}\n" +
+                ".search-group input{padding:10px 14px;border:1px solid var(--input-border);border-radius:10px;font-size:14px;min-width:170px;background:var(--bg-card);color:var(--text-primary);font-family:inherit;transition:all 0.3s;}\n" +
+                ".search-group input:focus{outline:none;border-color:var(--primary-color);box-shadow:0 0 0 3px rgba(22,119,255,0.12);}\n" +
                 ".search-actions{display:flex;gap:10px;margin-left:auto;align-items:center;flex-wrap:wrap;}\n" +
-                ".search-btn{background:var(--primary-color);color:white;border:none;padding:10px 22px;border-radius:10px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;display:inline-flex;align-items:center;gap:6px;}\n" +
+                ".search-btn{background:var(--primary-color);color:white;border:none;padding:10px 24px;border-radius:10px;cursor:pointer;font-weight:500;font-size:14px;transition:all 0.3s;display:inline-flex;align-items:center;gap:6px;}\n" +
                 ".search-btn:hover{background:var(--primary-hover);box-shadow:0 8px 20px -6px rgba(22,119,255,0.45);}\n" +
                 ".search-btn svg{width:15px;height:15px;stroke:currentColor;stroke-width:2;fill:none;}\n" +
-                ".reset-btn{background:#f1f5f9;border:1px solid var(--border-color);padding:10px 22px;border-radius:10px;cursor:pointer;font-weight:500;font-size:13px;transition:all 0.3s;color:var(--text-secondary);display:inline-flex;align-items:center;gap:6px;}\n" +
+                ".reset-btn{background:#f1f5f9;border:1px solid var(--border-color);padding:10px 24px;border-radius:10px;cursor:pointer;font-weight:500;font-size:14px;transition:all 0.3s;color:var(--text-secondary);display:inline-flex;align-items:center;gap:6px;}\n" +
                 ".reset-btn:hover{background:#e8ecf1;transform:translateY(-1px);}\n" +
                 ".reset-btn svg{width:15px;height:15px;stroke:currentColor;stroke-width:2;fill:none;}\n" +
                 ".log-card{background:var(--bg-card);border-radius:12px;overflow:hidden;border:1px solid var(--border-color);box-shadow:var(--shadow-sm);}\n" +
                 ".table-wrapper{overflow-x:auto;}\n" +
-                ".log-table{width:100%;border-collapse:collapse;min-width:1000px;}\n" +
-                ".log-table th{background:#f8fafc;padding:14px 16px;text-align:left;font-size:13px;font-weight:600;color:var(--text-secondary);border-bottom:1px solid var(--border-color);white-space:nowrap;}\n" +
-                ".log-table td{padding:14px 16px;font-size:13px;color:var(--text-primary);border-bottom:1px solid var(--border-color);vertical-align:middle;}\n" +
+                ".log-table{width:100%;border-collapse:collapse;min-width:1200px;}\n" +
+                ".log-table th{background:#f8fafc;padding:18px 20px;text-align:left;font-size:14px;font-weight:600;color:var(--text-secondary);border-bottom:1px solid var(--border-color);white-space:nowrap;letter-spacing:0.5px;}\n" +
+                ".log-table td{padding:18px 20px;font-size:14px;color:var(--text-primary);border-bottom:1px solid var(--border-color);vertical-align:middle;}\n" +
                 ".log-table tr:hover td{background:#f8fafc;}\n" +
-                ".status-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:500;}\n" +
-                ".status-dot{width:6px;height:6px;border-radius:50%;background:currentColor;}\n" +
-                ".status-pending{background:rgba(250,173,20,0.15);color:var(--warn-color);}\n" +
-                ".status-processed{background:rgba(22,119,255,0.15);color:var(--primary-color);}\n" +
-                ".status-paused{background:rgba(148,163,184,0.15);color:#94a3b8;}\n" +
-                ".status-canceled{background:rgba(255,77,79,0.1);color:var(--danger-color);}\n" +
-                ".action-btn{padding:6px 14px;border-radius:40px;cursor:pointer;font-size:12px;transition:all 0.3s;border:none;font-weight:500;display:inline-flex;align-items:center;gap:4px;}\n" +
-                ".action-btn svg{width:13px;height:13px;stroke:currentColor;stroke-width:2;fill:none;}\n" +
-                ".action-btn.pause-btn{background:rgba(250,173,20,0.15);color:var(--warn-color);margin-right:6px;}\n" +
-                ".action-btn.pause-btn:hover{background:var(--warn-color);color:white;transform:translateY(-1px);}\n" +
-                ".action-btn.resume-btn{background:rgba(82,196,26,0.1);color:var(--success-color);margin-right:6px;}\n" +
-                ".action-btn.resume-btn:hover{background:var(--success-color);color:white;transform:translateY(-1px);}\n" +
-                ".action-btn.cancel-btn{background:rgba(255,77,79,0.1);color:var(--danger-color);}\n" +
-                ".action-btn.cancel-btn:hover{background:var(--danger-color);color:white;transform:translateY(-1px);}\n" +
-                ".footer{text-align:center;padding:32px 0;color:var(--text-muted);font-size:12px;border-top:1px solid var(--border-color);margin-top:32px;}\n" +
+                ".task-id-txt{font-family:'SF Mono',Consolas,monospace;font-weight:600;font-size:14px;color:var(--primary-color);}\n" +
+                ".stat-cell{display:inline-flex;align-items:center;font-size:13px;font-weight:500;min-width:50px;}\n" +
+                ".stat-cell.pending{color:#d97706;}\n" +
+                ".stat-cell.processing{color:#2563eb;}\n" +
+                ".stat-cell.paused{color:#64748b;}\n" +
+                ".stat-cell.canceled{color:#dc2626;}\n" +
+                ".stat-cell.zero{color:#cbd5e1;}\n" +
+                ".action-link{background:none;border:none;padding:4px 8px;cursor:pointer;font-size:14px;font-weight:500;color:var(--primary-color);border-radius:6px;transition:all 0.2s;display:inline-block;}\n" +
+                ".action-link:hover{background:#e8f0fe;}\n" +
+                ".action-link.text-warn{color:#d97706;}.action-link.text-warn:hover{background:#fef3c7;}\n" +
+                ".action-link.text-success{color:#16a34a;}.action-link.text-success:hover{background:#dcfce7;}\n" +
+                ".action-link.text-danger{color:#dc2626;}.action-link.text-danger:hover{background:#fee2e2;}\n" +
+                ".action-link:disabled{color:#cbd5e1;cursor:not-allowed;background:none;}\n" +
+                ".action-divider{color:#e2e8f0;margin:0 4px;font-size:12px;}\n" +
+                ".footer{text-align:center;padding:32px 0;color:var(--text-muted);font-size:13px;border-top:1px solid var(--border-color);margin-top:32px;}\n" +
                 ".empty{text-align:center;padding:48px;color:var(--text-muted);}\n" +
-                "@media(max-width:768px){.nav-container{padding:0 20px;}.menu a{padding:6px 14px;font-size:12px;}.search-group input,.search-group select{min-width:100%;width:100%;}.search-actions{flex-wrap:wrap;}.page-wrap{padding:20px;}}\n" +
+                ".modal-mask{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(15,23,42,0.5);z-index:200;display:none;align-items:center;justify-content:center;}\n" +
+                ".modal-wrap{width:90%;max-width:1400px;background:#fff;border-radius:12px;overflow:hidden;display:flex;flex-direction:column;max-height:85vh;box-shadow:0 25px 50px -12px rgba(0,0,0,0.25);}\n" +
+                ".modal-header{display:flex;justify-content:space-between;align-items:center;padding:18px 24px;border-bottom:1px solid var(--border-color);}\n" +
+                ".modal-title{font-size:16px;font-weight:600;color:var(--text-primary);}\n" +
+                ".modal-close{cursor:pointer;font-size:24px;color:var(--text-muted);line-height:1;transition:color 0.2s;}\n" +
+                ".modal-close:hover{color:var(--danger-color);}\n" +
+                ".modal-body{padding:0;overflow:auto;}\n" +
+                ".modal-table{width:100%;border-collapse:collapse;min-width:1000px;}\n" +
+                ".modal-table th,.modal-table td{padding:14px 20px;font-size:14px;border-bottom:1px solid var(--border-color);text-align:left;vertical-align:middle;}\n" +
+                ".modal-table th{background:#f8fafc;font-weight:600;color:var(--text-secondary);position:sticky;top:0;z-index:1;}\n" +
+                ".modal-table tr:hover td{background:#f8fafc;}\n" +
+                ".pagination{margin-top:16px;display:flex;gap:12px;align-items:center;justify-content:flex-end;padding:16px 24px;}\n" +
+                ".page-btn{padding:8px 16px;border-radius:8px;border:1px solid var(--border-color);background:#fff;cursor:pointer;font-size:14px;color:var(--text-secondary);transition:all 0.2s;}\n" +
+                ".page-btn:hover:not(:disabled){border-color:var(--primary-color);color:var(--primary-color);}\n" +
+                ".page-btn:disabled{opacity:0.4;cursor:not-allowed;}\n" +
+                ".page-info{font-size:14px;color:var(--text-secondary);}\n" +
+                "@media(max-width:768px){.nav-container{padding:0 20px;}.menu{display:none;}.search-group input{min-width:100%;width:100%;}.search-actions{flex-wrap:wrap;}.page-wrap{padding:20px;}}\n" +
                 "</style>\n" +
                 "</head>\n" +
                 "<body>\n" +
                 "<div class=\"navbar\">\n" +
                 "<div class=\"nav-container\">\n" +
                 "<div class=\"logo\">\n" +
-                "<div class=\"logo-icon\">\n" +
-                "<svg viewBox=\"0 0 24 24\"><path d=\"M3 3v18h18\"/><path d=\"M18.7 8l-5.1 5.2-2.8-2.7L7 14.3\"/></svg>\n" +
-                "</div>\n" +
+                "<div class=\"logo-icon\"><svg viewBox=\"0 0 24 24\"><path d=\"M3 3v18h18\"/><path d=\"M18.7 8l-5.1 5.2-2.8-2.7L7 14.3\"/></svg></div>\n" +
                 "<div class=\"logo-text\">Texcell LTM 监控管理系统</div>\n" +
                 "<div class=\"logo-sub\">v3.0</div>\n" +
                 "</div>\n" +
@@ -8040,13 +8072,13 @@ public class LogMonitorController {
                 "<div class=\"page-header\">\n" +
                 "<div class=\"page-title\">\n" +
                 "<svg viewBox=\"0 0 24 24\"><path d=\"M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z\"/><polyline points=\"22,6 12,13 2,6\"/></svg>\n" +
-                "发送子任务管理\n" +
+                "发送子任务管理（按父任务分组）\n" +
                 "</div>\n" +
                 "</div>\n" +
                 "<div class=\"search-card\">\n" +
                 "<div class=\"search-row\">\n" +
-                "<div class=\"search-group\"><label><svg viewBox=\"0 0 24 24\"><path d=\"M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2\"/><circle cx=\"12\" cy=\"7\" r=\"4\"/></svg>客户账号</label><input type=\"text\" id=\"searchSubAccount\" placeholder=\"支持模糊查询\"></div>\n" +
-                "<div class=\"search-group\"><label><svg viewBox=\"0 0 24 24\"><rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"2\"/><path d=\"M9 9h6v6H9z\"/></svg>父任务ID</label><input type=\"text\" id=\"searchTaskId\" placeholder=\"精确查询\"></div>\n" +
+                "<div class=\"search-group\"><label><svg viewBox=\"0 0 24 24\"><path d=\"M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2\"/><circle cx=\"12\" cy=\"7\" r=\"4\"/></svg>客户账号</label><input type=\"text\" id=\"searchSubAccount\" placeholder=\"客户账号\"></div>\n" +
+                "<div class=\"search-group\"><label><svg viewBox=\"0 0 24 24\"><rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"2\"/><path d=\"M9 9h6v6H9z\"/></svg>父任务ID</label><input type=\"text\" id=\"searchTaskId\" placeholder=\"父任务ID精确查询\"></div>\n" +
                 "<div class=\"search-actions\">\n" +
                 "<button class=\"search-btn\" onclick=\"searchTasks()\"><svg viewBox=\"0 0 24 24\"><circle cx=\"11\" cy=\"11\" r=\"8\"/><line x1=\"21\" y1=\"21\" x2=\"16.65\" y2=\"16.65\"/></svg>查询</button>\n" +
                 "<button class=\"reset-btn\" onclick=\"resetSearch()\"><svg viewBox=\"0 0 24 24\"><polyline points=\"23 4 23 10 17 10\"/><polyline points=\"1 20 1 14 7 14\"/><path d=\"M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15\"/></svg>重置</button>\n" +
@@ -8056,132 +8088,171 @@ public class LogMonitorController {
                 "<div class=\"log-card\">\n" +
                 "<div class=\"table-wrapper\">\n" +
                 "<table class=\"log-table\">\n" +
-                "<thead>\n" +
-                "<tr>\n" +
-                "<th>父任务ID</th>\n" +
-                "<th>客户账号</th>\n" +
-                "<th>子任务序号</th>\n" +
-                "<th>号码数</th>\n" +
-                "<th>计划发送时间</th>\n" +
-                "<th>状态</th>\n" +
-                "<th>备注</th>\n" +
-                "<th>操作</th>\n" +
-                "</tr>\n" +
-                "</thead>\n" +
-                "<tbody id=\"logBody\"><tr><td colspan=\"8\" class=\"empty\">加载中...</td></tr></tbody>\n" +
+                "<thead><tr>\n" +
+                "<th>父任务ID</th><th>客户账号</th><th>子任务总数</th><th>总号码数</th><th>待处理</th><th>处理中</th><th>已暂停</th><th>已取消</th><th>操作</th>\n" +
+                "</tr></thead>\n" +
+                "<tbody id=\"logBody\"><tr><td colspan=\"9\" class=\"empty\">加载中...</td></tr></tbody>\n" +
+                "</table>\n" +
+                "</div>\n" +
+                "<div class=\"pagination\" id=\"mainPagination\"></div>\n" +
+                "</div>\n" +
+                "<div class=\"footer\">发送子任务管理 | 分组聚合列表，批量操作作用于该父任务下全部子任务</div>\n" +
+                "</div>\n" +
+                "<div class=\"modal-mask\" id=\"subTaskModal\">\n" +
+                "<div class=\"modal-wrap\">\n" +
+                "<div class=\"modal-header\">\n" +
+                "<div class=\"modal-title\">父任务【<span id=\"modalTaskId\"></span>】子任务明细</div>\n" +
+                "<div class=\"modal-close\" onclick=\"closeModal()\">×</div>\n" +
+                "</div>\n" +
+                "<div class=\"modal-body\">\n" +
+                "<table class=\"modal-table\">\n" +
+                "<thead><tr>\n" +
+                "<th>子序号</th><th>客户账号</th><th>号码数</th><th>状态</th><th>计划发送时间</th><th>备注</th><th>操作</th>\n" +
+                "</tr></thead>\n" +
+                "<tbody id=\"modalBody\"><tr><td colspan=\"7\">加载明细...</td></tr></tbody>\n" +
                 "</table>\n" +
                 "</div>\n" +
                 "</div>\n" +
-                "<div class=\"footer\">发送子任务管理 | 最多展示 500 条记录 | 请使用任务 ID 精确查询</div>\n" +
                 "</div>\n" +
                 "<script>\n" +
-                "var SECRET = 'dn17ORUwf36Znl';\n" +
+                "var SECRET='dn17ORUwf36Znl';\n" +
+                "var pageNum=1,pageSize=10,currentModalTaskId=null;\n" +
                 "\n" +
-                "function logout(){ fetch('/monitor/logout').then(function(){ location.href = '/monitor/login'; }); }\n" +
-                "function getCurrentUserInfo() {\n" +
-                "    fetch('/api/monitor/current-user?secret='+SECRET)\n" +
-                "        .then(function(res) { return res.json(); })\n" +
-                "        .then(function(data) {\n" +
-                "            if (data.code === 200) {\n" +
-                "                document.getElementById('currentUsername').innerText = data.data.username;\n" +
-                "                var roleSpan = document.getElementById('currentUserRole');\n" +
-                "                roleSpan.innerText = data.data.role === 'ADMIN' ? '管理员' : 'NOC';\n" +
-                "            }\n" +
-                "        });\n" +
-                "}\n" +
-                "getCurrentUserInfo();\n" +
+                "function logout(){fetch('/monitor/logout').then(function(){location.href='/monitor/login';});}\n" +
+                "function getCurrentUserInfo(){fetch('/api/monitor/current-user?secret='+SECRET).then(function(r){return r.json();}).then(function(d){if(d.code===200){document.getElementById('currentUsername').innerText=d.data.username;document.getElementById('currentUserRole').innerText=d.data.role;}}).catch(function(e){console.log(e);});}\n" +
                 "\n" +
-                "function escapeHtml(s){if(!s)return'';return String(s).replace(/[&<>]/g,function(m){if(m==='&')return'&amp;';if(m==='<')return'&lt;';if(m==='>')return'&gt;';return m;});}\n" +
+                "function searchTasks(){pageNum=1;loadGroupList();}\n" +
+                "function resetSearch(){document.getElementById('searchSubAccount').value='';document.getElementById('searchTaskId').value='';pageNum=1;loadGroupList();}\n" +
                 "\n" +
-                "function searchTasks(){ loadLogs(); }\n" +
-                "function resetSearch(){\n" +
-                "    document.getElementById('searchSubAccount').value = '';\n" +
-                "    document.getElementById('searchTaskId').value = '';\n" +
-                "    loadLogs();\n" +
+                "// ===== 时间格式化工具 =====\n" +
+                "function fmtDateTime(v){\n" +
+                "  if(!v) return '-';\n" +
+                "  var s = String(v).replace('T',' ');\n" +
+                "  s = s.replace(/\\.\\d+/, ''); // 去掉毫秒\n" +
+                "  s = s.replace(/Z$/, '').replace(/[+-]\\d{2}:\\d{2}$/, ''); // 去掉时区\n" +
+                "  return s;\n" +
                 "}\n" +
                 "\n" +
-                "function loadLogs(){\n" +
-                "    var subAccount = document.getElementById('searchSubAccount').value;\n" +
-                "    var taskId = document.getElementById('searchTaskId').value;\n" +
-                "    var url = '/api/monitor/subtask/list?secret=' + SECRET + '&limit=500';\n" +
-                "    if(subAccount) url += '&subAccount=' + encodeURIComponent(subAccount);\n" +
-                "    if(taskId) url += '&taskId=' + encodeURIComponent(taskId);\n" +
-                "    \n" +
-                "    document.getElementById('logBody').innerHTML = '<tr><td colspan=\"8\" class=\"empty\">加载中...</td></tr>';\n" +
-                "    \n" +
-                "    fetch(url).then(function(res){ return res.json(); })\n" +
-                "        .then(function(data){\n" +
-                "            if(data.code === 200){\n" +
-                "                renderTable(data.data || []);\n" +
-                "            }else{\n" +
-                "                document.getElementById('logBody').innerHTML = '<tr><td colspan=\"8\" class=\"empty\">加载失败: ' + (data.msg || '错误') + '</td></tr>';\n" +
-                "            }\n" +
-                "        }).catch(function(){\n" +
-                "            document.getElementById('logBody').innerHTML = '<tr><td colspan=\"8\" class=\"empty\">加载失败: 网络错误</td></tr>';\n" +
-                "        });\n" +
-                "}\n" +
+                "function loadGroupList(){\n" +
+                "  var subAccount=document.getElementById('searchSubAccount').value.trim();\n" +
+                "  var taskId=document.getElementById('searchTaskId').value.trim();\n" +
+                "  var url='/api/monitor/subtask/list?secret='+SECRET+'&pageNum='+pageNum+'&pageSize='+pageSize;\n" +
+                "  if(subAccount)url+='&subAccount='+encodeURIComponent(subAccount);\n" +
+                "  if(taskId)url+='&taskId='+encodeURIComponent(taskId);\n" +
+                "  fetch(url).then(function(r){return r.json();}).then(function(ret){\n" +
+                "    var tbody=document.getElementById('logBody');\n" +
+                "    if(ret.code!==200){tbody.innerHTML='<tr><td colspan=\"9\" class=\"empty\">'+ret.msg+'</td></tr>';return;}\n" +
+                "    var records=ret.data.records||[];var total=ret.data.total||0;\n" +
+                "    if(records.length===0){tbody.innerHTML='<tr><td colspan=\"9\" class=\"empty\">暂无分组数据</td></tr>';renderPagination(total);return;}\n" +
+                "    var html='';\n" +
+                "    for(var i=0;i<records.length;i++){\n" +
+                "      var row=records[i];var tid=row.APITaskId||'';\n" +
+                "      var subTotal=row.SubTotalCount||0;\n" +
+                "      var totalCallee=row.TotalCalleeCount||0;\n" +
+                "      var pending=row.PendingCount||0;\n" +
+                "      var proc=row.ProcessingCount||0;\n" +
+                "      var paused=row.PausedCount||0;\n" +
+                "      var canceled=row.CanceledCount||0;\n" +
+                "      \n" +
+                "      var pendingCls = pending > 0 ? 'pending' : 'zero';\n" +
+                "      var procCls = proc > 0 ? 'processing' : 'zero';\n" +
+                "      var pausedCls = paused > 0 ? 'paused' : 'zero';\n" +
+                "      var canceledCls = canceled > 0 ? 'canceled' : 'zero';\n" +
                 "\n" +
-                "function renderTable(list){\n" +
-                "    var tbody = document.getElementById('logBody');\n" +
-                "    if(!list || !list.length){\n" +
-                "        tbody.innerHTML = '<tr><td colspan=\"8\" class=\"empty\">暂无记录</td></tr>';\n" +
-                "        return;\n" +
+                "      html+='<tr>'\n" +
+                "        +'<td><span class=\"task-id-txt\">'+tid+'</span></td>'\n" +
+                "        +'<td>'+(row.SubAccount||'-')+'</td>'\n" +
+                "        +'<td>'+subTotal+'</td>'\n" +
+                "        +'<td>'+totalCallee+'</td>'\n" +
+                "        +'<td><span class=\"stat-cell '+pendingCls+'\">'+pending+'</span></td>'\n" +
+                "        +'<td><span class=\"stat-cell '+procCls+'\">'+proc+'</span></td>'\n" +
+                "        +'<td><span class=\"stat-cell '+pausedCls+'\">'+paused+'</span></td>'\n" +
+                "        +'<td><span class=\"stat-cell '+canceledCls+'\">'+canceled+'</span></td>'\n" +
+                "        +'<td style=\"white-space:nowrap;\">'\n" +
+                "          +'<button class=\"action-link\" onclick=\"openDetailModal(\\''+tid+'\\')\">查看明细</button>'\n" +
+                "          +'<span class=\"action-divider\">|</span>'\n" +
+                "          +'<button class=\"action-link text-warn\" onclick=\"batchOperate(\\''+tid+'\\',\\'pause\\')\" '+(pending===0?'disabled':'')+'>批量暂停</button>'\n" +
+                "          +'<span class=\"action-divider\">|</span>'\n" +
+                "          +'<button class=\"action-link text-success\" onclick=\"batchOperate(\\''+tid+'\\',\\'resume\\')\" '+(paused===0?'disabled':'')+'>批量恢复</button>'\n" +
+                "          +'<span class=\"action-divider\">|</span>'\n" +
+                "          +'<button class=\"action-link text-danger\" onclick=\"batchOperate(\\''+tid+'\\',\\'cancel\\')\" '+((pending===0 && paused===0)?'disabled':'')+'>批量取消</button>'\n" +
+                "        +'</td></tr>';\n" +
                 "    }\n" +
-                "    var html = '';\n" +
-                "    for(var i = 0; i < list.length; i++){\n" +
-                "        var item = list[i];\n" +
-                "        \n" +
-                "        // 注意：这里的字段名要对应底层存储过程返回的 Map Key\n" +
-                "        var status = parseInt(item.SubStatus);\n" +
-                "        var statusHtml = '';\n" +
-                "        if(status === 0) statusHtml = '<span class=\"status-badge status-pending\"><span class=\"status-dot\"></span>待发送</span>';\n" +
-                "        else if(status === 1) statusHtml = '<span class=\"status-badge status-processed\"><span class=\"status-dot\"></span>发送中</span>';\n" +
-                "        else if(status === 2) statusHtml = '<span class=\"status-badge status-paused\"><span class=\"status-dot\"></span>暂停</span>';\n" +
-                "        else if(status === 3) statusHtml = '<span class=\"status-badge status-canceled\"><span class=\"status-dot\"></span>取消</span>';\n" +
-                "        \n" +
-                "        var actionHtml = '-';\n" +
-                "        if(status === 0){\n" +
-                "            actionHtml = '<button class=\"action-btn pause-btn\" onclick=\"operate(\\''+item.APITaskId+'\\','+item.SubIndex+',\\'pause\\')\"><svg viewBox=\"0 0 24 24\"><rect x=\"6\" y=\"4\" width=\"4\" height=\"16\"/><rect x=\"14\" y=\"4\" width=\"4\" height=\"16\"/></svg>暂停</button>' +\n" +
-                "                         '<button class=\"action-btn cancel-btn\" onclick=\"operate(\\''+item.APITaskId+'\\','+item.SubIndex+',\\'cancel\\')\"><svg viewBox=\"0 0 24 24\"><circle cx=\"12\" cy=\"12\" r=\"10\"/><line x1=\"15\" y1=\"9\" x2=\"9\" y2=\"15\"/><line x1=\"9\" y1=\"9\" x2=\"15\" y2=\"15\"/></svg>取消</button>';\n" +
-                "        } else if(status === 2){\n" +
-                "            actionHtml = '<button class=\"action-btn resume-btn\" onclick=\"operate(\\''+item.APITaskId+'\\','+item.SubIndex+',\\'resume\\')\"><svg viewBox=\"0 0 24 24\"><polygon points=\"5 3 19 12 5 21 5 3\"/></svg>恢复</button>' +\n" +
-                "                         '<button class=\"action-btn cancel-btn\" onclick=\"operate(\\''+item.APITaskId+'\\','+item.SubIndex+',\\'cancel\\')\"><svg viewBox=\"0 0 24 24\"><circle cx=\"12\" cy=\"12\" r=\"10\"/><line x1=\"15\" y1=\"9\" x2=\"9\" y2=\"15\"/><line x1=\"9\" y1=\"9\" x2=\"15\" y2=\"15\"/></svg>取消</button>';\n" +
-                "        }\n" +
+                "    tbody.innerHTML=html;renderPagination(total);\n" +
+                "  }).catch(function(e){document.getElementById('logBody').innerHTML='<tr><td colspan=\"9\" class=\"empty\">请求异常</td></tr>';console.error(e);});\n" +
+                "}\n" +
                 "\n" +
-                "        html += '<tr>';\n" +
-                "        html += '<td style=\"font-family:monospace;font-size:12px;color:#475569;\">' + escapeHtml(item.APITaskId) + '</td>';\n" +
-                "        html += '<td>' + escapeHtml(item.SubAccount) + '</td>';\n" +
-                "        html += '<td>' + (item.SubIndex || '0') + ' / ' + (item.SubTotal || '0') + '</td>';\n" +
-                "        html += '<td>' + (item.CalleeCount || '0') + '</td>';\n" +
-                "        html += '<td>' + (item.PlanSendTime || '-') + '</td>';\n" +
-                "        html += '<td>' + statusHtml + '</td>';\n" +
-                "        html += '<td>' + (item.Remark || '-') + '</td>';\n" +
-                "        html += '<td style=\"white-space:nowrap;\">' + actionHtml + '</td>';\n" +
-                "        html += '</tr>';\n" +
+                "function batchOperate(taskId,action){\n" +
+                "  var actionName={pause:'暂停',resume:'恢复',cancel:'取消'}[action];\n" +
+                "  if(!confirm('确定要【'+actionName+'】父任务 '+taskId+' 下全部子任务吗？'))return;\n" +
+                "  var fd=new FormData();fd.append('action',action);fd.append('taskId',taskId);fd.append('subIndex','0');fd.append('secret',SECRET);\n" +
+                "  fetch('/api/monitor/subtask/operate',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(ret){\n" +
+                "    alert(ret.msg);loadGroupList();\n" +
+                "    if(document.getElementById('subTaskModal').style.display==='flex'&&currentModalTaskId===taskId){openDetailModal(taskId);}\n" +
+                "  }).catch(function(){alert('请求失败');});\n" +
+                "}\n" +
+                "\n" +
+                "function singleOperate(taskId,subIndex,action){\n" +
+                "  var actionName={pause:'暂停',resume:'恢复',cancel:'取消'}[action];\n" +
+                "  if(!confirm('确定要【'+actionName+'】子任务序号 '+subIndex+' 吗？'))return;\n" +
+                "  var fd=new FormData();fd.append('action',action);fd.append('taskId',taskId);fd.append('subIndex',subIndex);fd.append('secret',SECRET);\n" +
+                "  fetch('/api/monitor/subtask/operate',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(ret){\n" +
+                "    alert(ret.msg);\n" +
+                "    if(currentModalTaskId)openDetailModal(currentModalTaskId);\n" +
+                "    loadGroupList();\n" +
+                "  }).catch(function(){alert('请求失败');});\n" +
+                "}\n" +
+                "\n" +
+                "function statusText(st){if(st==0)return '待处理';if(st==1)return '处理中';if(st==2)return '已暂停';if(st==3)return '已取消';return '';}\n" +
+                "function statusCls(st){if(st==0)return 'status-pending';if(st==1)return 'status-processed';if(st==2)return 'status-paused';if(st==3)return 'status-canceled';return '';}\n" +
+                "\n" +
+                "function openDetailModal(taskId){\n" +
+                "  currentModalTaskId=taskId;\n" +
+                "  document.getElementById('modalTaskId').innerText=taskId;\n" +
+                "  document.getElementById('modalBody').innerHTML='<tr><td colspan=\"7\">加载明细...</td></tr>';\n" +
+                "  document.getElementById('subTaskModal').style.display='flex';\n" +
+                "  var url='/api/monitor/subtask/detail?secret='+SECRET+'&taskId='+encodeURIComponent(taskId)+'&limit=500';\n" +
+                "  fetch(url).then(function(r){return r.json();}).then(function(ret){\n" +
+                "    var modalBody=document.getElementById('modalBody');\n" +
+                "    if(ret.code!==200){modalBody.innerHTML='<tr><td colspan=\"7\">'+ret.msg+'</td></tr>';return;}\n" +
+                "    var list=ret.data||[];\n" +
+                "    if(list.length===0){modalBody.innerHTML='<tr><td colspan=\"7\">暂无子任务明细</td></tr>';return;}\n" +
+                "    var html='';\n" +
+                "    for(var i=0;i<list.length;i++){\n" +
+                "      var item=list[i];var st=item.SubStatus;\n" +
+                "      html+='<tr>'\n" +
+                "        +'<td><span class=\"task-id-txt\">'+(item.SubIndex||'')+'</span></td>'\n" +
+                "        +'<td>'+(item.SubAccount||'')+'</td>'\n" +
+                "        +'<td>'+(item.CalleeCount||0)+'</td>'\n" +
+                "        +'<td><span class=\"stat-cell '+statusCls(st)+'\">'+statusText(st)+'</span></td>'\n" +
+                "        +'<td>'+fmtDateTime(item.PlanSendTime)+'</td>'\n" +
+                "        +'<td>'+(item.Remark||'-')+'</td>'\n" +
+                "        +'<td>'\n" +
+                "          +'<button class=\"action-link text-warn\" onclick=\"singleOperate(\\''+taskId+'\\','+item.SubIndex+',\\'pause\\')\">暂停</button>'\n" +
+                "          +'<span class=\"action-divider\">|</span>'\n" +
+                "          +'<button class=\"action-link text-success\" onclick=\"singleOperate(\\''+taskId+'\\','+item.SubIndex+',\\'resume\\')\">恢复</button>'\n" +
+                "          +'<span class=\"action-divider\">|</span>'\n" +
+                "          +'<button class=\"action-link text-danger\" onclick=\"singleOperate(\\''+taskId+'\\','+item.SubIndex+',\\'cancel\\')\">取消</button>'\n" +
+                "        +'</td></tr>';\n" +
                 "    }\n" +
-                "    tbody.innerHTML = html;\n" +
+                "    modalBody.innerHTML=html;\n" +
+                "  }).catch(function(e){document.getElementById('modalBody').innerHTML='<tr><td colspan=\"7\">明细加载异常</td></tr>';console.error(e);});\n" +
                 "}\n" +
                 "\n" +
-                "function operate(taskId, subIndex, action){\n" +
-                "    var names = { pause: '暂停', resume: '恢复', cancel: '取消' };\n" +
-                "    if(!confirm('确定要' + names[action] + '该子任务吗？')) return;\n" +
-                "    \n" +
-                "    var url = '/api/monitor/subtask/operate?secret=' + SECRET + '&action=' + action + '&taskId=' + encodeURIComponent(taskId) + '&subIndex=' + subIndex;\n" +
-                "    fetch(url, { method: 'POST' })\n" +
-                "        .then(function(res){ return res.json(); })\n" +
-                "        .then(function(data){\n" +
-                "            if(data.code === 200){\n" +
-                "                alert(data.msg);\n" +
-                "                loadLogs();\n" +
-                "            }else{\n" +
-                "                alert('操作失败: ' + (data.msg || ''));\n" +
-                "            }\n" +
-                "        }).catch(function(){\n" +
-                "            alert('网络请求失败');\n" +
-                "        });\n" +
-                "}\n" +
+                "function closeModal(){document.getElementById('subTaskModal').style.display='none';currentModalTaskId=null;}\n" +
                 "\n" +
-                "loadLogs();\n" +
+                "function renderPagination(total){\n" +
+                "  var wrap=document.getElementById('mainPagination');var totalPage=Math.ceil(total/pageSize);\n" +
+                "  if(totalPage<=1){wrap.innerHTML='';return;}\n" +
+                "  var html='';\n" +
+                "  html+='<button class=\"page-btn\" onclick=\"changePage('+(pageNum-1)+')\" '+(pageNum<=1?'disabled':'')+'>上一页</button>';\n" +
+                "  html+='<span class=\"page-info\">第 '+pageNum+' / '+totalPage+' 页（共'+total+'条父任务）</span>';\n" +
+                "  html+='<button class=\"page-btn\" onclick=\"changePage('+(pageNum+1)+')\" '+(pageNum>=totalPage?'disabled':'')+'>下一页</button>';\n" +
+                "  wrap.innerHTML=html;\n" +
+                "}\n" +
+                "function changePage(p){pageNum=p;loadGroupList();}\n" +
+                "\n" +
+                "window.onload=function(){getCurrentUserInfo();loadGroupList();};\n" +
                 "</script>\n" +
                 "</body>\n" +
                 "</html>";
