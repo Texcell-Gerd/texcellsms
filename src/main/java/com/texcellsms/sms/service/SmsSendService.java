@@ -34,10 +34,10 @@ import java.util.*;
 public class SmsSendService {
 
     private static final Logger logger = LoggerFactory.getLogger(SmsSendService.class);
-    public static final String PRE_PHONE_ROOT = "/home/ScheduleTask/PhonePre/";
-    public static final String REAL_PHONE_ROOT = "/home/ScheduleTask/Phone/";
-    public static final String TASK_ROOT = "/home/ScheduleTask/Task/";
-    private static final String CUSTOMER_NUMBER_BACKUP_ROOT = "/home/ScheduleTask/CustomerFileNumber/";
+    public static final String PRE_PHONE_ROOT = "/home/WEBSMPP/PhonePre/";
+    public static final String REAL_PHONE_ROOT = "/home/WEBSMPP/SchedulePhone/";
+    public static final String TASK_ROOT = "/home/WEBSMPP/ScheduleTask/";
+    private static final String CUSTOMER_NUMBER_BACKUP_ROOT = "/home/WEBSMPP/CustomerFileNumber/";
 
 
     private static final String DEFAULT_CALLER = "SMSINFO";
